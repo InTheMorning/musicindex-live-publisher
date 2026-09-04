@@ -1,0 +1,20 @@
+# The packaged user unit overrides watch_dir with:
+#   --watch-dir %t/musicindex-live-publisher/nowplaying
+# Keep this value for foreground runs outside systemd.
+watch_dir = "/run/user/1000/musicindex-live-publisher/nowplaying"
+endpoint = "https://api.musicindex.org"
+
+[[target]]
+name = "default"
+event_id = "replace-with-provisioned-event-guid"
+
+# In the packaged systemd user service, %d resolves to CREDENTIALS_DIRECTORY.
+# For foreground testing outside systemd, use an absolute path instead.
+token_file = "%d/default.token"
+
+  [target.fallback]
+  title = "Your Station Name"
+  image = "https://example.com/station-art.png"
+  destinations = [
+    { name = "Station", type = "node", address = "03your-node-pubkey", split = "100" },
+  ]

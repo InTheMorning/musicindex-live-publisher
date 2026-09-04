@@ -1,0 +1,6 @@
+The upstream source checkout does not declare a software license.
+
+This local Arch package is suitable for private installation and testing only.
+Do not redistribute this package until the upstream repository includes a real
+license declaration and this package is updated to use the corresponding SPDX
+license identifier.

@@ -1,0 +1,105 @@
+# Maintainer: Local tester <you@example.invalid>
+
+pkgname=musicindex-live-publisher-git
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Publish Mixxx now-playing MusicIndex live value updates'
+arch=('x86_64')
+_pkgbase=musicindex-live-publisher
+_repo="${MUSICINDEX_LIVE_PUBLISHER_REPO:-$(realpath "$startdir/../..")}"
+url="file://${_repo}"
+license=('LicenseRef-UNKNOWN')
+depends=('ca-certificates' 'gcc-libs' 'glibc' 'openssl' 'systemd')
+makedepends=('cargo' 'git' 'pkgconf')
+optdepends=('mixxx: source history database for mixxx-now-playing')
+provides=("${_pkgbase}=${pkgver}" "mixxx-now-playing=${pkgver}")
+conflicts=("${_pkgbase}" 'mixxx-now-playing')
+install=musicindex-live-publisher.install
+source=()
+sha256sums=()
+
+# makepkg's default options=(lto) puts -flto=auto into CFLAGS. rusqlite is built
+# with the "bundled" feature, so the cc crate compiles sqlite3.c using those
+# CFLAGS and produces an archive of GCC LTO bitcode rather than native objects.
+# rust-lld cannot read GIMPLE without the GCC plugin, so linking mixxx-now-playing
+# fails with "undefined symbol: sqlite3_open_v2" and friends. Rust already does
+# its own LTO via the release profile; makepkg's C-level LTO buys nothing here.
+options=(!lto)
+
+# This checkout does not declare an upstream license yet. Keep this package for
+# local testing until the repo has a real LICENSE file and SPDX license value.
+
+pkgver() {
+  cd "$_repo"
+
+  local _crate_ver
+  local _dirty
+  _crate_ver=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml)
+
+  if [[ -n $(git status --porcelain) ]]; then
+    _dirty=.local
+  fi
+
+  printf '%s.r%s.g%s' \
+    "$_crate_ver" \
+    "$(git rev-list --count HEAD)" \
+    "$(git rev-parse --short=7 HEAD)${_dirty}"
+}
+
+prepare() {
+  cd "$_repo"
+
+  export RUSTUP_TOOLCHAIN=stable
+  local _host
+  _host=$(rustc -vV | sed -n 's/^host: //p')
+
+  cargo fetch --locked --target "$_host" --manifest-path Cargo.toml
+}
+
+build() {
+  cd "$_repo"
+
+  export RUSTUP_TOOLCHAIN=stable
+  export CARGO_TARGET_DIR="$srcdir/target"
+
+  cargo build --frozen --release --workspace --manifest-path Cargo.toml
+}
+
+check() {
+  cd "$_repo"
+
+  export RUSTUP_TOOLCHAIN=stable
+  export CARGO_TARGET_DIR="$srcdir/target"
+
+  cargo test --frozen --workspace --manifest-path Cargo.toml
+}
+
+package() {
+  cd "$_repo"
+
+  install -Dm0755 "$srcdir/target/release/musicindex-live-publisher" \
+    -t "$pkgdir/usr/bin/"
+  install -Dm0755 "$srcdir/target/release/mixxx-now-playing" \
+    -t "$pkgdir/usr/bin/"
+
+  install -Dm0644 systemd/musicindex-live-publisher.service \
+    "$pkgdir/usr/lib/systemd/user/musicindex-live-publisher.service"
+  install -Dm0644 systemd/mixxx-now-playing.service \
+    "$pkgdir/usr/lib/systemd/user/mixxx-now-playing.service"
+
+  install -Dm0644 packaging/arch/musicindex-live-publisher.example.toml \
+    "$pkgdir/usr/share/doc/musicindex-live-publisher/examples/config.toml"
+  install -Dm0644 packaging/arch/v4vmm.example.toml \
+    "$pkgdir/usr/share/doc/musicindex-live-publisher/examples/v4vmm-config.toml"
+  install -Dm0644 packaging/arch/LICENSE.upstream-unknown \
+    "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+
+  install -Dm0644 README.md \
+    "$pkgdir/usr/share/doc/musicindex-live-publisher/README.md"
+  install -Dm0644 docs/runbooks/musicindex-live-publisher-deploy.md \
+    "$pkgdir/usr/share/doc/musicindex-live-publisher/musicindex-live-publisher-deploy.md"
+  install -Dm0644 docs/runbooks/musicindex-live-publisher-arch-package.md \
+    "$pkgdir/usr/share/doc/musicindex-live-publisher/musicindex-live-publisher-arch-package.md"
+  install -Dm0644 docs/runbooks/musicindex-live-publisher-configuration.md \
+    "$pkgdir/usr/share/doc/musicindex-live-publisher/musicindex-live-publisher-configuration.md"
+}

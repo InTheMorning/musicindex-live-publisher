@@ -1,12 +1,28 @@
 # MusicIndex Live Publisher
 
-`musicindex-live-publisher` watches a local now-playing drop directory, turns
-`musicindex.nowplaying/1` JSON files into direct Podcasting 2.0 live value
-payloads, and publishes them to a MusicIndex live relay.
+This repository contains two Rust binaries:
 
-It is a headless service. Producers write drop files with temp-file-plus-rename;
-presence means a track is playing, and file removal means the service publishes
-the configured fallback splits so boosts stop routing to the previous track.
+- `musicindex-live-publisher` watches a local now-playing drop directory, turns
+  `musicindex.nowplaying/1` JSON files into direct Podcasting 2.0 live value
+  payloads, and publishes them to a MusicIndex live relay.
+- `mixxx-now-playing` watches the Mixxx history database, writes OBS-friendly
+  text output, and can write publisher drop files for V4V tracks.
+
+The publisher is a headless service. Producers write drop files with
+temp-file-plus-rename; presence means a track is playing, and file removal means
+the service publishes the configured fallback splits so boosts stop routing to
+the previous track.
+
+## Repository Layout
+
+```text
+.
+|-- mixxx-now-playing/       # Mixxx producer crate
+|-- src/                     # publisher crate source
+|-- systemd/                 # user service units for both binaries
+|-- packaging/arch/          # local Arch package
+`-- docs/                    # ADRs, plans, runbooks, tasks, reviews
+```
 
 ## Configuration
 
@@ -76,13 +92,13 @@ value block.
 For an Arch local test install, use the packaged `PKGBUILD`:
 
 ```bash
-cd /home/citizen/build/mixxx-scripts/packaging/arch
+cd packaging/arch
 makepkg -Csi
 ```
 
-See `../docs/runbooks/musicindex-live-publisher-arch-package.md` for package
+See `docs/runbooks/musicindex-live-publisher-arch-package.md` for package
 build, install, upgrade, and removal steps. See
-`../docs/runbooks/musicindex-live-publisher-configuration.md` for every
+`docs/runbooks/musicindex-live-publisher-configuration.md` for every
 publisher and producer configuration option.
 
 ## Systemd
@@ -103,4 +119,4 @@ musicindex-live-publisher \
 ```
 
 See the deployment runbook for full install and verification steps:
-`../docs/runbooks/musicindex-live-publisher-deploy.md`.
+`docs/runbooks/musicindex-live-publisher-deploy.md`.

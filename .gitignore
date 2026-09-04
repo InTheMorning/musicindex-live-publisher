@@ -1,6 +1,7 @@
 # Rust build output
-/target/
+target/
 **/*.rs.bk
+*.pdb
 
 # Local runtime/configuration/secrets
 /.env
@@ -15,6 +16,11 @@
 # Logs and process output
 *.log
 *.pid
+
+# Arch package output
+/packaging/arch/pkg/
+/packaging/arch/src/
+/packaging/arch/*.pkg.tar.*
 
 # Coverage/profiling output
 /coverage/

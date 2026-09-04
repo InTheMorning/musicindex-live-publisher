@@ -1,0 +1,40 @@
+[Unit]
+Description=Mixxx now-playing producer for MusicIndex
+Documentation=file:///usr/share/doc/musicindex-live-publisher/musicindex-live-publisher-deploy.md
+# The publisher owns the drop directory, so it must exist first.
+Wants=musicindex-live-publisher.service
+After=musicindex-live-publisher.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/mixxx-now-playing \
+    --format json \
+    --target default \
+    --id3-file %t/musicindex-live-publisher/nowplaying/default.json \
+    --txt-file /tmp/mixxx-now-playing.txt
+# The producer exits cleanly when Mixxx is not running. Restart=always with a
+# short delay turns that into a cheap poll, so starting Mixxx later brings the
+# producer back on its own.
+Restart=always
+RestartSec=10s
+
+NoNewPrivileges=true
+ProtectSystem=strict
+# Needs to read ~/.mixxx/mixxxdb.sqlite and the V4V music library.
+ProtectHome=read-only
+# Deliberately NOT PrivateTmp: OBS reads /tmp/mixxx-now-playing.txt, and a
+# private /tmp would hide it from every other process on the desktop.
+ReadWritePaths=/tmp
+RuntimeDirectory=musicindex-live-publisher/nowplaying
+RuntimeDirectoryMode=0700
+RuntimeDirectoryPreserve=yes
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=default.target

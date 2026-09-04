@@ -1,0 +1,3 @@
+# Read by mixxx-now-playing from ~/.config/v4vmm/config.toml.
+music_dir = "~/V4Vmusic"
+musicindex_endpoint = "https://api.musicindex.org"

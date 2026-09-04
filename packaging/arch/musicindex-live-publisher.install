@@ -1,0 +1,29 @@
+post_install() {
+  cat <<'EOF'
+MusicIndex live publisher was installed.
+
+Quick local test setup:
+  install -d -m 0700 ~/.config/musicindex-live-publisher
+  cp /usr/share/doc/musicindex-live-publisher/examples/config.toml \
+    ~/.config/musicindex-live-publisher/config.toml
+  $EDITOR ~/.config/musicindex-live-publisher/config.toml
+
+Provision a live item, then paste the printed event_id into the config:
+  musicindex-live-publisher provision \
+    --endpoint https://api.musicindex.org \
+    --token-file ~/.config/musicindex-live-publisher/default.token
+
+Start the user services:
+  systemctl --user daemon-reload
+  systemctl --user enable --now musicindex-live-publisher.service
+  systemctl --user enable --now mixxx-now-playing.service
+
+Docs:
+  /usr/share/doc/musicindex-live-publisher/musicindex-live-publisher-arch-package.md
+  /usr/share/doc/musicindex-live-publisher/musicindex-live-publisher-configuration.md
+EOF
+}
+
+post_upgrade() {
+  post_install "$1"
+}
