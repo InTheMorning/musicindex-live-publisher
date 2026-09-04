@@ -7,6 +7,7 @@ pub mod config;
 pub mod dropfile;
 pub mod livevalue;
 pub mod relay;
+pub mod schedule;
 pub mod watcher;
 
 pub use config::{
@@ -22,6 +23,7 @@ pub use relay::{
     DEFAULT_INITIAL_BACKOFF, DEFAULT_MAX_BACKOFF, DEFAULT_REQUEST_TIMEOUT, ProvisionedLiveItem,
     PublishOutcome, RelayClient, RelayPublisher, RelayTarget, write_token_file,
 };
+pub use schedule::PublishSchedule;
 pub use watcher::{
     DEFAULT_DEBOUNCE_WINDOW, DropEvent, DropEventKind, DropWatcher, FallbackConfig, WatchTarget,
     is_final_drop_file,

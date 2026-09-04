@@ -66,6 +66,9 @@ Fields:
 - `target.token_file`: broadcaster token path. Keep one private token file per
   target, usually under
   `~/.config/musicindex-live-publisher/<instance>/tokens/`.
+- `target.stream_delay_secs`: seconds to hold each payload so the published
+  value block lines up with what listeners hear. Defaults to `0`. See the
+  configuration runbook for how to measure it.
 - `target.fallback`: optional station-owned fallback value block used when
   playback clears. If omitted, the publisher warns and uses a dead fallback
   route: `lnaddress` recipient `no-v4v-track@example.invalid`.

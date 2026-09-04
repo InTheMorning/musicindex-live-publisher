@@ -13,6 +13,13 @@ event_id = "replace-with-provisioned-event-guid"
 # that sets CREDENTIALS_DIRECTORY.
 token_file = "~/.config/musicindex-live-publisher/mixxx/tokens/default.token"
 
+# Seconds of broadcast delay between this machine and a listener's ears.
+# 0 publishes on sight, which flips the value block before listeners hear the
+# new track and pays a boost to the wrong artist for that many seconds. Measure
+# it against a real client rather than copying butt's song-update delay, which
+# is a different term. Maximum 300.
+# stream_delay_secs = 0
+
 # Optional: add [target.fallback] to receive station fallback payments.
 # If omitted, the publisher logs a warning and uses a dead fallback route:
 #   value.model: type = "lightning", method = "lnaddress"

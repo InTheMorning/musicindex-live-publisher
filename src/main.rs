@@ -7,7 +7,8 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result, anyhow};
 use musicindex_live_publisher::{
     ConfigOverrides, DEFAULT_CONFIG_PATH, DEFAULT_DEBOUNCE_WINDOW, DropEvent, DropEventKind,
-    DropWatcher, LiveValuePayload, RelayClient, RelayPublisher, load_config, write_token_file,
+    DropWatcher, LiveValuePayload, PublishSchedule, RelayClient, RelayPublisher, load_config,
+    write_token_file,
 };
 use notify::event::{CreateKind, ModifyKind, RemoveKind, RenameMode};
 use notify::{EventKind, RecursiveMode, Watcher};
@@ -47,6 +48,14 @@ fn main() -> Result<()> {
         target_count = config.targets.len(),
         "loaded publisher config"
     );
+    for target in &config.targets {
+        tracing::info!(
+            target = %target.name,
+            event_id = %target.event_id,
+            stream_delay_secs = target.stream_delay.as_secs_f64(),
+            "configured publish target"
+        );
+    }
 
     let publisher = if cli.dry_run {
         None
@@ -59,13 +68,28 @@ fn main() -> Result<()> {
         .map(|target| target.watch_target())
         .collect();
     let mut processor = DropWatcher::new_targets(targets, DEFAULT_DEBOUNCE_WINDOW);
+    let mut schedule = PublishSchedule::new(
+        config
+            .targets
+            .iter()
+            .map(|target| (target.event_id.clone(), target.stream_delay))
+            .collect(),
+    );
 
     wait_for_watch_dir(&config.watch_dir)?;
+    // Startup state is recovery, not a track change: the drop file may have
+    // been sitting there for most of a song, and holding it would leave the
+    // relay serving nothing for the length of the delay. Emit it directly.
     emit_payloads(
         processor.initial_payloads(&config.watch_dir)?,
         publisher.as_ref(),
     )?;
-    run_watch_loop(&config.watch_dir, &mut processor, publisher.as_ref())
+    run_watch_loop(
+        &config.watch_dir,
+        &mut processor,
+        &mut schedule,
+        publisher.as_ref(),
+    )
 }
 
 #[derive(Debug)]
@@ -241,6 +265,7 @@ fn wait_for_watch_dir(watch_dir: &Path) -> Result<()> {
 fn run_watch_loop(
     watch_dir: &Path,
     processor: &mut DropWatcher,
+    schedule: &mut PublishSchedule,
     publisher: Option<&RelayPublisher>,
 ) -> Result<()> {
     let (sender, receiver) = mpsc::channel();
@@ -252,10 +277,13 @@ fn run_watch_loop(
     loop {
         // Poll rather than block forever so a relay worker that stopped
         // fatally surfaces within a second, instead of waiting for whenever the
-        // next track happens to change.
-        let event = match receiver.recv_timeout(HEALTH_CHECK_INTERVAL) {
+        // next track happens to change. A pending stream-delay deadline
+        // shortens the wait further, so a held payload is released on time
+        // rather than at the next health check.
+        let event = match receiver.recv_timeout(next_wakeup(schedule, Instant::now())) {
             Ok(event) => event,
             Err(mpsc::RecvTimeoutError::Timeout) => {
+                emit_payloads(schedule.take_due(Instant::now()), publisher)?;
                 if let Some(publisher) = publisher {
                     publisher.check_health()?;
                 }
@@ -268,15 +296,30 @@ fn run_watch_loop(
         match event {
             Ok(event) => {
                 for drop_event in normalize_notify_event(event) {
-                    emit_payloads(
-                        processor.process_event(drop_event, Instant::now())?,
-                        publisher,
-                    )?;
+                    let now = Instant::now();
+                    for payload in processor.process_event(drop_event, now)? {
+                        schedule.schedule(payload, now);
+                    }
                 }
+                emit_payloads(schedule.take_due(Instant::now()), publisher)?;
             }
             Err(error) => return Err(error).context("watch directory event error"),
         }
     }
+}
+
+/// Returns how long the watch loop may block before it must act again.
+///
+/// A pending stream-delay deadline takes precedence over the health check
+/// interval, but never lengthens it.
+fn next_wakeup(schedule: &PublishSchedule, now: Instant) -> Duration {
+    schedule
+        .next_deadline()
+        .map_or(HEALTH_CHECK_INTERVAL, |deadline| {
+            deadline
+                .saturating_duration_since(now)
+                .min(HEALTH_CHECK_INTERVAL)
+        })
 }
 
 fn normalize_notify_event(event: notify::Event) -> Vec<DropEvent> {

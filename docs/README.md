@@ -62,6 +62,7 @@ each can be done alone, but 002, 004, and 005 gate any run against a live relay.
 - [003 — History query must not skip tracks without locations](tasks/audit-fix-task-003-history-left-join.md)
 - [004 — Drop directory trust checks](tasks/audit-fix-task-004-drop-dir-trust.md)
 - [005 — A fatal publish failure must not fail silently](tasks/audit-fix-task-005-fatal-publish-exit.md)
+- [006 — Compensate for stream latency before publishing](tasks/audit-fix-task-006-stream-delay-compensation.md)
 
 ## Reviews
 

@@ -215,6 +215,7 @@ fn config(endpoint: &str) -> PublisherConfig {
             event_id: "event-guid".to_owned(),
             token_file: Path::new("/tmp/default.token").to_path_buf(),
             token: "secret-token".to_owned(),
+            stream_delay: Duration::ZERO,
             fallback: FallbackConfig {
                 title: "Station".to_owned(),
                 image: None,

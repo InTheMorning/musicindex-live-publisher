@@ -74,6 +74,13 @@ Required target fields:
   units that provide `CREDENTIALS_DIRECTORY`.
 - `[target.fallback]`: optional station-owned fallback live value block.
 
+Optional target fields:
+
+- `stream_delay_secs`: seconds to hold every payload for this target before it
+  reaches the relay. Defaults to `0`. Accepts fractional seconds. Values that
+  are negative, not finite, or above 300 are rejected at startup with the target
+  name in the error.
+
 Fallback fields:
 
 - `title`: fallback title shown when no track is playing. Defaults to
@@ -206,6 +213,51 @@ Validation rules:
 - Empty token files are rejected.
 - Example placeholder destination addresses such as `YOUR_LIGHTNING_NODE_PUBKEY`
   are rejected.
+- `stream_delay_secs` must be finite, must not be negative, and must not exceed
+  300.
+
+## Stream Delay
+
+The publisher sees a track change the instant the producer writes the drop file.
+Listeners hear that track several seconds later, after the encoder, the icecast
+queue, and their own player buffer. The icecast title survives that gap because
+it travels in band with the audio; a relay payload does not. With
+`stream_delay_secs = 0`, the value block therefore flips to the next track while
+listeners still hear the previous one, and a boost sent in that window pays the
+wrong artist. Set the delay to close the gap.
+
+What the delay covers:
+
+- Track payloads and the fallback that follows a removal are held for the same
+  duration, so a set never has a gap or an overlap.
+- Two tracks changing inside one delay window both publish, in order, each at
+  its own deadline.
+- A producer rewrite of the same track — the MusicIndex value-route upgrade —
+  replaces the pending payload and keeps the original deadline, so it publishes
+  once and on time.
+- Startup is not delayed. Existing drop files are recovered state, not a track
+  change, and holding them would leave the relay serving nothing.
+- `--dry-run` honours the delay, so you can time stdout against the stream
+  without publishing.
+
+Measuring it:
+
+1. Start playback of a track with an obvious opening.
+2. Note the local wall-clock time at which the publisher logs the track — run
+   with `--verbose` and watch for `holding live value payload for stream delay`
+   and `releasing live value payload after stream delay`.
+3. Note the wall-clock time at which a real listening client, on a normal
+   network, hears that opening.
+4. The difference is the delay. Re-measure from a cold client join, because
+   icecast's burst buffer affects the first seconds of a connection.
+
+butt's own song-update delay is a different term. It shifts the icecast title
+only, and does not substitute for this setting. If you have one configured,
+measure with it in place rather than adding the two together.
+
+Verify the running value in the journal. The service logs one
+`configured publish target` line per target at startup, carrying
+`stream_delay_secs`.
 
 ## Publisher Instances
 

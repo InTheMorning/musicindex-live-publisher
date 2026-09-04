@@ -48,6 +48,11 @@ systemd deployment puts the drop directory in a `0700` runtime directory, which
 makes finding 4 unreachable in that configuration and reduces finding 1 to the
 now-playing text file in `/tmp`.
 
+Finding 6 was added after the original audit, from an operator report that the
+icecast title and the live value block disagree on air. It is appended in
+discovery order rather than risk order; by risk it belongs with 2 and 5, because
+it moves money to the wrong destination.
+
 ### 1. Symlink attack on the output sink — arbitrary file overwrite — OPEN
 
 `mixxx-now-playing/src/sink.rs:55` builds a predictable temp path
@@ -115,6 +120,54 @@ pays the wrong people, which is the same reasoning that made a missing fallback
 a startup error.
 
 Fix packet: [audit-fix-task-005](../tasks/audit-fix-task-005-fatal-publish-exit.md).
+
+### 6. Stream latency is never compensated, so every block flips early — OPEN
+
+The publisher emits at wall-clock track-change time. Listeners hear the track
+several seconds later. Nothing in the chain closes that gap: grep for
+`delay|latency|offset|compensat` across `src/`, the drop-file contract, and the
+config schema returns only HTTP retry backoff.
+
+The two metadata paths diverge downstream of the producer, which writes both
+outputs in the same call (`mixxx-now-playing/src/main.rs:178-185, 202`):
+
+- The icecast title reaches the client *in band*. butt posts it to
+  `/admin/metadata`, and icecast injects it into the outgoing byte stream, so it
+  drains through the client's playout buffer alongside the audio it labels.
+  Alignment is inherited, not computed.
+- The live value block reaches the client out of band: drop file, inotify
+  (75 ms debounce, `src/watcher.rs:16`), HTTPS POST, then
+  `splitkit/src/lib.rs:231-250`, which stores and fans out on Socket.IO and SSE
+  with no scheduling. It shares no buffer with the audio.
+
+Publisher-side latency is under a second (0.5 s Mixxx poll, 75 ms debounce, one
+round trip). Stream latency is 5 to 30 seconds. That difference is the defect,
+and it opens two misattribution windows on every track:
+
+1. **Early flip.** For the length of the stream delay after each local track
+   change, the published block is track N+1 while listeners still hear track N.
+   A boost in that window pays the next artist.
+2. **Early clear.** Producer expiry fires at local
+   `start + duration + 5 s slack` (`mixxx-now-playing/src/main.rs:210-217`).
+   The drop file is removed, the publisher emits the fallback, and the tail of
+   the track routes to the station fallback — or, with no `[target.fallback]`
+   configured, to the dead placeholder `no-v4v-track@example.invalid`
+   (`src/config.rs:18`), where the boost is lost outright.
+
+This is the same failure class as findings 2 and 5 — money reaching the wrong
+destination — and it survives both of their fixes.
+
+Origin: the plan
+([musicindex-live-publisher-plan:62](../plans/musicindex-live-publisher-plan.md))
+and [task 002](../tasks/musicindex-live-publisher-task-002-live-value-transform.md)
+both record "`startTime` is `0` for music blocks. No stream-elapsed clock is
+needed." That is true of the payload shape and was read as timing being out of
+scope entirely. Curiohoster does keep a broadcast clock: in example 3 of
+`splitkit/docs/research/curiohoster-livevalue-socketio-examples.md`,
+`broadcastTimestamp - eventTimestamp` is 1723.160 s against a `startTime` of
+1723.151 s.
+
+Fix packet: [audit-fix-task-006](../tasks/audit-fix-task-006-stream-delay-compensation.md).
 
 ## Optional Improvements
 

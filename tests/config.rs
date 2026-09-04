@@ -589,3 +589,86 @@ fn config_unknown_dropfile_target_is_skipped() -> Result<()> {
     assert!(payloads.is_empty());
     Ok(())
 }
+
+/// Inserts a `stream_delay_secs` line into the default target block.
+fn config_text_with_delay(watch_dir: &Path, token: &Path, literal: &str) -> String {
+    config_text(watch_dir, token, None).replace(
+        "event_id = \"event-default\"",
+        &format!("event_id = \"event-default\"\nstream_delay_secs = {literal}"),
+    )
+}
+
+fn delay_error(literal: &str) -> Result<String> {
+    let temp = TempDir::new()?;
+    let watch_dir = temp.path().join("watch");
+    let token = write_token(temp.path(), "default.token", "secret-token")?;
+    let config_path = write_config(
+        temp.path(),
+        &config_text_with_delay(&watch_dir, &token, literal),
+    )?;
+
+    let error = load_config(&config_path, ConfigOverrides::default())
+        .err()
+        .ok_or_else(|| anyhow!("expected stream_delay_secs {literal} to be rejected"))?;
+    Ok(format!("{error:#}"))
+}
+
+#[test]
+fn config_stream_delay_defaults_to_zero() -> Result<()> {
+    let temp = TempDir::new()?;
+    let watch_dir = temp.path().join("watch");
+    let token = write_token(temp.path(), "default.token", "secret-token")?;
+    let config_path = write_config(temp.path(), &config_text(&watch_dir, &token, None))?;
+
+    let config = load_config(&config_path, ConfigOverrides::default())?;
+
+    assert_eq!(config.targets[0].stream_delay, Duration::ZERO);
+    Ok(())
+}
+
+#[test]
+fn config_stream_delay_resolves_fractional_seconds() -> Result<()> {
+    let temp = TempDir::new()?;
+    let watch_dir = temp.path().join("watch");
+    let token = write_token(temp.path(), "default.token", "secret-token")?;
+    let config_path = write_config(
+        temp.path(),
+        &config_text_with_delay(&watch_dir, &token, "12.5"),
+    )?;
+
+    let config = load_config(&config_path, ConfigOverrides::default())?;
+
+    assert_eq!(
+        config.targets[0].stream_delay,
+        Duration::from_millis(12_500)
+    );
+    Ok(())
+}
+
+#[test]
+fn config_negative_stream_delay_is_error_naming_target() -> Result<()> {
+    assert!(
+        delay_error("-1.0")?.contains("target default stream_delay_secs must not be negative"),
+        "error should name the target and the field"
+    );
+    Ok(())
+}
+
+#[test]
+fn config_non_finite_stream_delay_is_error() -> Result<()> {
+    assert!(
+        delay_error("nan")?.contains("target default stream_delay_secs must be a finite number")
+    );
+    assert!(
+        delay_error("inf")?.contains("target default stream_delay_secs must be a finite number")
+    );
+    Ok(())
+}
+
+#[test]
+fn config_stream_delay_above_the_ceiling_is_error() -> Result<()> {
+    // A millisecond value typed into a seconds field is the mistake this
+    // catches: it would park every payload well past the end of the show.
+    assert!(delay_error("12000")?.contains("exceeds the 300 second maximum"));
+    Ok(())
+}

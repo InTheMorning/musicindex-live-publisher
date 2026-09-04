@@ -3,6 +3,7 @@
 use std::collections::HashSet;
 use std::fmt;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 use std::{env, fs};
 
 use anyhow::{Context, Result, anyhow};
@@ -12,6 +13,13 @@ use crate::{FallbackConfig, LiveValue, LiveValueDestination, LiveValueModel, Wat
 
 /// Default service configuration path.
 pub const DEFAULT_CONFIG_PATH: &str = "/etc/musicindex-live-publisher/config.toml";
+
+/// Ceiling for a configured stream delay.
+///
+/// Chosen well above any real broadcast buffer. Its job is to catch a units
+/// mistake — milliseconds typed into a seconds field — at startup rather than
+/// on air, where it would park every payload past the end of the show.
+const MAX_STREAM_DELAY_SECS: f64 = 300.0;
 
 const DEFAULT_DEAD_FALLBACK_TITLE: &str = "No V4V track playing";
 const DEFAULT_DEAD_FALLBACK_RECIPIENT_NAME: &str = "No V4V payment route";
@@ -45,6 +53,7 @@ pub struct PublisherTarget {
     pub event_id: String,
     pub token_file: PathBuf,
     pub token: String,
+    pub stream_delay: Duration,
     pub fallback: FallbackConfig,
 }
 
@@ -56,6 +65,7 @@ impl fmt::Debug for PublisherTarget {
             .field("event_id", &self.event_id)
             .field("token_file", &self.token_file)
             .field("token", &"<redacted>")
+            .field("stream_delay", &self.stream_delay)
             .field("fallback", &self.fallback)
             .finish()
     }
@@ -92,6 +102,7 @@ struct RawTarget {
     name: String,
     event_id: String,
     token_file: PathBuf,
+    stream_delay_secs: Option<f64>,
     fallback: Option<RawFallback>,
 }
 
@@ -175,6 +186,7 @@ fn resolve_target(target: RawTarget, seen: &mut HashSet<String>) -> Result<Publi
         return Err(anyhow!("duplicate target name {}", target.name));
     }
     validate_event_id(&target.name, &target.event_id)?;
+    let stream_delay = resolve_stream_delay(&target.name, target.stream_delay_secs)?;
 
     let fallback = target.fallback.map_or_else(
         || {
@@ -200,7 +212,38 @@ fn resolve_target(target: RawTarget, seen: &mut HashSet<String>) -> Result<Publi
         event_id: target.event_id,
         token_file,
         token,
+        stream_delay,
         fallback,
+    })
+}
+
+/// Resolves a target's broadcast stream delay.
+///
+/// The delay compensates for the buffering between the publisher and a
+/// listener's ears. Zero means publish on sight, which is the behavior every
+/// config had before this field existed.
+fn resolve_stream_delay(target_name: &str, stream_delay_secs: Option<f64>) -> Result<Duration> {
+    let Some(seconds) = stream_delay_secs else {
+        return Ok(Duration::ZERO);
+    };
+    if !seconds.is_finite() {
+        return Err(anyhow!(
+            "target {target_name} stream_delay_secs must be a finite number"
+        ));
+    }
+    if seconds < 0.0 {
+        return Err(anyhow!(
+            "target {target_name} stream_delay_secs must not be negative"
+        ));
+    }
+    if seconds > MAX_STREAM_DELAY_SECS {
+        return Err(anyhow!(
+            "target {target_name} stream_delay_secs {seconds} exceeds the {MAX_STREAM_DELAY_SECS} second maximum"
+        ));
+    }
+
+    Duration::try_from_secs_f64(seconds).with_context(|| {
+        format!("target {target_name} stream_delay_secs {seconds} is not a usable duration")
     })
 }
 
