@@ -6,9 +6,6 @@ Documentation=file:///usr/share/doc/musicindex-live-publisher/musicindex-live-pu
 # unit failed so `systemctl --user status` shows the real problem.
 StartLimitIntervalSec=300
 StartLimitBurst=5
-# Each future player instance has its own config and token directory.
-AssertPathExists=%h/.config/musicindex-live-publisher/%i/config.toml
-AssertPathExists=%h/.config/musicindex-live-publisher/%i/tokens
 
 [Service]
 Type=simple

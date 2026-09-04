@@ -116,9 +116,209 @@ fn config_loads_single_target_and_trims_token() -> Result<()> {
     assert_eq!(config.targets[0].name, "default");
     assert_eq!(config.targets[0].token, "secret-token");
     assert_eq!(
-        config.targets[0].fallback.destinations[0].split.as_deref(),
+        config.targets[0].fallback.value.destinations[0]
+            .split
+            .as_deref(),
         Some("100")
     );
+    assert_eq!(config.targets[0].fallback.value.model.kind, "lightning");
+    assert_eq!(config.targets[0].fallback.value.model.method, "keysend");
+    assert_eq!(
+        config.targets[0].fallback.value.destinations[0]
+            .kind
+            .as_deref(),
+        Some("node")
+    );
+    Ok(())
+}
+
+#[test]
+fn config_loads_nested_fallback_value_block() -> Result<()> {
+    let temp = TempDir::new()?;
+    let watch_dir = temp.path().join("watch");
+    let token = write_token(temp.path(), "default.token", "secret-token")?;
+    let config_path = write_config(
+        temp.path(),
+        &format!(
+            r#"
+watch_dir = "{}"
+endpoint = "https://api.example.test"
+
+[[target]]
+name = "default"
+event_id = "event-default"
+token_file = "{}"
+
+  [target.fallback]
+  title = "Default Station"
+
+    [target.fallback.value.model]
+    type = "lightning"
+    method = "keysend"
+    suggested = "0.0000100000"
+
+    [[target.fallback.value.destinations]]
+    name = "Sharpie"
+    type = "node"
+    address = "03a524eb4f2e9f07b4cbb904f265ed21af7e46cebd8dc92eb9682dfd0d54f6349f"
+    split = "10"
+    customKey = "696969"
+    customValue = "5"
+    fee = false
+"#,
+            watch_dir.display(),
+            token.display()
+        ),
+    )?;
+
+    let config = load_config(&config_path, ConfigOverrides::default())?;
+    let model = &config.targets[0].fallback.value.model;
+    let destination = &config.targets[0].fallback.value.destinations[0];
+
+    assert_eq!(config.targets[0].fallback.title, "Default Station");
+    assert_eq!(model.kind, "lightning");
+    assert_eq!(model.method, "keysend");
+    assert_eq!(model.suggested.as_deref(), Some("0.0000100000"));
+    assert_eq!(destination.kind.as_deref(), Some("node"));
+    assert_eq!(
+        destination.address.as_deref(),
+        Some("03a524eb4f2e9f07b4cbb904f265ed21af7e46cebd8dc92eb9682dfd0d54f6349f")
+    );
+    assert_eq!(destination.split.as_deref(), Some("10"));
+    assert_eq!(destination.custom_key.as_deref(), Some("696969"));
+    assert_eq!(destination.custom_value.as_deref(), Some("5"));
+    assert_eq!(destination.fee, Some(false));
+    Ok(())
+}
+
+#[test]
+fn config_accepts_configured_fallback_value_model() -> Result<()> {
+    let temp = TempDir::new()?;
+    let token = write_token(temp.path(), "default.token", "secret-token")?;
+    let path = write_config(
+        temp.path(),
+        &format!(
+            r#"
+watch_dir = "{}"
+endpoint = "https://api.example.test"
+
+[[target]]
+name = "default"
+event_id = "event-default"
+token_file = "{}"
+
+  [target.fallback]
+  title = "Station"
+
+    [target.fallback.value.model]
+    type = "legacy-node"
+    method = "custom-method"
+
+    [[target.fallback.value.destinations]]
+    name = "Station"
+    type = "node"
+    address = "03station"
+    split = "100"
+"#,
+            temp.path().join("watch").display(),
+            token.display()
+        ),
+    )?;
+
+    let config = load_config(&path, ConfigOverrides::default())?;
+
+    assert_eq!(config.targets[0].fallback.value.model.kind, "legacy-node");
+    assert_eq!(
+        config.targets[0].fallback.value.model.method,
+        "custom-method"
+    );
+    Ok(())
+}
+
+#[test]
+fn config_accepts_lnaddress_fallback_destination() -> Result<()> {
+    let temp = TempDir::new()?;
+    let token = write_token(temp.path(), "default.token", "secret-token")?;
+    let path = write_config(
+        temp.path(),
+        &format!(
+            r#"
+watch_dir = "{}"
+endpoint = "https://api.example.test"
+
+[[target]]
+name = "default"
+event_id = "event-default"
+token_file = "{}"
+
+  [target.fallback]
+  title = "Station"
+
+    [target.fallback.value.model]
+    type = "lightning"
+    method = "lnaddress"
+
+    [[target.fallback.value.destinations]]
+    name = "Station"
+    type = "lnaddress"
+    address = "station@example.com"
+    split = "100"
+"#,
+            temp.path().join("watch").display(),
+            token.display()
+        ),
+    )?;
+
+    let config = load_config(&path, ConfigOverrides::default())?;
+    let destination = &config.targets[0].fallback.value.destinations[0];
+
+    assert_eq!(config.targets[0].fallback.value.model.method, "lnaddress");
+    assert_eq!(destination.kind.as_deref(), Some("lnaddress"));
+    assert_eq!(destination.address.as_deref(), Some("station@example.com"));
+    Ok(())
+}
+
+#[test]
+fn config_rejects_empty_fallback_value_model_fields() -> Result<()> {
+    let temp = TempDir::new()?;
+    let token = write_token(temp.path(), "default.token", "secret-token")?;
+    let path = write_config(
+        temp.path(),
+        &format!(
+            r#"
+watch_dir = "{}"
+endpoint = "https://api.example.test"
+
+[[target]]
+name = "default"
+event_id = "event-default"
+token_file = "{}"
+
+  [target.fallback]
+  title = "Station"
+
+    [target.fallback.value.model]
+    type = ""
+    method = "keysend"
+
+    [[target.fallback.value.destinations]]
+    name = "Station"
+    type = "node"
+    address = "03station"
+    split = "100"
+"#,
+            temp.path().join("watch").display(),
+            token.display()
+        ),
+    )?;
+
+    let error = load_config(&path, ConfigOverrides::default()).err();
+
+    assert!(error.is_some_and(|error| {
+        error
+            .to_string()
+            .contains("fallback value model type must not be empty")
+    }));
     Ok(())
 }
 
@@ -179,7 +379,7 @@ fn config_loads_two_targets_and_routes_dropfile_to_matching_target() -> Result<(
 }
 
 #[test]
-fn config_target_without_fallback_is_error() -> Result<()> {
+fn config_target_without_fallback_uses_dead_fallback_route() -> Result<()> {
     let temp = TempDir::new()?;
     let token = write_token(temp.path(), "default.token", "secret-token")?;
     let path = write_config(
@@ -199,18 +399,25 @@ token_file = "{}"
         ),
     )?;
 
-    let error = load_config(&path, ConfigOverrides::default()).err();
+    let config = load_config(&path, ConfigOverrides::default())?;
+    let fallback = &config.targets[0].fallback;
+    let destination = &fallback.value.destinations[0];
 
-    assert!(error.is_some_and(|error| {
-        error
-            .to_string()
-            .contains("target default must configure fallback")
-    }));
+    assert_eq!(fallback.title, "No V4V track playing");
+    assert_eq!(fallback.value.model.kind, "lightning");
+    assert_eq!(fallback.value.model.method, "lnaddress");
+    assert_eq!(destination.kind.as_deref(), Some("lnaddress"));
+    assert_eq!(destination.name.as_deref(), Some("No V4V payment route"));
+    assert_eq!(
+        destination.address.as_deref(),
+        Some("no-v4v-track@example.invalid")
+    );
+    assert_eq!(destination.split.as_deref(), Some("100"));
     Ok(())
 }
 
 #[test]
-fn config_empty_fallback_destinations_is_error() -> Result<()> {
+fn config_empty_fallback_destinations_uses_dead_fallback_route() -> Result<()> {
     let temp = TempDir::new()?;
     let token = write_token(temp.path(), "default.token", "secret-token")?;
     let path = write_config(
@@ -234,12 +441,37 @@ token_file = "{}"
         ),
     )?;
 
-    let error = load_config(&path, ConfigOverrides::default()).err();
+    let config = load_config(&path, ConfigOverrides::default())?;
+    let fallback = &config.targets[0].fallback;
+    let destination = &fallback.value.destinations[0];
+
+    assert_eq!(fallback.title, "Station");
+    assert_eq!(fallback.value.model.method, "lnaddress");
+    assert_eq!(destination.kind.as_deref(), Some("lnaddress"));
+    assert_eq!(
+        destination.address.as_deref(),
+        Some("no-v4v-track@example.invalid")
+    );
+    Ok(())
+}
+
+#[test]
+fn config_rejects_placeholder_fallback_destination_address() -> Result<()> {
+    let temp = TempDir::new()?;
+    let watch_dir = temp.path().join("watch");
+    let token = write_token(temp.path(), "default.token", "secret-token")?;
+    let text = config_text(&watch_dir, &token, None).replace(
+        "address = \"03station\"",
+        "address = \"YOUR_LIGHTNING_NODE_PUBKEY\"",
+    );
+    let config_path = write_config(temp.path(), &text)?;
+
+    let error = load_config(&config_path, ConfigOverrides::default()).err();
 
     assert!(error.is_some_and(|error| {
         error
             .to_string()
-            .contains("target default fallback destinations must not be empty")
+            .contains("fallback destination 0 address is still an example placeholder")
     }));
     Ok(())
 }

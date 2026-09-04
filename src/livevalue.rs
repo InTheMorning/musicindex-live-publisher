@@ -44,6 +44,8 @@ pub struct LiveValueModel {
     #[serde(rename = "type")]
     pub kind: String,
     pub method: String,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub suggested: Option<String>,
 }
 
 /// A live value payment destination.
@@ -90,7 +92,7 @@ pub fn payload_from_dropfile(
     }
 }
 
-/// Builds a fallback live value payload from configured station destinations.
+/// Builds a fallback live value payload from a configured station value block.
 ///
 /// The fallback payload uses the same music block shape as track payloads. The
 /// caller supplies title, optional image, and GUIDs because configuration and
@@ -100,7 +102,7 @@ pub fn fallback_payload(
     image: Option<&str>,
     event_guid: &str,
     block_guid: &str,
-    destinations: &[LiveValueDestination],
+    value: &LiveValue,
 ) -> LiveValuePayload {
     LiveValuePayload {
         title: title.to_owned(),
@@ -113,7 +115,7 @@ pub fn fallback_payload(
         block_guid: block_guid.to_owned(),
         feed_guid: None,
         item_guid: None,
-        value: live_value_from_destinations(destinations),
+        value: value.clone(),
     }
 }
 
@@ -140,18 +142,9 @@ fn live_value_from_routes(routes: &[PaymentRoute]) -> LiveValue {
         model: LiveValueModel {
             kind: "lightning".to_owned(),
             method: "keysend".to_owned(),
+            suggested: None,
         },
         destinations: routes.iter().map(destination_from_payment_route).collect(),
-    }
-}
-
-fn live_value_from_destinations(destinations: &[LiveValueDestination]) -> LiveValue {
-    LiveValue {
-        model: LiveValueModel {
-            kind: "lightning".to_owned(),
-            method: "keysend".to_owned(),
-        },
-        destinations: destinations.to_vec(),
     }
 }
 
@@ -307,19 +300,30 @@ mod tests {
     }
 
     #[test]
-    fn livevalue_fallback_payload_uses_station_destinations() -> Result<()> {
+    fn livevalue_fallback_payload_preserves_configured_value_block() -> Result<()> {
         let payload = fallback_payload(
             "Station",
             None,
             "event-guid",
             "block-guid",
-            &[fallback_destination("100")],
+            &LiveValue {
+                model: LiveValueModel {
+                    kind: "custom-model".to_owned(),
+                    method: "custom-method".to_owned(),
+                    suggested: Some("0.0000100000".to_owned()),
+                },
+                destinations: vec![fallback_destination("100")],
+            },
         );
         let value = serde_json::to_value(payload)?;
 
         assert_eq!(value["title"], "Station");
         assert!(value.get("image").is_none());
         assert!(value.get("duration").is_none());
+        assert_eq!(value["value"]["model"]["type"], "custom-model");
+        assert_eq!(value["value"]["model"]["method"], "custom-method");
+        assert_eq!(value["value"]["model"]["suggested"], "0.0000100000");
+        assert_eq!(value["value"]["destinations"][0]["type"], "node");
         assert_eq!(value["value"]["destinations"][0]["split"], "100");
         Ok(())
     }

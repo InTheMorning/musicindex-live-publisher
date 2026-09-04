@@ -1,0 +1,20 @@
+# TOML fragment for:
+#   setup-mixxx-musicindex --fallback-value-block FILE
+#
+# Do not include [target.fallback] or [[target]] headers here. The setup script
+# inserts this fragment into the generated Mixxx publisher config.
+
+title = "Your Station Name"
+image = "https://example.com/station-art.png"
+
+[model]
+type = "lightning"
+method = "keysend"
+
+[[destinations]]
+name = "Sharpie"
+type = "node"
+address = "YOUR_LIGHTNING_NODE_PUBKEY"
+split = "10"
+customKey = "696969"
+customValue = "5"

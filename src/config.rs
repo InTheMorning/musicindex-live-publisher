@@ -8,15 +8,26 @@ use std::{env, fs};
 use anyhow::{Context, Result, anyhow};
 use serde::Deserialize;
 
-use crate::{FallbackConfig, LiveValueDestination, WatchTarget};
+use crate::{FallbackConfig, LiveValue, LiveValueDestination, LiveValueModel, WatchTarget};
 
 /// Default service configuration path.
 pub const DEFAULT_CONFIG_PATH: &str = "/etc/musicindex-live-publisher/config.toml";
+
+const DEFAULT_DEAD_FALLBACK_TITLE: &str = "No V4V track playing";
+const DEFAULT_DEAD_FALLBACK_RECIPIENT_NAME: &str = "No V4V payment route";
+const DEFAULT_DEAD_FALLBACK_ADDRESS: &str = "no-v4v-track@example.invalid";
 
 const EVENT_ID_PLACEHOLDERS: &[&str] = &[
     "replace-with-provisioned-event-guid",
     "the-provisioned-event-guid",
     "<event_id>",
+];
+const DESTINATION_ADDRESS_PLACEHOLDERS: &[&str] = &[
+    "YOUR_LIGHTNING_DESTINATION",
+    "YOUR_LIGHTNING_NODE_PUBKEY",
+    "replace-with-lightning-destination",
+    "03your-node-pubkey",
+    "03...",
 ];
 
 /// Runtime service configuration.
@@ -86,8 +97,18 @@ struct RawTarget {
 
 #[derive(Debug, Deserialize)]
 struct RawFallback {
-    title: String,
+    title: Option<String>,
     image: Option<String>,
+    model: Option<LiveValueModel>,
+    #[serde(default)]
+    destinations: Vec<LiveValueDestination>,
+    value: Option<RawFallbackValue>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawFallbackValue {
+    model: Option<LiveValueModel>,
+    #[serde(default)]
     destinations: Vec<LiveValueDestination>,
 }
 
@@ -155,10 +176,17 @@ fn resolve_target(target: RawTarget, seen: &mut HashSet<String>) -> Result<Publi
     }
     validate_event_id(&target.name, &target.event_id)?;
 
-    let fallback = target
-        .fallback
-        .ok_or_else(|| anyhow!("target {} must configure fallback", target.name))?;
-    validate_fallback(&target.name, &fallback)?;
+    let fallback = target.fallback.map_or_else(
+        || {
+            Ok(default_dead_fallback(
+                &target.name,
+                None,
+                None,
+                "target has no fallback configuration",
+            ))
+        },
+        |fallback| resolve_fallback(&target.name, fallback),
+    )?;
 
     let token_file = resolve_token_file_path(
         &target.token_file,
@@ -172,11 +200,7 @@ fn resolve_target(target: RawTarget, seen: &mut HashSet<String>) -> Result<Publi
         event_id: target.event_id,
         token_file,
         token,
-        fallback: FallbackConfig {
-            title: fallback.title,
-            image: fallback.image,
-            destinations: fallback.destinations,
-        },
+        fallback,
     })
 }
 
@@ -224,14 +248,135 @@ fn resolve_token_file_path(
     Ok(token_file.to_path_buf())
 }
 
-fn validate_fallback(target_name: &str, fallback: &RawFallback) -> Result<()> {
-    if fallback.destinations.is_empty() {
+fn resolve_fallback(target_name: &str, fallback: RawFallback) -> Result<FallbackConfig> {
+    let RawFallback {
+        title,
+        image,
+        model,
+        destinations: direct_destinations,
+        value,
+    } = fallback;
+    let title = title.unwrap_or_else(|| DEFAULT_DEAD_FALLBACK_TITLE.to_owned());
+    let (value_model, value_destinations) = match value {
+        Some(value) => (value.model, value.destinations),
+        None => (None, Vec::new()),
+    };
+
+    if model.is_some() && value_model.is_some() {
+        return Err(anyhow!(
+            "target {target_name} fallback must define model either directly or under value, not both"
+        ));
+    }
+
+    let has_direct_destinations = !direct_destinations.is_empty();
+    let has_value_destinations = !value_destinations.is_empty();
+    if has_direct_destinations && has_value_destinations {
+        return Err(anyhow!(
+            "target {target_name} fallback must define destinations either directly or under value, not both"
+        ));
+    }
+
+    let destinations = if has_direct_destinations {
+        direct_destinations
+    } else {
+        value_destinations
+    };
+
+    if destinations.is_empty() {
+        return Ok(default_dead_fallback(
+            target_name,
+            Some(title),
+            image,
+            "target fallback has no payment destinations",
+        ));
+    }
+
+    let model = model.or(value_model).unwrap_or_else(default_fallback_model);
+    validate_fallback_model(target_name, &model)?;
+    validate_fallback_destinations(target_name, &destinations)?;
+
+    Ok(FallbackConfig {
+        title,
+        image,
+        value: LiveValue {
+            model,
+            destinations,
+        },
+    })
+}
+
+fn default_dead_fallback(
+    target_name: &str,
+    title: Option<String>,
+    image: Option<String>,
+    reason: &str,
+) -> FallbackConfig {
+    tracing::warn!(
+        target = target_name,
+        reason,
+        fallback_type = "lnaddress",
+        fallback_address = DEFAULT_DEAD_FALLBACK_ADDRESS,
+        "FALLBACK PAYMENT ROUTE MISSING; publishing default dead fallback route during idle/non-V4V playback; configure target.fallback.value.destinations to receive station payments"
+    );
+    FallbackConfig {
+        title: title.unwrap_or_else(|| DEFAULT_DEAD_FALLBACK_TITLE.to_owned()),
+        image,
+        value: default_dead_fallback_value(),
+    }
+}
+
+fn default_dead_fallback_value() -> LiveValue {
+    LiveValue {
+        model: LiveValueModel {
+            kind: "lightning".to_owned(),
+            method: "lnaddress".to_owned(),
+            suggested: None,
+        },
+        destinations: vec![LiveValueDestination {
+            kind: Some("lnaddress".to_owned()),
+            name: Some(DEFAULT_DEAD_FALLBACK_RECIPIENT_NAME.to_owned()),
+            address: Some(DEFAULT_DEAD_FALLBACK_ADDRESS.to_owned()),
+            split: Some("100".to_owned()),
+            custom_key: None,
+            custom_value: None,
+            fee: None,
+        }],
+    }
+}
+
+fn default_fallback_model() -> LiveValueModel {
+    LiveValueModel {
+        kind: "lightning".to_owned(),
+        method: "keysend".to_owned(),
+        suggested: None,
+    }
+}
+
+fn validate_fallback_model(target_name: &str, model: &LiveValueModel) -> Result<()> {
+    if model.kind.trim().is_empty() {
+        return Err(anyhow!(
+            "target {target_name} fallback value model type must not be empty"
+        ));
+    }
+    if model.method.trim().is_empty() {
+        return Err(anyhow!(
+            "target {target_name} fallback value model method must not be empty"
+        ));
+    }
+    Ok(())
+}
+
+fn validate_fallback_destinations(
+    target_name: &str,
+    destinations: &[LiveValueDestination],
+) -> Result<()> {
+    if destinations.is_empty() {
         return Err(anyhow!(
             "target {target_name} fallback destinations must not be empty"
         ));
     }
 
-    for (index, destination) in fallback.destinations.iter().enumerate() {
+    for (index, destination) in destinations.iter().enumerate() {
         validate_required_destination_field(
             target_name,
             index,
@@ -244,12 +389,13 @@ fn validate_fallback(target_name: &str, fallback: &RawFallback) -> Result<()> {
             "type",
             destination.kind.as_deref(),
         )?;
-        validate_required_destination_field(
+        let address = validate_required_destination_field(
             target_name,
             index,
             "address",
             destination.address.as_deref(),
         )?;
+        validate_destination_address(target_name, index, address)?;
         let split = validate_required_destination_field(
             target_name,
             index,
@@ -266,6 +412,20 @@ fn validate_fallback(target_name: &str, fallback: &RawFallback) -> Result<()> {
         }
     }
 
+    Ok(())
+}
+
+fn validate_destination_address(target_name: &str, index: usize, address: &str) -> Result<()> {
+    let address = address.trim();
+    if DESTINATION_ADDRESS_PLACEHOLDERS.contains(&address)
+        || address.contains("YOUR_")
+        || address.contains("your-")
+        || address.contains("replace-with")
+    {
+        return Err(anyhow!(
+            "target {target_name} fallback destination {index} address is still an example placeholder"
+        ));
+    }
     Ok(())
 }
 

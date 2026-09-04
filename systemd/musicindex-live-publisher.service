@@ -6,10 +6,6 @@ Documentation=file:///usr/share/doc/musicindex-live-publisher/musicindex-live-pu
 # unit failed so `systemctl --user status` shows the real problem.
 StartLimitIntervalSec=300
 StartLimitBurst=5
-# Without these, a missing config or token directory fails later with a less
-# direct message. Assertions name the exact missing path in the journal.
-AssertPathExists=%h/.config/musicindex-live-publisher/config.toml
-AssertPathExists=%h/.config/musicindex-live-publisher/tokens
 
 [Service]
 Type=simple

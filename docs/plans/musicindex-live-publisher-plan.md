@@ -214,10 +214,10 @@ relay. Listeners would keep routing boosts to the previous track's destinations.
 **That is misrouted money, and it is the most important correctness requirement
 in this plan.**
 
-On clear, the service publishes a fallback payload built from configured station
-splits, with a fresh `blockGuid` and `type: "music"`. If no fallback is
-configured the service refuses to start, rather than running in a state where a
-stop leaves stale destinations live.
+On clear, the service publishes a fallback payload with a fresh `blockGuid` and
+`type: "music"`. If no station fallback is configured, the service warns and
+publishes a deliberately dead fallback route instead, so a stop does not leave
+stale track destinations live.
 
 ### Configuration
 
@@ -304,7 +304,7 @@ publisher today and the fallback if this service has a problem.
 
 | Risk | Mitigation |
 |------|------------|
-| **Stale destinations after a track stops route boosts to the wrong artist** | Fallback payload published on clear; service refuses to start without one configured |
+| **Stale destinations after a track stops route boosts to the wrong artist** | Fallback payload published on clear; missing station fallback uses a warned dead fallback route |
 | Relay does not validate direct payloads, so a malformed block fails silently | Golden-file tests against the real examples; validate before send, never after |
 | Payload accidentally has exactly `event_id` and `metadata` keys and is read as wrapped | Assert against that key set in a unit test |
 | Broadcaster token cannot be recovered if lost | Out-of-band provisioning, `LoadCredential`, documented re-provision path |

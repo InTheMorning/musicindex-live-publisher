@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 
-TXTFILE=/tmp/mixxx-now-playing.txt
+RUNTIME_ROOT="${XDG_RUNTIME_DIR:-$HOME/.cache}"
+OUTDIR="$RUNTIME_ROOT/musicindex-live-publisher/mixxx/nowplaying"
+TXTFILE="$OUTDIR/now-playing.txt"
 DBFILE="$HOME/.mixxx/mixxxdb.sqlite"
 
 LAST_HIST_ID=""
+
+install -d -m 0700 "$OUTDIR"
 
 while pgrep -i mixxx > /dev/null; do
   # Returns: <history_pt_id>|<artist>|<title>

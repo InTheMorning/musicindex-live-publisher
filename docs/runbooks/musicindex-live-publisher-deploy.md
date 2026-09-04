@@ -8,9 +8,9 @@ Build, install, and run `musicindex-live-publisher` and `mixxx-now-playing` as
 User scope, not system scope, because Mixxx runs as your desktop user. The
 producer writes the drop file and the publisher reads it, so running both as the
 same user removes the file-ownership problem entirely: the drop directory lives
-at `$XDG_RUNTIME_DIR/musicindex-live-publisher/nowplaying`, mode `0700`, owned
-by you. No `sudo` is needed for anything except copying the two binaries into
-`/usr/bin`.
+at `$XDG_RUNTIME_DIR/musicindex-live-publisher/mixxx/nowplaying`, mode `0700`,
+owned by you. No `sudo` is needed for anything except copying the two binaries
+into `/usr/bin`.
 
 ## Prerequisites
 
@@ -19,9 +19,9 @@ by you. No `sudo` is needed for anything except copying the two binaries into
 - A V4V music directory (default `~/V4Vmusic`).
 - A relay endpoint. `https://api.musicindex.org` for production, or a locally
   built `musicindex-live-relay` for rehearsal.
-- Station fallback split details. **The service refuses to start without them**,
-  deliberately: when playback clears, the fallback is what stops boosts routing
-  to the track that just ended.
+- Optional station fallback split details. If omitted, the service starts,
+  logs a warning, and publishes a dead fallback route while idle or playing
+  non-V4V audio.
 
 ## Arch Package Install
 
@@ -35,6 +35,76 @@ makepkg -Csi
 See the [Arch package runbook](musicindex-live-publisher-arch-package.md) for
 package-specific build, install, upgrade, and removal steps. The manual build
 path below is still useful on non-Arch hosts or while debugging.
+
+## Quick Mixxx Setup
+
+After the binaries are installed, the setup helper provisions the MusicIndex
+live item, writes the one-time broadcaster token, generates
+`musicindex-live-publisher@mixxx.service` and `mixxx-now-playing.service`, then
+starts the pipeline. With no fallback route options, idle/non-V4V playback uses
+the default dead fallback route:
+
+```bash
+setup-mixxx-musicindex
+```
+
+Use temporary mode for a rehearsal that only lasts for the current login
+session:
+
+```bash
+setup-mixxx-musicindex --temporary
+```
+
+Permanent mode writes config and tokens under
+`~/.config/musicindex-live-publisher/mixxx/` and enables both user services.
+Temporary mode writes config and tokens under `$XDG_RUNTIME_DIR` and only starts
+the services; the generated unit files remain under `~/.config/systemd/user`.
+
+To receive station payments when no V4V track is playing, pass a fallback value
+block fragment:
+
+```bash
+setup-mixxx-musicindex --fallback-value-block ~/.config/musicindex-live-publisher/mixxx-fallback.toml
+```
+
+The fallback value block fragment is TOML for `[target.fallback]`. The model
+and destination fields are copied into the published value block; recipient
+`type`, `customKey`, and `customValue` are not rewritten:
+
+```toml
+title = "Homegrown Hits"
+image = "https://example.com/station-art.png"
+
+[model]
+type = "lightning"
+method = "keysend"
+
+[[destinations]]
+name = "Sharpie"
+type = "node"
+address = "YOUR_LIGHTNING_NODE_PUBKEY"
+split = "10"
+customKey = "696969"
+customValue = "5"
+```
+
+Replace `YOUR_LIGHTNING_NODE_PUBKEY` before running the setup script; it
+rejects placeholder fallback destinations before provisioning.
+
+For a single Lightning node recipient, the shortcut still works:
+
+```bash
+setup-mixxx-musicindex --fallback-address "$MUSICINDEX_FALLBACK_ADDRESS"
+```
+
+For a Lightning Address fallback recipient:
+
+```bash
+setup-mixxx-musicindex \
+  --fallback-type lnaddress \
+  --value-method lnaddress \
+  --fallback-address station@example.com
+```
 
 ## Build
 
@@ -61,11 +131,11 @@ hash. It cannot be recovered. `provision` writes it straight to a `0600` file
 and never prints it.
 
 ```bash
-install -d -m 0700 ~/.config/musicindex-live-publisher/tokens
+install -d -m 0700 ~/.config/musicindex-live-publisher/mixxx/tokens
 musicindex-live-publisher provision \
   --endpoint https://api.musicindex.org \
   --target default \
-  --token-file ~/.config/musicindex-live-publisher/tokens/default.token
+  --token-file ~/.config/musicindex-live-publisher/mixxx/tokens/default.token
 ```
 
 The command prints a `[[target]]` stanza. Keep the `event_id` — listeners
@@ -74,36 +144,33 @@ block.
 
 ## Configuration
 
-`~/.config/musicindex-live-publisher/config.toml`:
+`~/.config/musicindex-live-publisher/mixxx/config.toml`:
 
 ```toml
 # watch_dir is supplied by the unit as --watch-dir, so it is not set here.
-watch_dir = "/run/user/1000/musicindex-live-publisher/nowplaying"
+watch_dir = "/run/user/1000/musicindex-live-publisher/mixxx/nowplaying"
 endpoint = "https://api.musicindex.org"
 
 [[target]]
 name = "default"
 event_id = "replace-with-provisioned-event-guid"
-token_file = "~/.config/musicindex-live-publisher/tokens/default.token"
+token_file = "~/.config/musicindex-live-publisher/mixxx/tokens/default.token"
 
-  [target.fallback]
-  title = "Homegrown Hits"
-  destinations = [
-    { name = "Station", type = "node", address = "03your-node-pubkey", split = "100" },
-  ]
+# Optional: add [target.fallback] to receive station fallback payments.
+# If omitted, the publisher logs a warning and uses a dead fallback route.
 ```
 
 Replace `event_id` with the value printed by `provision` before starting the
 service. The placeholder will never exist on the relay.
 
 Keep one token file per target under
-`~/.config/musicindex-live-publisher/tokens/`. The packaged unit reads these
-files as the same desktop user and the provision command writes them with mode
-`0600`.
+`~/.config/musicindex-live-publisher/<instance>/tokens/`. The packaged unit
+reads these files as the same desktop user and the provision command writes
+them with mode `0600`.
 
-Splits are **decimal strings**, not numbers: `"100"`, `"49.51"`. Every fallback
-destination needs `name`, `type`, `address`, and `split`, and startup fails with
-a specific message if one is missing.
+Splits are **decimal strings**, not numbers: `"100"`, `"49.51"`. Every
+configured fallback destination needs `name`, `type`, `address`, and `split`,
+and startup fails with a specific message if one is missing.
 
 See [configuration options](musicindex-live-publisher-configuration.md) for the
 full publisher and producer option reference.
@@ -111,8 +178,9 @@ full publisher and producer option reference.
 ## Future Player Instances
 
 Run only one `mixxx-now-playing.service`; Mixxx has one active desktop history
-source. If a future non-Mixxx producer needs a separate pipeline, run a separate
-publisher instance instead:
+source. Mixxx uses the `musicindex-live-publisher@mixxx.service` publisher
+instance. If a future non-Mixxx producer needs a separate pipeline, run a
+separate publisher instance instead:
 
 ```bash
 install -d -m 0700 ~/.config/musicindex-live-publisher/other-player/tokens
@@ -135,7 +203,7 @@ install -m 0644 systemd/musicindex-live-publisher@.service \
 install -m 0644 systemd/mixxx-now-playing.service \
   ~/.config/systemd/user/
 systemctl --user daemon-reload
-systemd-analyze --user verify ~/.config/systemd/user/musicindex-live-publisher.service
+systemd-analyze --user verify ~/.config/systemd/user/musicindex-live-publisher@.service
 ```
 
 Optional, so the services run without an active login session:
@@ -179,10 +247,10 @@ Check, in order:
 ## Start
 
 ```bash
-systemctl --user enable --now musicindex-live-publisher.service
+systemctl --user enable --now musicindex-live-publisher@mixxx.service
 systemctl --user enable --now mixxx-now-playing.service
-systemctl --user status musicindex-live-publisher.service
-journalctl --user -u musicindex-live-publisher.service -f
+systemctl --user status musicindex-live-publisher@mixxx.service
+journalctl --user -u musicindex-live-publisher@mixxx.service -f
 ```
 
 ## Observe
@@ -192,13 +260,13 @@ journalctl --user -u musicindex-live-publisher.service -f
 curl -s https://api.musicindex.org/v1/liveitems/<event_id>/remoteValue | python3 -m json.tool
 
 # What the producer wrote:
-cat "$XDG_RUNTIME_DIR/musicindex-live-publisher/nowplaying/default.json"
+cat "$XDG_RUNTIME_DIR/musicindex-live-publisher/mixxx/nowplaying/default.json"
 
 # What OBS reads:
-cat /tmp/mixxx-now-playing.txt
+cat "$XDG_RUNTIME_DIR/musicindex-live-publisher/mixxx/nowplaying/now-playing.txt"
 
 # Publishes, live:
-journalctl --user -u musicindex-live-publisher.service -f | grep published
+journalctl --user -u musicindex-live-publisher@mixxx.service -f | grep published
 ```
 
 A healthy track change logs `published live value payload` with a rising `seq`.
@@ -207,7 +275,7 @@ A healthy track change logs `published live value payload` with a rising `seq`.
 
 ```bash
 systemctl --user disable --now mixxx-now-playing.service
-systemctl --user disable --now musicindex-live-publisher.service
+systemctl --user disable --now musicindex-live-publisher@mixxx.service
 ```
 
 The relay keeps serving the last payload it accepted. If that was a track rather
@@ -221,7 +289,8 @@ ended track keeps collecting boosts.
   an absolute `token_file` for foreground runs.
 - **Unit is `failed` with `start-limit-hit`** — five failures in five minutes.
   Almost always a fatal publish result. Check
-  `journalctl --user -u musicindex-live-publisher -n 50` for the HTTP status.
+  `journalctl --user -u musicindex-live-publisher@mixxx -n 50` for the HTTP
+  status.
 - **HTTP 401 or 403** — the token is wrong or revoked. The service now exits
   non-zero rather than idling silently, so the unit goes `failed`. Re-provision.
 - **HTTP 404** — the live item no longer exists. Provision a new one and update
@@ -232,16 +301,15 @@ ended track keeps collecting boosts.
 - **Producer restarts every 10 seconds** — expected when Mixxx is not running.
   The producer exits cleanly and `Restart=always` retries until Mixxx appears.
 - **`config must define at least one target`, or a fallback validation error** —
-  the refuse-to-start rule doing its job. Fill in the fallback destinations.
+  missing fallback destinations no longer block startup. A fallback validation
+  error means a configured route is malformed; fix or remove that fallback
+  block.
 
 ## Known Gaps
 
 Tracked in the [audit review](../reviews/nowplaying-publisher-audit-review.md).
 Fixes 002, 003, and 005 are applied. Still open at deployment time:
 
-- **Fix 001** — the now-playing text file is written to `/tmp` via a predictable
-  temporary name. On a single-user desktop the exposure is small; on a shared
-  machine, move `--txt-file` somewhere only you can write.
 - **Fix 004** — the publisher does not verify drop-directory ownership. The
   `0700` runtime directory in these units makes that unreachable in practice.
 - `image` is always null in the drop file. No artwork reaches listening apps.

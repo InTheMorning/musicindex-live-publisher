@@ -7,11 +7,13 @@ Date: 2026-09-03
 
 Replace `mixxx-now-playing.py` with a Rust utility that does two jobs:
 
-1. Keep `/tmp/mixxx-now-playing.txt` current with the playing track, matching the
-   behaviour of `scripts/mixxx-now-playing.sh` exactly.
-2. Write `/tmp/mixxx-now-playing-metadata.txt` **only while** a track from the
-   V4V library is playing, containing that track's embedded metadata with the
-   custom MusicIndex tags surfaced first.
+1. Keep `$XDG_RUNTIME_DIR/musicindex-live-publisher/mixxx/nowplaying/now-playing.txt`
+   current with the playing track, matching the behaviour of
+   `scripts/mixxx-now-playing.sh` exactly.
+2. Write
+   `$XDG_RUNTIME_DIR/musicindex-live-publisher/mixxx/nowplaying/metadata.txt`
+   **only while** a track from the V4V library is playing, containing that
+   track's embedded metadata with the custom MusicIndex tags surfaced first.
 
 Presence of the metadata file is the signal. When no V4V track is playing, the
 file must not exist.
@@ -314,8 +316,8 @@ The diagnostic harness built during this analysis becomes the test fixture:
 ## Rollback Strategy
 
 `scripts/mixxx-now-playing.sh` stays in the repository and keeps working. Both are
-plain processes writing to `/tmp`, so rollback is stopping the Rust binary and
-starting the shell script. Running the Rust binary with a different
+plain processes writing to the same runtime directory, so rollback is stopping
+the Rust binary and starting the shell script. Running the Rust binary with a different
 `--txt-file` allows a side-by-side comparison against the shell script over a
 full show before cutover.
 
@@ -326,7 +328,7 @@ path.
 Deploy as a systemd `--user` unit with `Restart=always` and:
 
 ```ini
-ExecStopPost=/bin/rm -f /tmp/mixxx-now-playing-metadata.txt
+ExecStopPost=/bin/rm -f %t/musicindex-live-publisher/mixxx/nowplaying/metadata.txt
 ```
 
 as a backstop behind the `Drop` guard.
@@ -343,6 +345,7 @@ as a backstop behind the `Drop` guard.
 - **Transcripts are excluded.** Track identity is established through the
   MusicIndex API using the embedded guids, with the embedded value-route frame
   as the fallback when lookup fails. Transcript text serves neither path.
-- **Output stays in `/tmp` for now.** Moving to `$XDG_RUNTIME_DIR` for
-  per-session cleanup is deferred, not rejected. Both output paths are already
-  CLI flags, so the change is configuration rather than code.
+- **Output lives in the per-session runtime directory.** The default path is
+  `$XDG_RUNTIME_DIR/musicindex-live-publisher/mixxx/nowplaying`, with
+  `~/.cache/musicindex-live-publisher/mixxx/nowplaying` as the non-systemd
+  fallback.

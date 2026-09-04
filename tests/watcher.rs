@@ -4,8 +4,8 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Result, anyhow};
 use musicindex_live_publisher::{
-    DropEvent, DropEventKind, DropWatcher, FallbackConfig, LiveValueDestination, WatchTarget,
-    is_final_drop_file,
+    DropEvent, DropEventKind, DropWatcher, FallbackConfig, LiveValue, LiveValueDestination,
+    LiveValueModel, WatchTarget, is_final_drop_file,
 };
 use serde_json::{Value, json};
 use tempfile::TempDir;
@@ -17,15 +17,22 @@ fn target() -> WatchTarget {
         fallback: FallbackConfig {
             title: "Station".to_owned(),
             image: None,
-            destinations: vec![LiveValueDestination {
-                kind: Some("node".to_owned()),
-                name: Some("Station".to_owned()),
-                address: Some("03station".to_owned()),
-                split: Some("100".to_owned()),
-                custom_key: None,
-                custom_value: None,
-                fee: None,
-            }],
+            value: LiveValue {
+                model: LiveValueModel {
+                    kind: "lightning".to_owned(),
+                    method: "keysend".to_owned(),
+                    suggested: None,
+                },
+                destinations: vec![LiveValueDestination {
+                    kind: Some("node".to_owned()),
+                    name: Some("Station".to_owned()),
+                    address: Some("03station".to_owned()),
+                    split: Some("100".to_owned()),
+                    custom_key: None,
+                    custom_value: None,
+                    fee: None,
+                }],
+            },
         },
     }
 }

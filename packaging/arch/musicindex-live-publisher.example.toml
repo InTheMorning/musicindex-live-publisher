@@ -1,7 +1,7 @@
-# The packaged user unit overrides watch_dir with:
-#   --watch-dir %t/musicindex-live-publisher/nowplaying
+# The Mixxx publisher instance overrides watch_dir with:
+#   --watch-dir %t/musicindex-live-publisher/mixxx/nowplaying
 # Keep this value for foreground runs outside systemd.
-watch_dir = "/run/user/1000/musicindex-live-publisher/nowplaying"
+watch_dir = "/run/user/1000/musicindex-live-publisher/mixxx/nowplaying"
 endpoint = "https://api.musicindex.org"
 
 [[target]]
@@ -11,11 +11,9 @@ event_id = "replace-with-provisioned-event-guid"
 # One token file per target. The provision command writes this file with mode
 # 0600. The publisher also accepts %d/<credential> when run by a custom unit
 # that sets CREDENTIALS_DIRECTORY.
-token_file = "~/.config/musicindex-live-publisher/tokens/default.token"
+token_file = "~/.config/musicindex-live-publisher/mixxx/tokens/default.token"
 
-  [target.fallback]
-  title = "Your Station Name"
-  image = "https://example.com/station-art.png"
-  destinations = [
-    { name = "Station", type = "node", address = "03your-node-pubkey", split = "100" },
-  ]
+# Optional: add [target.fallback] to receive station fallback payments.
+# If omitted, the publisher logs a warning and uses a dead fallback route:
+#   value.model: type = "lightning", method = "lnaddress"
+#   valueRecipient: type = "lnaddress", address = "no-v4v-track@example.invalid"

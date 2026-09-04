@@ -5,7 +5,7 @@ Date: 2026-09-03
 
 ## Context
 
-The existing `scripts/mixxx-now-playing.sh` keeps `/tmp/mixxx-now-playing.txt` current
+The original `scripts/mixxx-now-playing.sh` kept a now-playing text file current
 with the latest Mixxx set-log entry. The Python replacement attempts to expose
 V4V metadata, but it leaves the metadata file present for non-V4V tracks, reads
 only ID3 tags, guesses the V4V root, and reconnects to SQLite on every poll.

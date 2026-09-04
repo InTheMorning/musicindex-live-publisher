@@ -9,8 +9,7 @@ use anyhow::{Context, Result};
 use uuid::Uuid;
 
 use crate::{
-    DropFile, LiveValueDestination, LiveValuePayload, fallback_payload, parse,
-    payload_from_dropfile,
+    DropFile, LiveValue, LiveValuePayload, fallback_payload, parse, payload_from_dropfile,
 };
 
 /// Debounce window for repeated filesystem notifications on one path.
@@ -24,12 +23,12 @@ pub struct WatchTarget {
     pub fallback: FallbackConfig,
 }
 
-/// Fallback live destination configuration.
+/// Fallback live value configuration.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FallbackConfig {
     pub title: String,
     pub image: Option<String>,
-    pub destinations: Vec<LiveValueDestination>,
+    pub value: LiveValue,
 }
 
 /// Filesystem actions that can affect the currently published payload.
@@ -217,7 +216,7 @@ fn fallback_payload_for_target(target: &WatchTarget) -> LiveValuePayload {
         image,
         &target.event_guid,
         &fresh_guid(),
-        &target.fallback.destinations,
+        &target.fallback.value,
     )
 }
 

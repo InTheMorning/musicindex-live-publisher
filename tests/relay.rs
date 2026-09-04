@@ -191,6 +191,7 @@ fn payload(title: &str) -> LiveValuePayload {
             model: LiveValueModel {
                 kind: "lightning".to_owned(),
                 method: "keysend".to_owned(),
+                suggested: None,
             },
             destinations: vec![LiveValueDestination {
                 kind: Some("node".to_owned()),
@@ -217,15 +218,22 @@ fn config(endpoint: &str) -> PublisherConfig {
             fallback: FallbackConfig {
                 title: "Station".to_owned(),
                 image: None,
-                destinations: vec![LiveValueDestination {
-                    kind: Some("node".to_owned()),
-                    name: Some("Station".to_owned()),
-                    address: Some("03station".to_owned()),
-                    split: Some("100".to_owned()),
-                    custom_key: None,
-                    custom_value: None,
-                    fee: None,
-                }],
+                value: LiveValue {
+                    model: LiveValueModel {
+                        kind: "lightning".to_owned(),
+                        method: "keysend".to_owned(),
+                        suggested: None,
+                    },
+                    destinations: vec![LiveValueDestination {
+                        kind: Some("node".to_owned()),
+                        name: Some("Station".to_owned()),
+                        address: Some("03station".to_owned()),
+                        split: Some("100".to_owned()),
+                        custom_key: None,
+                        custom_value: None,
+                        fee: None,
+                    }],
+                },
             },
         }],
     }

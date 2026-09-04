@@ -18,7 +18,7 @@ use mixxx_now_playing::tags::read_tags;
 use signal_hook::consts::signal::{SIGINT, SIGTERM};
 use signal_hook::iterator::Signals;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -139,6 +139,8 @@ struct Runtime<'a> {
 
 impl<'a> Runtime<'a> {
     fn new(cli: &'a cli::Cli, config: &'a config::ResolvedConfig) -> Result<Self> {
+        ensure_output_parent(&config.txt_file)?;
+        ensure_output_parent(&config.id3_file)?;
         let mut now_playing = OutputFile::new(&config.txt_file);
         let mut metadata = OutputFile::new(&config.id3_file);
         now_playing.set(Presence::Absent)?;
@@ -290,6 +292,17 @@ impl<'a> Runtime<'a> {
         current.tags = updated_tags;
         Ok(())
     }
+}
+
+fn ensure_output_parent(path: &Path) -> Result<()> {
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("create output directory {}", parent.display()))?;
+    }
+    Ok(())
 }
 
 /// Installs shutdown handling and returns the flag plus a wake-up channel.

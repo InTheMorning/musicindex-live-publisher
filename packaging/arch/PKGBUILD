@@ -9,7 +9,7 @@ _pkgbase=musicindex-live-publisher
 _repo="${MUSICINDEX_LIVE_PUBLISHER_REPO:-$(realpath "$startdir/../..")}"
 url="file://${_repo}"
 license=('LicenseRef-UNKNOWN')
-depends=('ca-certificates' 'gcc-libs' 'glibc' 'openssl' 'systemd')
+depends=('bash' 'ca-certificates' 'gcc-libs' 'glibc' 'openssl' 'systemd')
 makedepends=('cargo' 'git' 'pkgconf')
 optdepends=('mixxx: source history database for mixxx-now-playing')
 provides=("${_pkgbase}=${pkgver}" "mixxx-now-playing=${pkgver}")
@@ -81,6 +81,8 @@ package() {
     -t "$pkgdir/usr/bin/"
   install -Dm0755 "$srcdir/target/release/mixxx-now-playing" \
     -t "$pkgdir/usr/bin/"
+  install -Dm0755 scripts/setup-mixxx-musicindex.sh \
+    "$pkgdir/usr/bin/setup-mixxx-musicindex"
 
   install -Dm0644 systemd/musicindex-live-publisher.service \
     "$pkgdir/usr/lib/systemd/user/musicindex-live-publisher.service"
@@ -91,6 +93,8 @@ package() {
 
   install -Dm0644 packaging/arch/musicindex-live-publisher.example.toml \
     "$pkgdir/usr/share/doc/musicindex-live-publisher/examples/config.toml"
+  install -Dm0644 packaging/arch/mixxx-fallback-value-block.example.toml \
+    "$pkgdir/usr/share/doc/musicindex-live-publisher/examples/mixxx-fallback-value-block.toml"
   install -Dm0644 packaging/arch/v4vmm.example.toml \
     "$pkgdir/usr/share/doc/musicindex-live-publisher/examples/v4vmm-config.toml"
   install -Dm0644 packaging/arch/LICENSE.upstream-unknown \

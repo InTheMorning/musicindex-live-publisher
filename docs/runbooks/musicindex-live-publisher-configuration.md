@@ -10,13 +10,13 @@ used by the Mixxx now-playing to MusicIndex live value pipeline.
 Publisher config:
 
 ```text
-~/.config/musicindex-live-publisher/config.toml
+~/.config/musicindex-live-publisher/mixxx/config.toml
 ```
 
 Publisher tokens:
 
 ```text
-~/.config/musicindex-live-publisher/tokens/<target>.token
+~/.config/musicindex-live-publisher/mixxx/tokens/<target>.token
 ```
 
 Producer config:
@@ -28,13 +28,13 @@ Producer config:
 Drop directory under the packaged systemd user units:
 
 ```text
-$XDG_RUNTIME_DIR/musicindex-live-publisher/nowplaying
+$XDG_RUNTIME_DIR/musicindex-live-publisher/mixxx/nowplaying
 ```
 
 OBS text output:
 
 ```text
-/tmp/mixxx-now-playing.txt
+$XDG_RUNTIME_DIR/musicindex-live-publisher/mixxx/nowplaying/now-playing.txt
 ```
 
 ## Publisher TOML
@@ -42,20 +42,16 @@ OBS text output:
 Example:
 
 ```toml
-watch_dir = "/run/user/1000/musicindex-live-publisher/nowplaying"
+watch_dir = "/run/user/1000/musicindex-live-publisher/mixxx/nowplaying"
 endpoint = "https://api.musicindex.org"
 
 [[target]]
 name = "default"
 event_id = "replace-with-provisioned-event-guid"
-token_file = "~/.config/musicindex-live-publisher/tokens/default.token"
+token_file = "~/.config/musicindex-live-publisher/mixxx/tokens/default.token"
 
-  [target.fallback]
-  title = "Homegrown Hits"
-  image = "https://example.com/station-art.png"
-  destinations = [
-    { name = "Station", type = "node", address = "03your-node-pubkey", split = "100" },
-  ]
+# Optional: add [target.fallback] to receive station fallback payments.
+# If omitted, the publisher logs a warning and uses a dead fallback route.
 ```
 
 Required top-level fields:
@@ -72,46 +68,152 @@ Required target fields:
 - `event_id`: live item event GUID returned by provisioning. Replace the
   example placeholder before starting the service.
 - `token_file`: broadcaster token path. Keep one private token file per target,
-  usually under `~/.config/musicindex-live-publisher/tokens/`. `~/` expands to
-  the service user's home directory. `%d/<name>` is also supported for custom
-  systemd units that provide `CREDENTIALS_DIRECTORY`.
-- `[target.fallback]`: station-owned fallback live value block. The publisher
-  refuses to start without a fallback.
+  usually under
+  `~/.config/musicindex-live-publisher/<instance>/tokens/`. `~/` expands to the
+  service user's home directory. `%d/<name>` is also supported for custom systemd
+  units that provide `CREDENTIALS_DIRECTORY`.
+- `[target.fallback]`: optional station-owned fallback live value block.
 
 Fallback fields:
 
-- `title`: fallback title shown when no track is playing.
+- `title`: fallback title shown when no track is playing. Defaults to
+  `No V4V track playing` when the fallback table is omitted.
 - `image`: optional artwork URL.
-- `destinations`: one or more fallback payment destinations.
+- `value.model`: fallback value model. `type` and `method` must be non-empty.
+  `suggested` is optional when the value model needs it.
+- `value.destinations`: one or more fallback payment destinations. The older
+  direct `destinations = [...]` form is still accepted for existing configs; if
+  no model is configured, those legacy destinations use the default
+  `lightning`/`keysend` model.
 
 Destination fields:
 
 - `name`: recipient label.
-- `type`: destination type, usually `node`.
-- `address`: node pubkey or relay-supported destination address.
+- `type`: recipient route type. Use `node` for a Lightning node pubkey
+  `valueRecipient`.
+- `address`: protocol-specific payment destination. For `type = "node"`, use
+  the Lightning node pubkey.
 - `split`: decimal string, for example `"100"` or `"49.51"`.
 - `customKey`: optional custom record key.
 - `customValue`: optional custom record value.
 - `fee`: optional boolean.
+
+## LNURL And Lightning Address Compatibility
+
+The publisher is metadata-only: it publishes the configured value block to the
+MusicIndex relay and does not resolve or pay Lightning routes. Recipient
+compatibility therefore depends on the app or wallet that consumes the live
+value payload.
+
+For maximum Podcasting 2.0 compatibility, use a Lightning node recipient:
+
+```toml
+[target.fallback.value.model]
+type = "lightning"
+method = "keysend"
+
+[[target.fallback.value.destinations]]
+name = "Station"
+type = "node"
+address = "03..."
+split = "100"
+```
+
+Lightning Address is supported as pass-through metadata by using the
+Podcasting `lnaddress` recipient type. The current Podcasting docs describe
+Lightning Address recipients as email-like addresses that consuming apps
+resolve through well-known LNURL/keysend endpoints before payment. The
+publisher does not perform that resolution:
+
+```toml
+[target.fallback.value.model]
+type = "lightning"
+method = "lnaddress"
+
+[[target.fallback.value.destinations]]
+name = "Station"
+type = "lnaddress"
+address = "station@example.com"
+split = "100"
+```
+
+The setup shortcut can generate the same shape:
+
+```bash
+setup-mixxx-musicindex \
+  --fallback-type lnaddress \
+  --value-method lnaddress \
+  --fallback-address station@example.com
+```
+
+Direct LNURL-pay URLs or bech32 LNURL strings are not a documented Podcasting
+`valueRecipient` type in the current namespace docs. This publisher will not
+block an agreed custom `type`/`method`, but client support is not guaranteed.
+Use `lnaddress` when you want standard Lightning Address behavior, or `node`
+when you need the broadest V4V streaming support.
+
+References:
+
+- Podcasting 2.0
+  [`valueRecipient`](https://podcasting2.org/docs/podcast-namespace/tags/value-recipient)
+  docs.
+- Podcasting 2.0
+  [`lnaddress`](https://podcasting2.org/docs/podcast-namespace/examples/value/lnaddress)
+  example.
+- LNURL [LUD-06 payRequest](https://raw.githubusercontent.com/lnurl/luds/luds/06.md)
+  and [LUD-16 Lightning Address](https://raw.githubusercontent.com/lnurl/luds/luds/16.md).
+
+## Fallback Default
+
+Every target gets a fallback payload. This is an implementation safety measure,
+not a Podcasting namespace requirement.
+
+The publisher posts fallback metadata at startup when the watched directory has
+no current track, and again when a producer removes the drop file. Without
+publishing some fallback payload, the relay would keep serving the last
+successfully published track payload unless the software gained a separate,
+relay-supported clear operation. That stale-track state can route boosts to the
+previous song after playback has moved on, stopped, or switched to non-V4V
+audio.
+
+If no fallback payment route is configured, the publisher logs a warning and
+uses this deliberately dead value block:
+
+```toml
+[target.fallback.value.model]
+type = "lightning"
+method = "lnaddress"
+
+[[target.fallback.value.destinations]]
+name = "No V4V payment route"
+type = "lnaddress"
+address = "no-v4v-track@example.invalid"
+split = "100"
+```
+
+That default gives the stream no usable payment route when no V4V track is
+playing. Configure a station-owned fallback value block only when idle/non-V4V
+time should receive payments.
 
 Validation rules:
 
 - There must be at least one target.
 - Target names must be unique and non-empty.
 - `event_id` must be non-empty and must not be the example placeholder.
-- Every target must define fallback destinations.
-- Fallback destinations must include non-empty `name`, `type`, `address`, and
-  `split`.
-- `split` must parse as a finite decimal.
+- Configured fallback destinations must include non-empty `name`, `type`,
+  `address`, and `split`.
+- Configured fallback destination `split` values must parse as finite decimals.
 - Empty token files are rejected.
+- Example placeholder destination addresses such as `YOUR_LIGHTNING_NODE_PUBKEY`
+  are rejected.
 
 ## Publisher Instances
 
-The packaged `musicindex-live-publisher.service` is the Mixxx pipeline. It reads
-`~/.config/musicindex-live-publisher/config.toml` and watches:
+The Mixxx pipeline uses `musicindex-live-publisher@mixxx.service`. It reads
+`~/.config/musicindex-live-publisher/mixxx/config.toml` and watches:
 
 ```text
-$XDG_RUNTIME_DIR/musicindex-live-publisher/nowplaying
+$XDG_RUNTIME_DIR/musicindex-live-publisher/mixxx/nowplaying
 ```
 
 Run only one `mixxx-now-playing.service`; Mixxx has one active desktop history
@@ -124,9 +226,9 @@ publisher instance with its own config and drop directory:
 $XDG_RUNTIME_DIR/musicindex-live-publisher/<instance>/nowplaying
 ```
 
-The package installs `musicindex-live-publisher@.service` for that future
-instance layout. The future producer must write its drop file into that
-instance's watch directory.
+The package installs `musicindex-live-publisher@.service` for this instance
+layout. The future producer must write its drop file into that instance's watch
+directory.
 
 ## Publisher CLI
 
@@ -190,9 +292,15 @@ Options:
 - `--db-file <path>`: Mixxx SQLite history database. Default:
   `~/.mixxx/mixxxdb.sqlite`.
 - `--txt-file <path>`: now-playing text output for OBS. Default:
-  `/tmp/mixxx-now-playing.txt`.
+  `$XDG_RUNTIME_DIR/musicindex-live-publisher/mixxx/nowplaying/now-playing.txt`,
+  or `~/.cache/musicindex-live-publisher/mixxx/nowplaying/now-playing.txt` when
+  `XDG_RUNTIME_DIR` is not set.
 - `--id3-file <path>`: metadata output. In JSON mode this is the publisher drop
-  file. Default: `/tmp/mixxx-now-playing-metadata.txt`.
+  file. Default:
+  `$XDG_RUNTIME_DIR/musicindex-live-publisher/mixxx/nowplaying/metadata.txt`,
+  or `~/.cache/musicindex-live-publisher/mixxx/nowplaying/metadata.txt` when
+  `XDG_RUNTIME_DIR` is not set. The Mixxx user unit overrides this to
+  `default.json`.
 - `--v4v-root <path>`: V4V music root.
 - `--poll-secs <seconds>`: Mixxx history poll interval. Default: `0.5`.
 - `--once`: process the current latest track once and exit.
@@ -255,12 +363,6 @@ endpoint = "http://127.0.0.1:8018"
 name = "default"
 event_id = "local-event-guid"
 token_file = "/tmp/musicindex-live-publisher-default.token"
-
-  [target.fallback]
-  title = "Local Test Station"
-  destinations = [
-    { name = "Station", type = "node", address = "03localtest", split = "100" },
-  ]
 ```
 
 Create the directory, then run:

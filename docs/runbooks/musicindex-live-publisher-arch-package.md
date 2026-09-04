@@ -23,6 +23,7 @@ The package also installs the systemd user units and example configuration.
   `/usr/lib/systemd/user/mixxx-now-playing.service`
 - Installed template user unit:
   `/usr/lib/systemd/user/musicindex-live-publisher@.service`
+- Installed setup helper: `/usr/bin/setup-mixxx-musicindex`
 
 The package builds the working tree on disk. If the tree is dirty, the generated
 package version ends in `.local`. Commit local edits first when you need a
@@ -58,17 +59,49 @@ MUSICINDEX_LIVE_PUBLISHER_REPO=/home/citizen/build/musicindex-live-publisher mak
 
 ## Configure
 
-Create the user config directory:
+For Mixxx, use the setup helper. It provisions the live item, writes the token
+and config, generates `musicindex-live-publisher@mixxx.service`, and starts the
+pipeline. With no fallback route options, idle/non-V4V playback uses a dead
+fallback route:
 
 ```bash
-install -d -m 0700 ~/.config/musicindex-live-publisher/tokens
+setup-mixxx-musicindex
+```
+
+To receive station payments when no V4V track is playing, pass a fallback value
+block:
+
+```bash
+install -d -m 0700 ~/.config/musicindex-live-publisher
+cp /usr/share/doc/musicindex-live-publisher/examples/mixxx-fallback-value-block.toml \
+  ~/.config/musicindex-live-publisher/mixxx-fallback.toml
+$EDITOR ~/.config/musicindex-live-publisher/mixxx-fallback.toml
+setup-mixxx-musicindex \
+  --fallback-value-block ~/.config/musicindex-live-publisher/mixxx-fallback.toml
+```
+
+Use temporary mode for a current-login rehearsal:
+
+```bash
+setup-mixxx-musicindex --temporary
+```
+
+The script refuses placeholder fallback destinations, so set `address` to the
+real recipient address before provisioning. For `type = "node"`, that is the
+Lightning node pubkey.
+
+For manual setup, create the user config directory:
+
+```bash
+install -d -m 0700 ~/.config/musicindex-live-publisher/mixxx/tokens
 ```
 
 Copy the example publisher config:
 
 ```bash
+install -d -m 0700 ~/.config/musicindex-live-publisher/mixxx
 cp /usr/share/doc/musicindex-live-publisher/examples/config.toml \
-  ~/.config/musicindex-live-publisher/config.toml
+  ~/.config/musicindex-live-publisher/mixxx/config.toml
 ```
 
 Provision a live item and token:
@@ -77,14 +110,16 @@ Provision a live item and token:
 musicindex-live-publisher provision \
   --endpoint https://api.musicindex.org \
   --target default \
-  --token-file ~/.config/musicindex-live-publisher/tokens/default.token
+  --token-file ~/.config/musicindex-live-publisher/mixxx/tokens/default.token
 ```
 
-Edit `~/.config/musicindex-live-publisher/config.toml`:
+Edit `~/.config/musicindex-live-publisher/mixxx/config.toml`:
 
 - Replace `event_id` with the provisioned value.
-- Keep `token_file = "~/.config/musicindex-live-publisher/tokens/default.token"`.
-- Replace fallback destination fields with station-owned payment details.
+- Keep
+  `token_file = "~/.config/musicindex-live-publisher/mixxx/tokens/default.token"`.
+- Add a fallback value block only if idle/non-V4V time should receive station
+  payments.
 
 Optional producer config:
 
@@ -104,7 +139,7 @@ settings.
 
 ```bash
 systemctl --user daemon-reload
-systemctl --user enable --now musicindex-live-publisher.service
+systemctl --user enable --now musicindex-live-publisher@mixxx.service
 systemctl --user enable --now mixxx-now-playing.service
 ```
 
@@ -116,13 +151,19 @@ and watch directories.
 Watch logs:
 
 ```bash
-journalctl --user -u musicindex-live-publisher.service -f
+journalctl --user -u musicindex-live-publisher@mixxx.service -f
 ```
 
 Check the producer drop file:
 
 ```bash
-cat "$XDG_RUNTIME_DIR/musicindex-live-publisher/nowplaying/default.json"
+cat "$XDG_RUNTIME_DIR/musicindex-live-publisher/mixxx/nowplaying/default.json"
+```
+
+Check the plain now-playing text file:
+
+```bash
+cat "$XDG_RUNTIME_DIR/musicindex-live-publisher/mixxx/nowplaying/now-playing.txt"
 ```
 
 ## Foreground Dry Run
@@ -130,10 +171,10 @@ cat "$XDG_RUNTIME_DIR/musicindex-live-publisher/nowplaying/default.json"
 This prints payloads instead of publishing them:
 
 ```bash
-install -d -m 0700 "$XDG_RUNTIME_DIR/musicindex-live-publisher/nowplaying"
+install -d -m 0700 "$XDG_RUNTIME_DIR/musicindex-live-publisher/mixxx/nowplaying"
 musicindex-live-publisher \
-  --config ~/.config/musicindex-live-publisher/config.toml \
-  --watch-dir "$XDG_RUNTIME_DIR/musicindex-live-publisher/nowplaying" \
+  --config ~/.config/musicindex-live-publisher/mixxx/config.toml \
+  --watch-dir "$XDG_RUNTIME_DIR/musicindex-live-publisher/mixxx/nowplaying" \
   --dry-run \
   --verbose
 ```
@@ -144,7 +185,7 @@ In another terminal, run the producer once:
 mixxx-now-playing \
   --format json \
   --target default \
-  --id3-file "$XDG_RUNTIME_DIR/musicindex-live-publisher/nowplaying/default.json" \
+  --id3-file "$XDG_RUNTIME_DIR/musicindex-live-publisher/mixxx/nowplaying/default.json" \
   --once \
   --verbose
 ```
@@ -154,7 +195,7 @@ mixxx-now-playing \
 ```bash
 cd /home/citizen/build/musicindex-live-publisher/packaging/arch
 makepkg -Csi
-systemctl --user restart musicindex-live-publisher.service
+systemctl --user restart musicindex-live-publisher@mixxx.service
 systemctl --user restart mixxx-now-playing.service
 ```
 
@@ -162,7 +203,7 @@ systemctl --user restart mixxx-now-playing.service
 
 ```bash
 systemctl --user disable --now mixxx-now-playing.service
-systemctl --user disable --now musicindex-live-publisher.service
+systemctl --user disable --now musicindex-live-publisher@mixxx.service
 sudo pacman -R musicindex-live-publisher-git
 ```
 
