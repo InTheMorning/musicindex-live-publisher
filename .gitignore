@@ -1,0 +1,31 @@
+# Rust build output
+/target/
+**/*.rs.bk
+
+# Local runtime/configuration/secrets
+/.env
+/.env.*
+!/.env.example
+/config.toml
+/config.local.toml
+/nowplaying/
+*.token
+*.secret
+
+# Logs and process output
+*.log
+*.pid
+
+# Coverage/profiling output
+/coverage/
+/tarpaulin-report.html
+*.profraw
+
+# Editor and OS metadata
+/.vscode/
+/.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db

@@ -1,0 +1,57 @@
+[Unit]
+Description=MusicIndex live publisher
+Documentation=file:///usr/share/doc/musicindex-live-publisher/musicindex-live-publisher-deploy.md
+# A revoked or wrong token is fatal and recurs on every restart. Without a start
+# limit that would restart forever; with one, systemd gives up and marks the
+# unit failed so `systemctl --user status` shows the real problem.
+StartLimitIntervalSec=300
+StartLimitBurst=5
+# Without these, a missing config or token fails as "status=243/CREDENTIALS:
+# No such file or directory", which does not say which file is missing. An
+# assertion names the exact path in the journal instead.
+AssertPathExists=%h/.config/musicindex-live-publisher/config.toml
+AssertPathExists=%h/.config/musicindex-live-publisher/default.token
+
+[Service]
+Type=simple
+# %t is XDG_RUNTIME_DIR (/run/user/<uid>). Passing the watch directory here
+# rather than hardcoding it in config.toml keeps the config UID-independent.
+ExecStart=/usr/bin/musicindex-live-publisher \
+    --config %h/.config/musicindex-live-publisher/config.toml \
+    --watch-dir %t/musicindex-live-publisher/nowplaying
+Restart=on-failure
+RestartSec=5s
+
+# The drop directory. Owned by this user, mode 0700, so only the producer
+# running as the same user can write into it.
+RuntimeDirectory=musicindex-live-publisher/nowplaying
+RuntimeDirectoryMode=0700
+# Survive publisher restarts so the producer never writes into a vanished
+# directory while this unit is bouncing.
+RuntimeDirectoryPreserve=yes
+
+# The broadcaster token is staged by the manager into $CREDENTIALS_DIRECTORY,
+# readable only by this process, and referenced from config.toml as
+# token_file = "%d/default.token".
+LoadCredential=default.token:%h/.config/musicindex-live-publisher/default.token
+
+NoNewPrivileges=true
+ProtectSystem=strict
+# read-only rather than true: the service reads its own config from ~/.config.
+ProtectHome=read-only
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+UMask=0077
+
+[Install]
+WantedBy=default.target
