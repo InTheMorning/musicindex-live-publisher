@@ -5,8 +5,8 @@ This repository contains two Rust binaries:
 - `musicindex-live-publisher` watches a local now-playing drop directory, turns
   `musicindex.nowplaying/1` JSON files into direct Podcasting 2.0 live value
   payloads, and publishes them to a MusicIndex live relay.
-- `mixxx-now-playing` watches the Mixxx history database, writes OBS-friendly
-  text output, and can write publisher drop files for V4V tracks.
+- `mixxx-now-playing` watches the Mixxx history database, writes icecast-friendly
+  text output (for use with eg. Butt), and can write publisher drop files for V4V tracks.
 
 The publisher is a headless service. Producers write drop files with
 temp-file-plus-rename; presence means a track is playing, and file removal means
