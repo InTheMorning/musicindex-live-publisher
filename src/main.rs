@@ -23,9 +23,10 @@ fn main() -> Result<()> {
     if let Command::Provision {
         endpoint,
         token_file,
+        target,
     } = cli.command
     {
-        return provision(&endpoint, &token_file);
+        return provision(&endpoint, &token_file, &target);
     }
 
     let config_path = cli
@@ -97,6 +98,7 @@ enum Command {
     Provision {
         endpoint: String,
         token_file: PathBuf,
+        target: String,
     },
 }
 
@@ -145,11 +147,13 @@ impl Cli {
 fn parse_provision(mut args: impl Iterator<Item = OsString>) -> Result<Command> {
     let mut endpoint = None;
     let mut token_file = None;
+    let mut target = None;
 
     while let Some(arg) = args.next() {
         match arg.to_str() {
             Some("--endpoint") => endpoint = Some(next_string(&mut args, "--endpoint")?),
             Some("--token-file") => token_file = Some(next_path(&mut args, "--token-file")?),
+            Some("--target") => target = Some(next_string(&mut args, "--target")?),
             Some(flag) if flag.starts_with("--") => return Err(anyhow!("unknown flag {flag}")),
             Some(value) => return Err(anyhow!("unexpected argument {value}")),
             None => {
@@ -161,9 +165,17 @@ fn parse_provision(mut args: impl Iterator<Item = OsString>) -> Result<Command> 
         }
     }
 
+    let target = target.unwrap_or_else(|| "default".to_owned());
+    if target.trim().is_empty() {
+        return Err(anyhow!(
+            "provision requires --target <name> to be non-empty"
+        ));
+    }
+
     Ok(Command::Provision {
         endpoint: endpoint.ok_or_else(|| anyhow!("provision requires --endpoint <url>"))?,
         token_file: token_file.ok_or_else(|| anyhow!("provision requires --token-file <path>"))?,
+        target,
     })
 }
 
@@ -324,7 +336,7 @@ fn emit_payloads(
     Ok(())
 }
 
-fn provision(endpoint: &str, token_file: &Path) -> Result<()> {
+fn provision(endpoint: &str, token_file: &Path, target: &str) -> Result<()> {
     let client = RelayClient::new(musicindex_live_publisher::DEFAULT_REQUEST_TIMEOUT)?;
     let item = client.provision(endpoint)?;
     write_token_file(token_file, &item.broadcaster_token)?;
@@ -336,9 +348,72 @@ fn provision(endpoint: &str, token_file: &Path) -> Result<()> {
     println!("Token written to {}", token_file.display());
     println!();
     println!("[[target]]");
-    println!("name = \"default\"");
-    println!("event_id = \"{}\"", item.event_id);
-    println!("token_file = \"{}\"", token_file.display());
+    println!("name = {}", toml_string(target));
+    println!("event_id = {}", toml_string(&item.event_id));
+    println!(
+        "token_file = {}",
+        toml_string(&token_file.display().to_string())
+    );
 
     Ok(())
+}
+
+fn toml_string(value: &str) -> String {
+    toml::Value::String(value.to_owned()).to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn provision_defaults_target_to_default() -> Result<()> {
+        let command = parse_provision(
+            [
+                "--endpoint",
+                "https://api.example.test",
+                "--token-file",
+                "/tmp/default.token",
+            ]
+            .into_iter()
+            .map(OsString::from),
+        )?;
+
+        let Command::Provision { target, .. } = command else {
+            panic!("expected provision command");
+        };
+        assert_eq!(target, "default");
+        Ok(())
+    }
+
+    #[test]
+    fn provision_accepts_target_name() -> Result<()> {
+        let command = parse_provision(
+            [
+                "--endpoint",
+                "https://api.example.test",
+                "--token-file",
+                "/tmp/late-night.token",
+                "--target",
+                "late-night",
+            ]
+            .into_iter()
+            .map(OsString::from),
+        )?;
+
+        let Command::Provision { target, .. } = command else {
+            panic!("expected provision command");
+        };
+        assert_eq!(target, "late-night");
+        Ok(())
+    }
+
+    #[test]
+    fn toml_string_renders_parseable_string() -> Result<()> {
+        let parsed: toml::Value =
+            toml::from_str(&format!("value = {}", toml_string("late \"night\"")))?;
+
+        assert_eq!(parsed["value"].as_str(), Some("late \"night\""));
+        Ok(())
+    }
 }

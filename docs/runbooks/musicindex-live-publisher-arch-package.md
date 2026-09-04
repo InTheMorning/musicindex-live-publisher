@@ -14,13 +14,15 @@ The package also installs the systemd user units and example configuration.
 `packaging/arch/PKGBUILD` is a local working-tree package:
 
 - Package name: `musicindex-live-publisher-git`
-- Source: the local checkout at `/home/citizen/build/musicindex-live-publisher`,
-  or `$MUSICINDEX_LIVE_PUBLISHER_REPO` when set
+- Source: the local checkout at `/home/citizen/build/musicindex-live-publisher`, or
+  `$MUSICINDEX_LIVE_PUBLISHER_REPO` when set
 - Installed binaries: `/usr/bin/musicindex-live-publisher` and
   `/usr/bin/mixxx-now-playing`
 - Installed user units:
   `/usr/lib/systemd/user/musicindex-live-publisher.service` and
   `/usr/lib/systemd/user/mixxx-now-playing.service`
+- Installed template user unit:
+  `/usr/lib/systemd/user/musicindex-live-publisher@.service`
 
 The package builds the working tree on disk. If the tree is dirty, the generated
 package version ends in `.local`. Commit local edits first when you need a
@@ -59,7 +61,7 @@ MUSICINDEX_LIVE_PUBLISHER_REPO=/home/citizen/build/musicindex-live-publisher mak
 Create the user config directory:
 
 ```bash
-install -d -m 0700 ~/.config/musicindex-live-publisher
+install -d -m 0700 ~/.config/musicindex-live-publisher/tokens
 ```
 
 Copy the example publisher config:
@@ -74,14 +76,14 @@ Provision a live item and token:
 ```bash
 musicindex-live-publisher provision \
   --endpoint https://api.musicindex.org \
-  --token-file ~/.config/musicindex-live-publisher/default.token
+  --target default \
+  --token-file ~/.config/musicindex-live-publisher/tokens/default.token
 ```
 
 Edit `~/.config/musicindex-live-publisher/config.toml`:
 
 - Replace `event_id` with the provisioned value.
-- Keep `token_file = "%d/default.token"` when using the packaged systemd user
-  unit.
+- Keep `token_file = "~/.config/musicindex-live-publisher/tokens/default.token"`.
 - Replace fallback destination fields with station-owned payment details.
 
 Optional producer config:
@@ -105,6 +107,11 @@ systemctl --user daemon-reload
 systemctl --user enable --now musicindex-live-publisher.service
 systemctl --user enable --now mixxx-now-playing.service
 ```
+
+Only run one `mixxx-now-playing.service`; Mixxx has one active desktop history
+source. Future non-Mixxx producers can use separate
+`musicindex-live-publisher@<instance>.service` instances with their own configs
+and watch directories.
 
 Watch logs:
 

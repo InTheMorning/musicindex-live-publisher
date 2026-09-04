@@ -13,10 +13,10 @@ Publisher config:
 ~/.config/musicindex-live-publisher/config.toml
 ```
 
-Publisher token:
+Publisher tokens:
 
 ```text
-~/.config/musicindex-live-publisher/default.token
+~/.config/musicindex-live-publisher/tokens/<target>.token
 ```
 
 Producer config:
@@ -48,7 +48,7 @@ endpoint = "https://api.musicindex.org"
 [[target]]
 name = "default"
 event_id = "replace-with-provisioned-event-guid"
-token_file = "%d/default.token"
+token_file = "~/.config/musicindex-live-publisher/tokens/default.token"
 
   [target.fallback]
   title = "Homegrown Hits"
@@ -71,8 +71,10 @@ Required target fields:
   `mixxx-now-playing` defaults to `default`.
 - `event_id`: live item event GUID returned by provisioning. Replace the
   example placeholder before starting the service.
-- `token_file`: broadcaster token path. Use `%d/default.token` with the systemd
-  user unit. Use an absolute path for foreground runs outside systemd.
+- `token_file`: broadcaster token path. Keep one private token file per target,
+  usually under `~/.config/musicindex-live-publisher/tokens/`. `~/` expands to
+  the service user's home directory. `%d/<name>` is also supported for custom
+  systemd units that provide `CREDENTIALS_DIRECTORY`.
 - `[target.fallback]`: station-owned fallback live value block. The publisher
   refuses to start without a fallback.
 
@@ -103,6 +105,29 @@ Validation rules:
 - `split` must parse as a finite decimal.
 - Empty token files are rejected.
 
+## Publisher Instances
+
+The packaged `musicindex-live-publisher.service` is the Mixxx pipeline. It reads
+`~/.config/musicindex-live-publisher/config.toml` and watches:
+
+```text
+$XDG_RUNTIME_DIR/musicindex-live-publisher/nowplaying
+```
+
+Run only one `mixxx-now-playing.service`; Mixxx has one active desktop history
+source. If a future non-Mixxx producer needs its own pipeline, use a separate
+publisher instance with its own config and drop directory:
+
+```text
+~/.config/musicindex-live-publisher/<instance>/config.toml
+~/.config/musicindex-live-publisher/<instance>/tokens/default.token
+$XDG_RUNTIME_DIR/musicindex-live-publisher/<instance>/nowplaying
+```
+
+The package installs `musicindex-live-publisher@.service` for that future
+instance layout. The future producer must write its drop file into that
+instance's watch directory.
+
 ## Publisher CLI
 
 Run mode:
@@ -125,11 +150,13 @@ Provision mode:
 ```bash
 musicindex-live-publisher provision \
   --endpoint <url> \
+  --target <name> \
   --token-file <path>
 ```
 
 Provisioning writes the broadcaster token with mode `0600`, prints the
-provisioned `event_id`, and does not print the token.
+provisioned `event_id`, and does not print the token. `--target` defaults to
+`default` when omitted.
 
 ## Producer TOML
 

@@ -84,6 +84,8 @@ package() {
 
   install -Dm0644 systemd/musicindex-live-publisher.service \
     "$pkgdir/usr/lib/systemd/user/musicindex-live-publisher.service"
+  install -Dm0644 systemd/musicindex-live-publisher@.service \
+    "$pkgdir/usr/lib/systemd/user/musicindex-live-publisher@.service"
   install -Dm0644 systemd/mixxx-now-playing.service \
     "$pkgdir/usr/lib/systemd/user/mixxx-now-playing.service"
 

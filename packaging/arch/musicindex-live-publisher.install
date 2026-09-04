@@ -3,7 +3,7 @@ post_install() {
 MusicIndex live publisher was installed.
 
 Quick local test setup:
-  install -d -m 0700 ~/.config/musicindex-live-publisher
+  install -d -m 0700 ~/.config/musicindex-live-publisher/tokens
   cp /usr/share/doc/musicindex-live-publisher/examples/config.toml \
     ~/.config/musicindex-live-publisher/config.toml
   $EDITOR ~/.config/musicindex-live-publisher/config.toml
@@ -11,12 +11,16 @@ Quick local test setup:
 Provision a live item, then paste the printed event_id into the config:
   musicindex-live-publisher provision \
     --endpoint https://api.musicindex.org \
-    --token-file ~/.config/musicindex-live-publisher/default.token
+    --target default \
+    --token-file ~/.config/musicindex-live-publisher/tokens/default.token
 
 Start the user services:
   systemctl --user daemon-reload
   systemctl --user enable --now musicindex-live-publisher.service
   systemctl --user enable --now mixxx-now-playing.service
+
+Only run one mixxx-now-playing service. Future non-Mixxx producers can use
+separate musicindex-live-publisher@<instance>.service instances.
 
 Docs:
   /usr/share/doc/musicindex-live-publisher/musicindex-live-publisher-arch-package.md

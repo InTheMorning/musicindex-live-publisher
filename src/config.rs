@@ -163,6 +163,7 @@ fn resolve_target(target: RawTarget, seen: &mut HashSet<String>) -> Result<Publi
     let token_file = resolve_token_file_path(
         &target.token_file,
         env::var_os("CREDENTIALS_DIRECTORY").as_ref().map(Path::new),
+        env::var_os("HOME").as_ref().map(Path::new),
     )?;
     let token = load_token_file(&token_file)?;
 
@@ -198,19 +199,29 @@ fn validate_event_id(target_name: &str, event_id: &str) -> Result<()> {
 fn resolve_token_file_path(
     token_file: &Path,
     credentials_directory: Option<&Path>,
+    home_directory: Option<&Path>,
 ) -> Result<PathBuf> {
     let Some(raw) = token_file.to_str() else {
         return Ok(token_file.to_path_buf());
     };
-    let Some(rest) = raw.strip_prefix("%d/") else {
-        return Ok(token_file.to_path_buf());
-    };
-    let credentials_directory = credentials_directory
-        .ok_or_else(|| anyhow!("token_file {raw:?} requires CREDENTIALS_DIRECTORY"))?;
-    if rest.is_empty() {
-        return Err(anyhow!("token_file {raw:?} must name a credential"));
+
+    if let Some(rest) = raw.strip_prefix("%d/") {
+        let credentials_directory = credentials_directory
+            .ok_or_else(|| anyhow!("token_file {raw:?} requires CREDENTIALS_DIRECTORY"))?;
+        if rest.is_empty() {
+            return Err(anyhow!("token_file {raw:?} must name a credential"));
+        }
+        return Ok(credentials_directory.join(rest));
     }
-    Ok(credentials_directory.join(rest))
+
+    if raw == "~" || raw.starts_with("~/") {
+        let home_directory =
+            home_directory.ok_or_else(|| anyhow!("token_file {raw:?} requires HOME"))?;
+        let rest = raw.strip_prefix("~/").unwrap_or_default();
+        return Ok(home_directory.join(rest));
+    }
+
+    Ok(token_file.to_path_buf())
 }
 
 fn validate_fallback(target_name: &str, fallback: &RawFallback) -> Result<()> {
@@ -330,6 +341,7 @@ mod tests {
             Some(Path::new(
                 "/run/credentials/musicindex-live-publisher.service",
             )),
+            None,
         )?;
 
         assert_eq!(
@@ -341,12 +353,34 @@ mod tests {
 
     #[test]
     fn credential_token_path_requires_credentials_directory() {
-        let error = resolve_token_file_path(Path::new("%d/default.token"), None);
+        let error = resolve_token_file_path(Path::new("%d/default.token"), None, None);
 
         assert!(
             error.is_err_and(|error| {
                 error.to_string().contains("requires CREDENTIALS_DIRECTORY")
             })
         );
+    }
+
+    #[test]
+    fn home_token_path_expands_from_home_directory() -> Result<()> {
+        let path = resolve_token_file_path(
+            Path::new("~/.config/musicindex-live-publisher/tokens/default.token"),
+            None,
+            Some(Path::new("/home/tester")),
+        )?;
+
+        assert_eq!(
+            path,
+            Path::new("/home/tester/.config/musicindex-live-publisher/tokens/default.token")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn home_token_path_requires_home_directory() {
+        let error = resolve_token_file_path(Path::new("~/default.token"), None, None);
+
+        assert!(error.is_err_and(|error| error.to_string().contains("requires HOME")));
     }
 }

@@ -49,7 +49,7 @@ endpoint = "https://api.musicindex.org"
 [[target]]
 name = "default"
 event_id = "replace-with-provisioned-event-guid"
-token_file = "%d/default.token"
+token_file = "~/.config/musicindex-live-publisher/tokens/default.token"
 
   [target.fallback]
   title = "Homegrown Hits"
@@ -66,8 +66,8 @@ Fields:
   `default`.
 - `target.event_id`: live item event GUID provisioned at the relay. Replace
   the example placeholder before starting the service.
-- `target.token_file`: broadcaster token path. Under systemd, use
-  `%d/default.token`; it resolves through `CREDENTIALS_DIRECTORY`.
+- `target.token_file`: broadcaster token path. Keep one private token file per
+  target, usually under `~/.config/musicindex-live-publisher/tokens/`.
 - `target.fallback`: station-owned live value destinations used when playback
   clears.
 
@@ -78,14 +78,15 @@ Create a live item and write the one-time broadcaster token:
 ```bash
 musicindex-live-publisher provision \
   --endpoint https://api.musicindex.org \
-  --token-file ~/.config/musicindex-live-publisher/default.token
+  --target default \
+  --token-file ~/.config/musicindex-live-publisher/tokens/default.token
 ```
 
-The command prints the `[[target]]` stanza to paste into the config. Keep
-`token_file = "%d/default.token"` when running under the packaged systemd user
-unit. If the token is lost, provision a new live item, replace the target
-stanza, and advertise the new `event_id` wherever listeners discover the live
-value block.
+The command prints the `[[target]]` stanza to paste into the config. For
+additional events, repeat provisioning with another `--target` value and another
+token file, then add another `[[target]]` stanza. If a token is lost, provision a
+new live item, replace that target stanza, and advertise the new `event_id`
+wherever listeners discover the live value block.
 
 ## Arch Package
 
@@ -107,6 +108,10 @@ For a manual user-service install, copy both units to
 `~/.config/systemd/user/` and run `systemctl --user daemon-reload`. The
 publisher unit uses `PrivateTmp=true`, so producers must write to
 `$XDG_RUNTIME_DIR/musicindex-live-publisher/nowplaying`, not `/tmp`.
+
+Run only one `mixxx-now-playing.service`; a desktop can only have one active
+Mixxx history source. Future non-Mixxx producers should get their own
+`musicindex-live-publisher@<instance>.service` instance and watch directory.
 
 Run foreground validation before enabling:
 

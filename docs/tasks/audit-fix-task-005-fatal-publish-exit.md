@@ -129,10 +129,10 @@ systemd-analyze verify systemd/musicindex-live-publisher.service
 
 ## Escalation Triggers
 
-- If exiting the process turns out to be the wrong call for a multi-target
-  deployment — one dead target killing three healthy ones — stop and report
-  before implementing a per-target retry-with-long-backoff instead. That is a
-  design decision, not an implementation detail, and it interacts with the
+- If exiting the process turns out to be the wrong call for a publisher config
+  with several targets — one dead target killing three healthy ones — stop and
+  report before implementing a per-target retry-with-long-backoff instead. That
+  is a design decision, not an implementation detail, and it interacts with the
   fallback-on-clear guarantee.
 - If `main` does not actually exit non-zero on the propagated error, stop: that
   is a separate bug and it invalidates the whole approach of this packet.

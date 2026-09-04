@@ -1,37 +1,31 @@
 [Unit]
-Description=MusicIndex live publisher
+Description=MusicIndex live publisher for %i
 Documentation=file:///usr/share/doc/musicindex-live-publisher/musicindex-live-publisher-deploy.md
 # A revoked or wrong token is fatal and recurs on every restart. Without a start
 # limit that would restart forever; with one, systemd gives up and marks the
 # unit failed so `systemctl --user status` shows the real problem.
 StartLimitIntervalSec=300
 StartLimitBurst=5
-# Without these, a missing config or token directory fails later with a less
-# direct message. Assertions name the exact missing path in the journal.
-AssertPathExists=%h/.config/musicindex-live-publisher/config.toml
-AssertPathExists=%h/.config/musicindex-live-publisher/tokens
+# Each future player instance has its own config and token directory.
+AssertPathExists=%h/.config/musicindex-live-publisher/%i/config.toml
+AssertPathExists=%h/.config/musicindex-live-publisher/%i/tokens
 
 [Service]
 Type=simple
-# %t is XDG_RUNTIME_DIR (/run/user/<uid>). Passing the watch directory here
-# rather than hardcoding it in config.toml keeps the config UID-independent.
 ExecStart=/usr/bin/musicindex-live-publisher \
-    --config %h/.config/musicindex-live-publisher/config.toml \
-    --watch-dir %t/musicindex-live-publisher/nowplaying
+    --config %h/.config/musicindex-live-publisher/%i/config.toml \
+    --watch-dir %t/musicindex-live-publisher/%i/nowplaying
 Restart=on-failure
 RestartSec=5s
 
-# The drop directory. Owned by this user, mode 0700, so only the producer
-# running as the same user can write into it.
-RuntimeDirectory=musicindex-live-publisher/nowplaying
+# One publisher instance owns one producer drop directory.
+RuntimeDirectory=musicindex-live-publisher/%i/nowplaying
 RuntimeDirectoryMode=0700
-# Survive publisher restarts so the producer never writes into a vanished
-# directory while this unit is bouncing.
 RuntimeDirectoryPreserve=yes
 
 # Each configured target reads its own broadcaster token from token_file.
-# Keep token files under ~/.config/musicindex-live-publisher/tokens with mode
-# 0600, and keep the parent directory mode 0700.
+# Keep token files under ~/.config/musicindex-live-publisher/<instance>/tokens
+# with mode 0600, and keep the parent directory mode 0700.
 
 NoNewPrivileges=true
 ProtectSystem=strict

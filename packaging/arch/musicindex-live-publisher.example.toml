@@ -8,9 +8,10 @@ endpoint = "https://api.musicindex.org"
 name = "default"
 event_id = "replace-with-provisioned-event-guid"
 
-# In the packaged systemd user service, %d resolves to CREDENTIALS_DIRECTORY.
-# For foreground testing outside systemd, use an absolute path instead.
-token_file = "%d/default.token"
+# One token file per target. The provision command writes this file with mode
+# 0600. The publisher also accepts %d/<credential> when run by a custom unit
+# that sets CREDENTIALS_DIRECTORY.
+token_file = "~/.config/musicindex-live-publisher/tokens/default.token"
 
   [target.fallback]
   title = "Your Station Name"

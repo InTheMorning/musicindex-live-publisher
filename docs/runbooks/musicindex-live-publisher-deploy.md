@@ -61,10 +61,11 @@ hash. It cannot be recovered. `provision` writes it straight to a `0600` file
 and never prints it.
 
 ```bash
-install -d -m 0700 ~/.config/musicindex-live-publisher
+install -d -m 0700 ~/.config/musicindex-live-publisher/tokens
 musicindex-live-publisher provision \
   --endpoint https://api.musicindex.org \
-  --token-file ~/.config/musicindex-live-publisher/default.token
+  --target default \
+  --token-file ~/.config/musicindex-live-publisher/tokens/default.token
 ```
 
 The command prints a `[[target]]` stanza. Keep the `event_id` — listeners
@@ -83,7 +84,7 @@ endpoint = "https://api.musicindex.org"
 [[target]]
 name = "default"
 event_id = "replace-with-provisioned-event-guid"
-token_file = "%d/default.token"
+token_file = "~/.config/musicindex-live-publisher/tokens/default.token"
 
   [target.fallback]
   title = "Homegrown Hits"
@@ -95,9 +96,10 @@ token_file = "%d/default.token"
 Replace `event_id` with the value printed by `provision` before starting the
 service. The placeholder will never exist on the relay.
 
-`%d/default.token` resolves through systemd's `CREDENTIALS_DIRECTORY`. The unit
-stages it there with `LoadCredential=`, so the token is readable only by the
-service process, not by everything running as your user.
+Keep one token file per target under
+`~/.config/musicindex-live-publisher/tokens/`. The packaged unit reads these
+files as the same desktop user and the provision command writes them with mode
+`0600`.
 
 Splits are **decimal strings**, not numbers: `"100"`, `"49.51"`. Every fallback
 destination needs `name`, `type`, `address`, and `split`, and startup fails with
@@ -106,12 +108,32 @@ a specific message if one is missing.
 See [configuration options](musicindex-live-publisher-configuration.md) for the
 full publisher and producer option reference.
 
+## Future Player Instances
+
+Run only one `mixxx-now-playing.service`; Mixxx has one active desktop history
+source. If a future non-Mixxx producer needs a separate pipeline, run a separate
+publisher instance instead:
+
+```bash
+install -d -m 0700 ~/.config/musicindex-live-publisher/other-player/tokens
+systemctl --user enable --now musicindex-live-publisher@other-player.service
+```
+
+That instance reads
+`~/.config/musicindex-live-publisher/<instance>/config.toml` and watches
+`$XDG_RUNTIME_DIR/musicindex-live-publisher/<instance>/nowplaying`. The future
+producer must write its drop file there.
+
 ## Install The Units
 
 ```bash
 install -d -m 0755 ~/.config/systemd/user
-install -m 0644 systemd/musicindex-live-publisher.service ~/.config/systemd/user/
-install -m 0644 systemd/mixxx-now-playing.service ~/.config/systemd/user/
+install -m 0644 systemd/musicindex-live-publisher.service \
+  ~/.config/systemd/user/
+install -m 0644 systemd/musicindex-live-publisher@.service \
+  ~/.config/systemd/user/
+install -m 0644 systemd/mixxx-now-playing.service \
+  ~/.config/systemd/user/
 systemctl --user daemon-reload
 systemd-analyze --user verify ~/.config/systemd/user/musicindex-live-publisher.service
 ```
@@ -132,6 +154,7 @@ BIND=127.0.0.1:8018 ~/build/splitkit/target/release/musicindex-live-relay &
 
 musicindex-live-publisher provision \
   --endpoint http://127.0.0.1:8018 \
+  --target default \
   --token-file /tmp/local.token
 ```
 
@@ -193,8 +216,9 @@ ended track keeps collecting boosts.
 
 ## Failure Modes
 
-- **`token_file "%d/default.token" requires CREDENTIALS_DIRECTORY`** — started
-  outside systemd. Use an absolute `token_file` for foreground runs.
+- **`token_file "%d/<name>" requires CREDENTIALS_DIRECTORY`** — started outside
+  a systemd unit that provides credentials. Use `~/.../tokens/<target>.token` or
+  an absolute `token_file` for foreground runs.
 - **Unit is `failed` with `start-limit-hit`** — five failures in five minutes.
   Almost always a fatal publish result. Check
   `journalctl --user -u musicindex-live-publisher -n 50` for the HTTP status.
