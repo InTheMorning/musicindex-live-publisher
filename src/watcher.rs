@@ -62,6 +62,7 @@ pub struct DropWatcher {
 struct BlockIdentity {
     track: TrackIdentity,
     block_guid: String,
+    last_payload: LiveValuePayload,
 }
 
 /// What makes two drop files the same track.
@@ -180,25 +181,33 @@ impl DropWatcher {
             // block GUID so retries and route upgrades stay one block.
             Some(block) if block.track == track => block.block_guid.clone(),
             // Next track at a path the producer reuses: mint a fresh block.
-            _ => {
-                let block_guid = fresh_guid();
-                self.blocks.insert(
-                    identity.clone(),
-                    BlockIdentity {
-                        track,
-                        block_guid: block_guid.clone(),
-                    },
-                );
-                block_guid
-            }
+            _ => fresh_guid(),
         };
+        let payload = payload_from_dropfile(&dropfile, &target.event_guid, &block_guid);
+        let should_emit = !self
+            .blocks
+            .get(&identity)
+            .is_some_and(|block| block.track == track && block.last_payload == payload);
+        if !should_emit {
+            tracing::debug!(
+                path = %path.display(),
+                block_guid = %block_guid,
+                title = %payload.title,
+                "skipping unchanged live value payload"
+            );
+        }
+
+        self.blocks.insert(
+            identity.clone(),
+            BlockIdentity {
+                track,
+                block_guid,
+                last_payload: payload.clone(),
+            },
+        );
         self.path_targets.insert(identity, target.name.clone());
 
-        Ok(Some(payload_from_dropfile(
-            &dropfile,
-            &target.event_guid,
-            &block_guid,
-        )))
+        Ok(should_emit.then_some(payload))
     }
 
     fn fallback_payloads(&self) -> Vec<LiveValuePayload> {

@@ -212,6 +212,7 @@ fn watcher_debounces_same_action_on_same_path() -> Result<()> {
             .process_event(upsert(&path), start + Duration::from_millis(20))?
             .is_empty()
     );
+    write(&path, dropfile("Debounced Track Edited"))?;
     assert_eq!(
         watcher
             .process_event(upsert(&path), start + Duration::from_millis(80))?
@@ -250,6 +251,13 @@ fn dropfile_with_api_routes(title: &str, track_guid: &str) -> String {
     value.to_string()
 }
 
+fn dropfile_with_routes_source(title: &str, track_guid: &str, source: &str) -> String {
+    let mut value = serde_json::from_str::<Value>(&dropfile_with_guid(title, track_guid))
+        .expect("valid dropfile json");
+    value["value_routes_source"] = json!(source);
+    value.to_string()
+}
+
 #[test]
 fn watcher_next_track_at_same_path_gets_a_new_block_guid() -> Result<()> {
     let temp = TempDir::new()?;
@@ -278,10 +286,36 @@ fn watcher_same_track_rewritten_keeps_its_block_guid() -> Result<()> {
     write(&path, dropfile_with_guid("Track One", "guid-one"))?;
     let first = watcher.process_event(upsert(&path), Instant::now())?;
 
-    write(&path, dropfile_with_guid("Track One", "guid-one"))?;
+    write(&path, dropfile_with_api_routes("Track One", "guid-one"))?;
     let second = watcher.process_event(upsert(&path), Instant::now())?;
 
     assert_eq!(first[0].block_guid, second[0].block_guid);
+    Ok(())
+}
+
+#[test]
+fn watcher_same_track_identical_payload_rewrite_is_skipped() -> Result<()> {
+    let temp = TempDir::new()?;
+    let path = temp.path().join("default.json");
+    let mut watcher = DropWatcher::new(target(), Duration::from_millis(0));
+
+    write(
+        &path,
+        dropfile_with_routes_source("Track One", "guid-one", "embedded-id3"),
+    )?;
+    let first = watcher.process_event(upsert(&path), Instant::now())?;
+
+    write(
+        &path,
+        dropfile_with_routes_source("Track One", "guid-one", "musicindex-api"),
+    )?;
+    let second = watcher.process_event(upsert(&path), Instant::now())?;
+
+    assert_eq!(first.len(), 1);
+    assert!(
+        second.is_empty(),
+        "a source-only rewrite transforms to the same relay payload"
+    );
     Ok(())
 }
 
@@ -326,7 +360,7 @@ fn watcher_track_without_guid_uses_artist_and_title_for_block_identity() -> Resu
     write(&path, untagged("Track Two"))?;
     let next = watcher.process_event(upsert(&path), Instant::now())?;
 
-    assert_eq!(first[0].block_guid, same[0].block_guid);
+    assert!(same.is_empty());
     assert_ne!(first[0].block_guid, next[0].block_guid);
     Ok(())
 }
