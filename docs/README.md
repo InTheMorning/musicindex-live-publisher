@@ -1,5 +1,13 @@
 # Documentation
 
+## Order Of Work
+
+The packets here belong to a system that spans three repositories. The
+cross-repository order lives in `v4vmm`:
+`docs/plans/broadcast-chain-delivery-order.md`. Read it before you start.
+
+Control surface 001 blocks `v4vmm` task 014. Do it first.
+
 ## Architecture
 
 - [Broadcast chain boundaries](architecture/broadcast-chain-boundaries.md) —
@@ -10,6 +18,9 @@
 
 - [ADR 0001: Rust now-playing lifecycle](adr/0001-rust-now-playing-lifecycle.md)
 - [ADR 0002: Now-playing drop-file contract](adr/0002-nowplaying-drop-file-contract.md)
+- [ADR 0003: Show log contract](adr/0003-show-log-contract.md) — the
+  append-only log this service keeps so `v4vmm` can generate a recorded
+  episode
 
 ## Plans
 
@@ -69,6 +80,17 @@ each can be done alone, but 002, 004, and 005 gate any run against a live relay.
 - [004 — Drop directory trust checks](tasks/audit-fix-task-004-drop-dir-trust.md)
 - [005 — A fatal publish failure must not fail silently](tasks/audit-fix-task-005-fatal-publish-exit.md)
 - [006 — Compensate for stream latency before publishing](tasks/audit-fix-task-006-stream-delay-compensation.md)
+
+Show log packets. These give `v4vmm` the timeline it needs to build an episode.
+
+- [001 — Show log writer](tasks/show-log-task-001-log-writer.md)
+- [002 — Read contract and documentation](tasks/show-log-task-002-read-contract-and-docs.md)
+
+Control surface packets. These support the `v4vmm` broadcast control surface
+(`v4vmm` ADR 0059). Task 001 gates `v4vmm` task 014.
+
+- [001 — Target management commands](tasks/control-surface-task-001-target-management.md)
+- [002 — Machine-readable CLI surface](tasks/control-surface-task-002-machine-readable-cli.md)
 
 ## Reviews
 

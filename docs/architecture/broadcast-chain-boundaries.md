@@ -57,6 +57,26 @@ writes it after that.
 A change to the fields needs a new schema version. Unknown versions are ignored,
 never guessed.
 
+### The show log
+
+`musicindex.showlog/1`, an append-only JSON Lines file. ADR 0003 defines it.
+This repository owns the contract.
+
+This service records what played and when. `v4vmm` reads the log and generates
+the recorded episode: the RSS item, the chapters, and the value time split
+blocks. This service generates nothing.
+
+Two fields matter more than the rest:
+
+- `observed_at` is the producer time. An episode built from a local encoder
+  recording aligns to it, because that recording is made before every delay
+  that `stream_delay_secs` covers.
+- `aired_at` is the time this service sent the payload. It serves the live path
+  only and must not drive a recorded episode. A recorder that pulls the stream
+  after icecast sits closer to this time instead.
+- A later entry with the same `event_guid` and `block_guid` supersedes an
+  earlier one. That is a route revision, and only the last entry is correct.
+
 ### The live value payload
 
 This service sends the direct Podcasting 2.0 live value payload to the relay. It
@@ -97,6 +117,9 @@ the exit codes and the output.
 
 - The relay keeps state in memory. A relay restart discards the live item, the
   token, and the snapshot. The event then dies.
+- The relay also removes an event after an idle TTL. The default is 24 hours.
+  A configured `event_id` can therefore stop working with no restart and no
+  change on this side.
 - The relay returns a broadcaster token one time only.
 - The drop-file contract has no pause state. A producer reports play or stop.
 - This service has no remote control API. Remote control uses `ssh` today.
