@@ -21,6 +21,9 @@ Control surface 001 blocks `v4vmm` task 014. Do it first.
 - [ADR 0003: Show log contract](adr/0003-show-log-contract.md) — the
   append-only log this service keeps so `v4vmm` can generate a recorded
   episode
+- [ADR 0004: Publisher control CLI](adr/0004-publisher-control-cli.md) — the
+  target and JSON commands that let `v4vmm` control this repository without
+  writing its configuration file
 
 ## Plans
 
@@ -30,6 +33,9 @@ Control surface 001 blocks `v4vmm` task 014. Do it first.
 - [MusicIndex live publisher plan](plans/musicindex-live-publisher-plan.md) —
   standalone systemd service that watches a drop directory for now-playing
   metadata and publishes live value splits to a MusicIndex relay
+- [Publisher control CLI phase plan](plans/publisher-control-cli-phase-plan.md)
+  — command-line target management and machine-readable state for the control
+  surface
 
 ## Tasks
 
@@ -86,8 +92,8 @@ Show log packets. These give `v4vmm` the timeline it needs to build an episode.
 - [001 — Show log writer](tasks/show-log-task-001-log-writer.md)
 - [002 — Read contract and documentation](tasks/show-log-task-002-read-contract-and-docs.md)
 
-Control surface packets. These support the `v4vmm` broadcast control surface
-(`v4vmm` ADR 0059). Task 001 gates `v4vmm` task 014.
+Control surface packets. ADR 0004 governs them. They support the `v4vmm`
+broadcast control surface (`v4vmm` ADR 0059). Task 001 gates `v4vmm` task 014.
 
 - [001 — Target management commands](tasks/control-surface-task-001-target-management.md)
 - [002 — Machine-readable CLI surface](tasks/control-surface-task-002-machine-readable-cli.md)
@@ -96,6 +102,7 @@ Control surface packets. These support the `v4vmm` broadcast control surface
 
 - [Rust now-playing review checklist](reviews/rust-now-playing-review-checklist.md)
 - [Now-playing / live publisher audit review](reviews/nowplaying-publisher-audit-review.md) — accuracy, stability, and security audit of both crates at `1dea27f`
+- [Publisher control CLI review checklist](reviews/publisher-control-cli-review-checklist.md)
 
 ## Runbooks
 

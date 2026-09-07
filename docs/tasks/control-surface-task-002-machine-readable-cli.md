@@ -8,6 +8,7 @@ Let another program read the state of this package without parsing prose. Add
 ## Files To Inspect
 
 - `docs/architecture/broadcast-chain-boundaries.md`
+- `docs/adr/0004-publisher-control-cli.md`
 - `src/main.rs` (the `provision` function and the `Cli` parser)
 - `src/config.rs`
 - `src/relay.rs` (`ProvisionedLiveItem`)
@@ -105,6 +106,7 @@ Implement only this task. Do not redesign the architecture.
 
 Read:
 - `src/main.rs`, `src/config.rs`, `src/relay.rs`
+- `docs/adr/0004-publisher-control-cli.md`
 
 Goal:
 - Add `provision --json`, `--version`, and `config show [--json]`.

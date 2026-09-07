@@ -8,6 +8,7 @@ file. This lets a control surface manage targets without writing the file.
 ## Files To Inspect
 
 - `docs/architecture/broadcast-chain-boundaries.md`
+- `docs/adr/0004-publisher-control-cli.md`
 - `docs/runbooks/musicindex-live-publisher-configuration.md`
 - `src/config.rs`
 - `src/main.rs` (the `Cli` parser and the `Command` enum)
@@ -113,6 +114,7 @@ Implement only this task. Do not redesign the architecture.
 
 Read:
 - `docs/architecture/broadcast-chain-boundaries.md`
+- `docs/adr/0004-publisher-control-cli.md`
 - `src/config.rs`, `src/main.rs`, `tests/config.rs`
 
 Goal:
