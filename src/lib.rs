@@ -11,8 +11,9 @@ pub mod schedule;
 pub mod watcher;
 
 pub use config::{
-    ConfigOverrides, DEFAULT_CONFIG_PATH, PublisherConfig, PublisherTarget, load_config,
-    load_config_bytes,
+    ConfigEditError, ConfigOverrides, DEFAULT_CONFIG_PATH, PublisherConfig, PublisherTarget,
+    TargetConfigEdit, TargetConfigSummary, add_target_to_config, list_config_targets,
+    list_config_targets_from_str, load_config, load_config_bytes, remove_target_from_config,
 };
 pub use dropfile::{DropFile, PaymentRoute, SCHEMA_VERSION, parse};
 pub use livevalue::{

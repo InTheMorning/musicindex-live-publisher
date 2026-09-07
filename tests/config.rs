@@ -1,10 +1,12 @@
 use std::fs;
 use std::path::Path;
+use std::process::Command;
 use std::time::{Duration, Instant};
 
 use anyhow::{Result, anyhow};
 use musicindex_live_publisher::{
-    ConfigOverrides, DropEvent, DropEventKind, DropWatcher, load_config,
+    ConfigEditError, ConfigOverrides, DropEvent, DropEventKind, DropWatcher, TargetConfigEdit,
+    add_target_to_config, list_config_targets, load_config, remove_target_from_config,
 };
 use serde_json::{Value, json};
 use tempfile::TempDir;
@@ -69,6 +71,30 @@ fn write_config(dir: &Path, text: &str) -> Result<std::path::PathBuf> {
     Ok(path)
 }
 
+fn publisher_command() -> Command {
+    Command::new(env!("CARGO_BIN_EXE_musicindex-live-publisher"))
+}
+
+fn config_text_without_targets(watch_dir: &Path) -> String {
+    format!(
+        r#"
+# operator comment
+watch_dir = "{}"
+endpoint = "https://api.example.test"
+"#,
+        watch_dir.display()
+    )
+}
+
+fn target_edit(name: &str, event_id: &str, token_file: &Path) -> TargetConfigEdit {
+    TargetConfigEdit {
+        name: name.to_owned(),
+        event_id: event_id.to_owned(),
+        token_file: token_file.to_path_buf(),
+        stream_delay_secs: None,
+    }
+}
+
 fn dropfile(target: &str, title: &str) -> String {
     json!({
         "schema": "musicindex.nowplaying/1",
@@ -99,6 +125,319 @@ fn one_payload(payloads: Vec<musicindex_live_publisher::LiveValuePayload>) -> Re
         .next()
         .ok_or_else(|| anyhow!("expected one payload"))?;
     Ok(serde_json::to_value(payload)?)
+}
+
+#[test]
+fn target_add_appends_to_config_without_targets() -> Result<()> {
+    let temp = TempDir::new()?;
+    let watch_dir = temp.path().join("watch");
+    let token = write_token(temp.path(), "default.token", "secret-token")?;
+    let config_path = write_config(temp.path(), &config_text_without_targets(&watch_dir))?;
+
+    add_target_to_config(
+        &config_path,
+        &target_edit("default", "event-default", &token),
+        false,
+    )?;
+
+    let text = fs::read_to_string(&config_path)?;
+    let config = load_config(&config_path, ConfigOverrides::default())?;
+
+    assert!(text.contains("# operator comment"));
+    assert_eq!(config.targets.len(), 1);
+    assert_eq!(config.targets[0].name, "default");
+    assert_eq!(config.targets[0].event_id, "event-default");
+    Ok(())
+}
+
+#[test]
+fn target_add_appends_second_target_without_rewriting_existing_config() -> Result<()> {
+    let temp = TempDir::new()?;
+    let watch_dir = temp.path().join("watch");
+    let default_token = write_token(temp.path(), "default.token", "default-secret")?;
+    let aux_token = write_token(temp.path(), "aux.token", "aux-secret")?;
+    let config_path = write_config(temp.path(), &config_text(&watch_dir, &default_token, None))?;
+
+    add_target_to_config(
+        &config_path,
+        &target_edit("aux", "event-aux", &aux_token),
+        false,
+    )?;
+
+    let text = fs::read_to_string(&config_path)?;
+    let config = load_config(&config_path, ConfigOverrides::default())?;
+
+    assert_eq!(config.targets.len(), 2);
+    assert!(text.contains("[target.fallback]"));
+    assert!(text.contains("title = \"Default Station\""));
+    assert!(text.contains("name = \"aux\""));
+    Ok(())
+}
+
+#[test]
+fn target_add_duplicate_without_replace_is_distinct_error() -> Result<()> {
+    let temp = TempDir::new()?;
+    let watch_dir = temp.path().join("watch");
+    let token = write_token(temp.path(), "default.token", "secret-token")?;
+    let config_path = write_config(temp.path(), &config_text(&watch_dir, &token, None))?;
+
+    let error = add_target_to_config(
+        &config_path,
+        &target_edit("default", "event-new", &token),
+        false,
+    )
+    .err()
+    .ok_or_else(|| anyhow!("expected duplicate target error"))?;
+
+    assert!(matches!(
+        error.downcast_ref::<ConfigEditError>(),
+        Some(ConfigEditError::TargetExists(name)) if name == "default"
+    ));
+    Ok(())
+}
+
+#[test]
+fn target_add_duplicate_with_replace_replaces_stanza() -> Result<()> {
+    let temp = TempDir::new()?;
+    let watch_dir = temp.path().join("watch");
+    let old_token = write_token(temp.path(), "default.token", "old-secret")?;
+    let new_token = write_token(temp.path(), "new.token", "new-secret")?;
+    let config_path = write_config(temp.path(), &config_text(&watch_dir, &old_token, None))?;
+    let mut edit = target_edit("default", "event-new", &new_token);
+    edit.stream_delay_secs = Some(12.5);
+
+    add_target_to_config(&config_path, &edit, true)?;
+
+    let config = load_config(&config_path, ConfigOverrides::default())?;
+
+    assert_eq!(config.targets.len(), 1);
+    assert_eq!(config.targets[0].event_id, "event-new");
+    assert_eq!(config.targets[0].token_file, new_token);
+    assert_eq!(
+        config.targets[0].stream_delay,
+        Duration::from_millis(12_500)
+    );
+    Ok(())
+}
+
+#[test]
+fn target_remove_deletes_one_stanza() -> Result<()> {
+    let temp = TempDir::new()?;
+    let watch_dir = temp.path().join("watch");
+    let default_token = write_token(temp.path(), "default.token", "default-secret")?;
+    let aux_token = write_token(temp.path(), "aux.token", "aux-secret")?;
+    let config_path = write_config(
+        temp.path(),
+        &config_text(&watch_dir, &default_token, Some(&aux_token)),
+    )?;
+
+    remove_target_from_config(&config_path, "aux")?;
+
+    let config = load_config(&config_path, ConfigOverrides::default())?;
+
+    assert_eq!(config.targets.len(), 1);
+    assert_eq!(config.targets[0].name, "default");
+    Ok(())
+}
+
+#[test]
+fn target_remove_missing_target_is_distinct_error() -> Result<()> {
+    let temp = TempDir::new()?;
+    let watch_dir = temp.path().join("watch");
+    let token = write_token(temp.path(), "default.token", "secret-token")?;
+    let config_path = write_config(temp.path(), &config_text(&watch_dir, &token, None))?;
+
+    let error = remove_target_from_config(&config_path, "missing")
+        .err()
+        .ok_or_else(|| anyhow!("expected missing target error"))?;
+
+    assert!(matches!(
+        error.downcast_ref::<ConfigEditError>(),
+        Some(ConfigEditError::TargetNotFound(name)) if name == "missing"
+    ));
+    Ok(())
+}
+
+#[test]
+fn target_commands_preserve_comments() -> Result<()> {
+    let temp = TempDir::new()?;
+    let watch_dir = temp.path().join("watch");
+    let default_token = write_token(temp.path(), "default.token", "default-secret")?;
+    let aux_token = write_token(temp.path(), "aux.token", "aux-secret")?;
+    let text = format!(
+        r#"
+# top-level comment
+watch_dir = "{}"
+endpoint = "https://api.example.test"
+
+# default target comment
+[[target]]
+name = "default"
+event_id = "event-default"
+token_file = "{}"
+
+# trailing comment
+"#,
+        watch_dir.display(),
+        default_token.display()
+    );
+    let config_path = write_config(temp.path(), &text)?;
+
+    add_target_to_config(
+        &config_path,
+        &target_edit("aux", "event-aux", &aux_token),
+        false,
+    )?;
+    remove_target_from_config(&config_path, "aux")?;
+
+    let edited = fs::read_to_string(&config_path)?;
+
+    assert!(edited.contains("# top-level comment"));
+    assert!(edited.contains("# default target comment"));
+    assert!(edited.contains("# trailing comment"));
+    Ok(())
+}
+
+#[test]
+fn target_list_reads_redacted_summaries_without_token_content() -> Result<()> {
+    let temp = TempDir::new()?;
+    let watch_dir = temp.path().join("watch");
+    let token = write_token(temp.path(), "default.token", "secret-token")?;
+    let config_path = write_config(temp.path(), &config_text(&watch_dir, &token, None))?;
+
+    let targets = list_config_targets(&config_path)?;
+
+    assert_eq!(targets.len(), 1);
+    assert_eq!(targets[0].name, "default");
+    assert_eq!(targets[0].event_id, "event-default");
+    assert_eq!(targets[0].token_file, token);
+    assert_eq!(targets[0].stream_delay_secs, 0.0);
+    assert!(!format!("{targets:?}").contains("secret-token"));
+    Ok(())
+}
+
+#[test]
+fn target_add_rejects_event_id_control_characters() -> Result<()> {
+    let temp = TempDir::new()?;
+    let token = write_token(temp.path(), "default.token", "secret-token")?;
+
+    let error = add_target_to_config(
+        &write_config(temp.path(), "")?,
+        &target_edit("default", "event\nid", &token),
+        false,
+    )
+    .err()
+    .ok_or_else(|| anyhow!("expected control character error"))?;
+
+    assert!(
+        error
+            .to_string()
+            .contains("target event_id must not contain control characters")
+    );
+    Ok(())
+}
+
+#[test]
+fn target_add_rejects_unreadable_token_file() -> Result<()> {
+    let temp = TempDir::new()?;
+    let missing = temp.path().join("missing.token");
+
+    let error = add_target_to_config(
+        &write_config(temp.path(), "")?,
+        &target_edit("default", "event-default", &missing),
+        false,
+    )
+    .err()
+    .ok_or_else(|| anyhow!("expected missing token file error"))?;
+
+    assert!(format!("{error:#}").contains("inspect token file"));
+    Ok(())
+}
+
+#[test]
+fn target_list_json_command_outputs_no_token_content() -> Result<()> {
+    let temp = TempDir::new()?;
+    let watch_dir = temp.path().join("watch");
+    let token = write_token(temp.path(), "default.token", "secret-token")?;
+    let config_path = write_config(temp.path(), &config_text(&watch_dir, &token, None))?;
+
+    let output = publisher_command()
+        .args([
+            "target",
+            "list",
+            "--config",
+            &config_path.display().to_string(),
+            "--json",
+        ])
+        .output()?;
+
+    assert!(
+        output.status.success(),
+        "target list --json should exit successfully"
+    );
+    let stdout = String::from_utf8(output.stdout)?;
+    let value: Value = serde_json::from_str(&stdout)?;
+
+    assert_eq!(value["targets"][0]["name"], "default");
+    assert_eq!(value["targets"][0]["event_id"], "event-default");
+    assert!(!stdout.contains("secret-token"));
+    Ok(())
+}
+
+#[test]
+fn target_add_duplicate_exits_with_distinct_code() -> Result<()> {
+    let temp = TempDir::new()?;
+    let watch_dir = temp.path().join("watch");
+    let token = write_token(temp.path(), "default.token", "secret-token")?;
+    let config_path = write_config(temp.path(), &config_text(&watch_dir, &token, None))?;
+
+    let output = publisher_command()
+        .args([
+            "target",
+            "add",
+            "--config",
+            &config_path.display().to_string(),
+            "--name",
+            "default",
+            "--event-id",
+            "event-new",
+            "--token-file",
+            &token.display().to_string(),
+        ])
+        .output()?;
+
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "duplicate target should use the target-exists exit code"
+    );
+    Ok(())
+}
+
+#[test]
+fn target_remove_missing_exits_with_distinct_code() -> Result<()> {
+    let temp = TempDir::new()?;
+    let watch_dir = temp.path().join("watch");
+    let token = write_token(temp.path(), "default.token", "secret-token")?;
+    let config_path = write_config(temp.path(), &config_text(&watch_dir, &token, None))?;
+
+    let output = publisher_command()
+        .args([
+            "target",
+            "remove",
+            "--config",
+            &config_path.display().to_string(),
+            "--name",
+            "missing",
+        ])
+        .output()?;
+
+    assert_eq!(
+        output.status.code(),
+        Some(3),
+        "missing target should use the target-not-found exit code"
+    );
+    Ok(())
 }
 
 #[test]

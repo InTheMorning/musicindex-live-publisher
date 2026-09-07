@@ -6,28 +6,33 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow};
 use musicindex_live_publisher::{
-    ConfigOverrides, DEFAULT_CONFIG_PATH, DEFAULT_DEBOUNCE_WINDOW, DropEvent, DropEventKind,
-    DropWatcher, LiveValuePayload, PublishSchedule, RelayClient, RelayPublisher, load_config,
-    write_token_file,
+    ConfigEditError, ConfigOverrides, DEFAULT_CONFIG_PATH, DEFAULT_DEBOUNCE_WINDOW, DropEvent,
+    DropEventKind, DropWatcher, LiveValuePayload, PublishSchedule, RelayClient, RelayPublisher,
+    TargetConfigEdit, TargetConfigSummary, add_target_to_config, list_config_targets, load_config,
+    remove_target_from_config, write_token_file,
 };
 use notify::event::{CreateKind, ModifyKind, RemoveKind, RenameMode};
 use notify::{EventKind, RecursiveMode, Watcher};
+use serde::Serialize;
 use tracing_subscriber::EnvFilter;
 
 /// How often an idle watch loop asks whether relay publishing is still alive.
 const HEALTH_CHECK_INTERVAL: Duration = Duration::from_secs(1);
+const EXIT_TARGET_EXISTS: i32 = 2;
+const EXIT_TARGET_NOT_FOUND: i32 = 3;
 
 fn main() -> Result<()> {
     let cli = Cli::parse(std::env::args_os())?;
     init_tracing(cli.verbose)?;
 
-    if let Command::Provision {
-        endpoint,
-        token_file,
-        target,
-    } = cli.command
-    {
-        return provision(&endpoint, &token_file, &target);
+    match cli.command {
+        Command::Provision {
+            endpoint,
+            token_file,
+            target,
+        } => return provision(&endpoint, &token_file, &target),
+        Command::Target(command) => return run_target_command(command).or_else(exit_target_error),
+        Command::Run => {}
     }
 
     let config_path = cli
@@ -124,6 +129,33 @@ enum Command {
         token_file: PathBuf,
         target: String,
     },
+    Target(TargetCommand),
+}
+
+#[derive(Debug)]
+enum TargetCommand {
+    Add(TargetAddCommand),
+    List(TargetListCommand),
+    Remove(TargetRemoveCommand),
+}
+
+#[derive(Debug)]
+struct TargetAddCommand {
+    config: PathBuf,
+    edit: TargetConfigEdit,
+    replace: bool,
+}
+
+#[derive(Debug)]
+struct TargetListCommand {
+    config: PathBuf,
+    json: bool,
+}
+
+#[derive(Debug)]
+struct TargetRemoveCommand {
+    config: PathBuf,
+    name: String,
 }
 
 impl Cli {
@@ -142,6 +174,13 @@ impl Cli {
             .is_some_and(|value| value == OsStr::new("provision"))
         {
             cli.command = parse_provision(remaining.into_iter().skip(1))?;
+            return Ok(cli);
+        }
+        if remaining
+            .first()
+            .is_some_and(|value| value == OsStr::new("target"))
+        {
+            cli.command = parse_target(remaining.into_iter().skip(1))?;
             return Ok(cli);
         }
         let mut args = remaining.into_iter();
@@ -166,6 +205,118 @@ impl Cli {
 
         Ok(cli)
     }
+}
+
+fn parse_target(mut args: impl Iterator<Item = OsString>) -> Result<Command> {
+    let subcommand = args
+        .next()
+        .ok_or_else(|| anyhow!("target requires a subcommand"))?;
+    let command = match subcommand.to_str() {
+        Some("add") => TargetCommand::Add(parse_target_add(args)?),
+        Some("list") => TargetCommand::List(parse_target_list(args)?),
+        Some("remove") => TargetCommand::Remove(parse_target_remove(args)?),
+        Some(value) => return Err(anyhow!("unknown target subcommand {value}")),
+        None => {
+            return Err(anyhow!(
+                "argument is not valid UTF-8: {}",
+                subcommand.to_string_lossy()
+            ));
+        }
+    };
+    Ok(Command::Target(command))
+}
+
+fn parse_target_add(mut args: impl Iterator<Item = OsString>) -> Result<TargetAddCommand> {
+    let mut config = None;
+    let mut name = None;
+    let mut event_id = None;
+    let mut token_file = None;
+    let mut stream_delay_secs = None;
+    let mut replace = false;
+
+    while let Some(arg) = args.next() {
+        match arg.to_str() {
+            Some("--config") => config = Some(next_path(&mut args, "--config")?),
+            Some("--name") => name = Some(next_string(&mut args, "--name")?),
+            Some("--event-id") => event_id = Some(next_string(&mut args, "--event-id")?),
+            Some("--token-file") => token_file = Some(next_path(&mut args, "--token-file")?),
+            Some("--stream-delay-secs") => {
+                stream_delay_secs = Some(next_f64(&mut args, "--stream-delay-secs")?);
+            }
+            Some("--replace") => replace = true,
+            Some(flag) if flag.starts_with("--") => return Err(anyhow!("unknown flag {flag}")),
+            Some(value) => return Err(anyhow!("unexpected argument {value}")),
+            None => {
+                return Err(anyhow!(
+                    "argument is not valid UTF-8: {}",
+                    arg.to_string_lossy()
+                ));
+            }
+        }
+    }
+
+    Ok(TargetAddCommand {
+        config: config.unwrap_or_else(|| PathBuf::from(DEFAULT_CONFIG_PATH)),
+        edit: TargetConfigEdit {
+            name: name.ok_or_else(|| anyhow!("target add requires --name <name>"))?,
+            event_id: event_id
+                .ok_or_else(|| anyhow!("target add requires --event-id <event_id>"))?,
+            token_file: token_file
+                .ok_or_else(|| anyhow!("target add requires --token-file <path>"))?,
+            stream_delay_secs,
+        },
+        replace,
+    })
+}
+
+fn parse_target_list(mut args: impl Iterator<Item = OsString>) -> Result<TargetListCommand> {
+    let mut config = None;
+    let mut json = false;
+
+    while let Some(arg) = args.next() {
+        match arg.to_str() {
+            Some("--config") => config = Some(next_path(&mut args, "--config")?),
+            Some("--json") => json = true,
+            Some(flag) if flag.starts_with("--") => return Err(anyhow!("unknown flag {flag}")),
+            Some(value) => return Err(anyhow!("unexpected argument {value}")),
+            None => {
+                return Err(anyhow!(
+                    "argument is not valid UTF-8: {}",
+                    arg.to_string_lossy()
+                ));
+            }
+        }
+    }
+
+    Ok(TargetListCommand {
+        config: config.unwrap_or_else(|| PathBuf::from(DEFAULT_CONFIG_PATH)),
+        json,
+    })
+}
+
+fn parse_target_remove(mut args: impl Iterator<Item = OsString>) -> Result<TargetRemoveCommand> {
+    let mut config = None;
+    let mut name = None;
+
+    while let Some(arg) = args.next() {
+        match arg.to_str() {
+            Some("--config") => config = Some(next_path(&mut args, "--config")?),
+            Some("--name") => name = Some(next_string(&mut args, "--name")?),
+            Some(flag) if flag.starts_with("--") => return Err(anyhow!("unknown flag {flag}")),
+            Some(value) => return Err(anyhow!("unexpected argument {value}")),
+            None => {
+                return Err(anyhow!(
+                    "argument is not valid UTF-8: {}",
+                    arg.to_string_lossy()
+                ));
+            }
+        }
+    }
+
+    Ok(TargetRemoveCommand {
+        config: config.unwrap_or_else(|| PathBuf::from(DEFAULT_CONFIG_PATH)),
+        name: name.ok_or_else(|| anyhow!("target remove requires --name <name>"))?,
+    })
 }
 
 fn parse_provision(mut args: impl Iterator<Item = OsString>) -> Result<Command> {
@@ -225,6 +376,13 @@ fn next_string(args: &mut impl Iterator<Item = OsString>, flag: &str) -> Result<
         .map_err(|value| anyhow!("argument is not valid UTF-8: {}", value.to_string_lossy()))
 }
 
+fn next_f64(args: &mut impl Iterator<Item = OsString>, flag: &str) -> Result<f64> {
+    let value = next_string(args, flag)?;
+    value
+        .parse()
+        .with_context(|| format!("{flag} must be a number"))
+}
+
 fn init_tracing(verbose: bool) -> Result<()> {
     let default_level = if verbose { "debug" } else { "info" };
     tracing_subscriber::fmt()
@@ -234,6 +392,64 @@ fn init_tracing(verbose: bool) -> Result<()> {
         .with_writer(std::io::stderr)
         .try_init()
         .map_err(|error| anyhow!("initialize tracing subscriber: {error}"))
+}
+
+fn run_target_command(command: TargetCommand) -> Result<()> {
+    match command {
+        TargetCommand::Add(command) => {
+            let target_name = command.edit.name.clone();
+            add_target_to_config(&command.config, &command.edit, command.replace)?;
+            println!("target {target_name} written");
+        }
+        TargetCommand::List(command) => {
+            let targets = list_config_targets(&command.config)?;
+            if command.json {
+                println!("{}", render_target_list_json(&targets)?);
+            } else {
+                print!("{}", render_target_list_text(&targets));
+            }
+        }
+        TargetCommand::Remove(command) => {
+            remove_target_from_config(&command.config, &command.name)?;
+            println!("target {} removed", command.name);
+        }
+    }
+    Ok(())
+}
+
+fn exit_target_error(error: anyhow::Error) -> Result<()> {
+    if let Some(error) = error.downcast_ref::<ConfigEditError>() {
+        eprintln!("{error}");
+        std::process::exit(match error {
+            ConfigEditError::TargetExists(_) => EXIT_TARGET_EXISTS,
+            ConfigEditError::TargetNotFound(_) => EXIT_TARGET_NOT_FOUND,
+        });
+    }
+    Err(error)
+}
+
+#[derive(Serialize)]
+struct TargetListOutput<'a> {
+    targets: &'a [TargetConfigSummary],
+}
+
+fn render_target_list_json(targets: &[TargetConfigSummary]) -> Result<String> {
+    serde_json::to_string_pretty(&TargetListOutput { targets })
+        .context("serialize target list JSON")
+}
+
+fn render_target_list_text(targets: &[TargetConfigSummary]) -> String {
+    let mut output = String::new();
+    for target in targets {
+        output.push_str(&format!(
+            "{}\tevent_id={}\ttoken_file={}\tstream_delay_secs={}\n",
+            target.name,
+            target.event_id,
+            target.token_file.display(),
+            target.stream_delay_secs
+        ));
+    }
+    output
 }
 
 fn wait_for_watch_dir(watch_dir: &Path) -> Result<()> {
@@ -448,6 +664,103 @@ mod tests {
             panic!("expected provision command");
         };
         assert_eq!(target, "late-night");
+        Ok(())
+    }
+
+    #[test]
+    fn target_add_parser_accepts_all_options() -> Result<()> {
+        let command = parse_target(
+            [
+                "add",
+                "--config",
+                "/tmp/publisher.toml",
+                "--name",
+                "late-night",
+                "--event-id",
+                "event-late-night",
+                "--token-file",
+                "/tmp/late-night.token",
+                "--stream-delay-secs",
+                "12.5",
+                "--replace",
+            ]
+            .into_iter()
+            .map(OsString::from),
+        )?;
+
+        let Command::Target(TargetCommand::Add(command)) = command else {
+            panic!("expected target add command");
+        };
+        assert_eq!(command.config, PathBuf::from("/tmp/publisher.toml"));
+        assert_eq!(command.edit.name, "late-night");
+        assert_eq!(command.edit.event_id, "event-late-night");
+        assert_eq!(
+            command.edit.token_file,
+            PathBuf::from("/tmp/late-night.token")
+        );
+        assert_eq!(command.edit.stream_delay_secs, Some(12.5));
+        assert!(command.replace);
+        Ok(())
+    }
+
+    #[test]
+    fn target_list_parser_accepts_json() -> Result<()> {
+        let command = parse_target(
+            ["list", "--config", "/tmp/publisher.toml", "--json"]
+                .into_iter()
+                .map(OsString::from),
+        )?;
+
+        let Command::Target(TargetCommand::List(command)) = command else {
+            panic!("expected target list command");
+        };
+        assert_eq!(command.config, PathBuf::from("/tmp/publisher.toml"));
+        assert!(command.json);
+        Ok(())
+    }
+
+    #[test]
+    fn target_remove_parser_requires_name() {
+        let error = parse_target(["remove"].into_iter().map(OsString::from));
+
+        assert!(
+            error.is_err_and(|error| error.to_string().contains("target remove requires --name"))
+        );
+    }
+
+    #[test]
+    fn target_list_text_contains_fields_without_token_content() {
+        let targets = vec![TargetConfigSummary {
+            name: "default".to_owned(),
+            event_id: "event-default".to_owned(),
+            token_file: PathBuf::from("/tmp/default.token"),
+            stream_delay_secs: 12.5,
+        }];
+
+        let output = render_target_list_text(&targets);
+
+        assert!(output.contains("default"));
+        assert!(output.contains("event-default"));
+        assert!(output.contains("/tmp/default.token"));
+        assert!(!output.contains("secret-token"));
+    }
+
+    #[test]
+    fn target_list_json_is_machine_readable_without_token_content() -> Result<()> {
+        let targets = vec![TargetConfigSummary {
+            name: "default".to_owned(),
+            event_id: "event-default".to_owned(),
+            token_file: PathBuf::from("/tmp/default.token"),
+            stream_delay_secs: 0.0,
+        }];
+
+        let output = render_target_list_json(&targets)?;
+        let value: serde_json::Value = serde_json::from_str(&output)?;
+
+        assert_eq!(value["targets"][0]["name"], "default");
+        assert_eq!(value["targets"][0]["event_id"], "event-default");
+        assert_eq!(value["targets"][0]["token_file"], "/tmp/default.token");
+        assert!(!output.contains("secret-token"));
         Ok(())
     }
 

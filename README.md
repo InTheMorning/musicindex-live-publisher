@@ -163,11 +163,33 @@ musicindex-live-publisher provision \
   --token-file ~/.config/musicindex-live-publisher/mixxx/tokens/default.token
 ```
 
-The command prints the `[[target]]` stanza to paste into the config. For
-additional events, repeat provisioning with another `--target` value and another
-token file, then add another `[[target]]` stanza. If a token is lost, provision a
-new live item, replace that target stanza, and advertise the new `event_id`
-wherever listeners discover the live value block.
+The command prints the `[[target]]` stanza to paste into the config.
+
+You can also update the target list with the publisher CLI. These commands keep
+the token as a file path. They do not print token content.
+
+```bash
+musicindex-live-publisher target add \
+  --config ~/.config/musicindex-live-publisher/mixxx/config.toml \
+  --name late-night \
+  --event-id "$EVENT_ID" \
+  --token-file ~/.config/musicindex-live-publisher/mixxx/tokens/late-night.token
+
+musicindex-live-publisher target list \
+  --config ~/.config/musicindex-live-publisher/mixxx/config.toml \
+  --json
+
+musicindex-live-publisher target remove \
+  --config ~/.config/musicindex-live-publisher/mixxx/config.toml \
+  --name late-night
+```
+
+Use `--replace` with `target add` to replace an existing target stanza.
+
+For additional events, repeat provisioning with another `--target` value and
+another token file, then add another `[[target]]` stanza. If a token is lost,
+provision a new live item, replace that target stanza, and advertise the new
+`event_id` wherever listeners discover the live value block.
 
 ## Arch Package
 

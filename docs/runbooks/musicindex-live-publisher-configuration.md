@@ -312,6 +312,32 @@ Provisioning writes the broadcaster token with mode `0600`, prints the
 provisioned `event_id`, and does not print the token. `--target` defaults to
 `default` when omitted.
 
+Target management:
+
+```bash
+musicindex-live-publisher target add \
+  --config <path> \
+  --name <name> \
+  --event-id <event_id> \
+  --token-file <path>
+
+musicindex-live-publisher target list --config <path> --json
+
+musicindex-live-publisher target remove --config <path> --name <name>
+```
+
+`target add` validates that the token file exists and can be read. It writes the
+token file path to the config. It does not read or print token content.
+
+Use `--stream-delay-secs <seconds>` to set a delay for the target. Use
+`--replace` to replace an existing target stanza.
+
+`target list --json` prints target names, event identifiers, token file paths,
+and stream delays. It does not print token content.
+
+`target remove` removes the target stanza only. It does not remove the token
+file and does not contact the relay.
+
 ## Producer TOML
 
 `mixxx-now-playing` reads optional V4V Music Manager settings from:

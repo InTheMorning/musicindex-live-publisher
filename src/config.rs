@@ -7,7 +7,7 @@ use std::time::Duration;
 use std::{env, fs};
 
 use anyhow::{Context, Result, anyhow};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{FallbackConfig, LiveValue, LiveValueDestination, LiveValueModel, WatchTarget};
 
@@ -89,6 +89,42 @@ pub struct ConfigOverrides {
     pub endpoint: Option<String>,
 }
 
+/// A target stanza to add to the publisher configuration.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TargetConfigEdit {
+    pub name: String,
+    pub event_id: String,
+    pub token_file: PathBuf,
+    pub stream_delay_secs: Option<f64>,
+}
+
+/// A redacted target summary read from the publisher configuration.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct TargetConfigSummary {
+    pub name: String,
+    pub event_id: String,
+    pub token_file: PathBuf,
+    pub stream_delay_secs: f64,
+}
+
+/// A config edit failure with a stable command-line meaning.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConfigEditError {
+    TargetExists(String),
+    TargetNotFound(String),
+}
+
+impl fmt::Display for ConfigEditError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::TargetExists(name) => write!(formatter, "target {name} already exists"),
+            Self::TargetNotFound(name) => write!(formatter, "target {name} not found"),
+        }
+    }
+}
+
+impl std::error::Error for ConfigEditError {}
+
 #[derive(Debug, Deserialize)]
 struct RawConfig {
     watch_dir: PathBuf,
@@ -121,6 +157,20 @@ struct RawFallbackValue {
     model: Option<LiveValueModel>,
     #[serde(default)]
     destinations: Vec<LiveValueDestination>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawTargetSummaryConfig {
+    #[serde(default, rename = "target")]
+    targets: Vec<RawTargetSummary>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawTargetSummary {
+    name: String,
+    event_id: String,
+    token_file: PathBuf,
+    stream_delay_secs: Option<f64>,
 }
 
 /// Loads, validates, and resolves token files for a service config.
@@ -157,6 +207,121 @@ pub fn load_config_bytes(
             .unwrap_or_else(|| "parse config TOML".to_owned())
     })?;
     resolve_config(raw, overrides)
+}
+
+/// Lists target stanzas without reading broadcaster tokens.
+///
+/// # Errors
+///
+/// Returns an error when the config file cannot be read, TOML is invalid, or a
+/// target summary has an invalid stream delay.
+pub fn list_config_targets(path: &Path) -> Result<Vec<TargetConfigSummary>> {
+    let text =
+        fs::read_to_string(path).with_context(|| format!("read config file {}", path.display()))?;
+    list_config_targets_from_str(&text)
+        .with_context(|| format!("parse config targets {}", path.display()))
+}
+
+/// Adds or replaces one target stanza in the config file.
+///
+/// # Errors
+///
+/// Returns an error when the existing config cannot be read or parsed, the
+/// target is invalid, the token file cannot be read, or the write fails.
+pub fn add_target_to_config(path: &Path, edit: &TargetConfigEdit, replace: bool) -> Result<()> {
+    validate_target_config_edit(edit)?;
+    let text =
+        fs::read_to_string(path).with_context(|| format!("read config file {}", path.display()))?;
+    let edited = add_target_to_config_text(&text, edit, replace)?;
+    write_config_text_atomic(path, &edited)
+}
+
+/// Removes one target stanza from the config file.
+///
+/// # Errors
+///
+/// Returns an error when the existing config cannot be read or parsed, the
+/// target is missing, or the write fails.
+pub fn remove_target_from_config(path: &Path, name: &str) -> Result<()> {
+    validate_target_name(name)?;
+    let text =
+        fs::read_to_string(path).with_context(|| format!("read config file {}", path.display()))?;
+    let edited = remove_target_from_config_text(&text, name)?;
+    write_config_text_atomic(path, &edited)
+}
+
+/// Lists target stanzas from TOML text without reading broadcaster tokens.
+///
+/// # Errors
+///
+/// Returns an error when TOML is invalid or a target summary has an invalid
+/// stream delay.
+pub fn list_config_targets_from_str(text: &str) -> Result<Vec<TargetConfigSummary>> {
+    let raw: RawTargetSummaryConfig =
+        toml::from_str(text).context("parse config TOML for target list")?;
+    let mut seen = HashSet::new();
+
+    raw.targets
+        .into_iter()
+        .map(|target| {
+            if !seen.insert(target.name.clone()) {
+                return Err(anyhow!("duplicate target name {}", target.name));
+            }
+            validate_stream_delay_secs(&target.name, target.stream_delay_secs)?;
+            Ok(TargetConfigSummary {
+                name: target.name,
+                event_id: target.event_id,
+                token_file: target.token_file,
+                stream_delay_secs: target.stream_delay_secs.unwrap_or(0.0),
+            })
+        })
+        .collect()
+}
+
+/// Adds or replaces one target stanza in TOML text.
+///
+/// # Errors
+///
+/// Returns an error when the existing TOML is invalid or the target exists
+/// without `replace`.
+pub fn add_target_to_config_text(
+    text: &str,
+    edit: &TargetConfigEdit,
+    replace: bool,
+) -> Result<String> {
+    let existing = list_config_targets_from_str(text)?;
+    let exists = existing.iter().any(|target| target.name == edit.name);
+    if exists && !replace {
+        return Err(ConfigEditError::TargetExists(edit.name.clone()).into());
+    }
+
+    let stanza = render_target_config_stanza(edit);
+    if exists {
+        let lines = split_preserving_newlines(text);
+        let span = target_stanza_named(text, &lines, &edit.name)?
+            .ok_or_else(|| ConfigEditError::TargetNotFound(edit.name.clone()))?;
+        let mut edited = lines[..span.start].concat();
+        edited.push_str(&stanza);
+        edited.push_str(&lines[span.end..].concat());
+        return Ok(edited);
+    }
+
+    Ok(append_target_config_stanza(text, &stanza))
+}
+
+/// Removes one target stanza from TOML text.
+///
+/// # Errors
+///
+/// Returns an error when the existing TOML is invalid or the target is missing.
+pub fn remove_target_from_config_text(text: &str, name: &str) -> Result<String> {
+    list_config_targets_from_str(text)?;
+    let lines = split_preserving_newlines(text);
+    let span = target_stanza_named(text, &lines, name)?
+        .ok_or_else(|| ConfigEditError::TargetNotFound(name.to_owned()))?;
+    let mut edited = lines[..span.start].concat();
+    edited.push_str(&lines[span.end..].concat());
+    Ok(edited)
 }
 
 fn resolve_config(raw: RawConfig, overrides: ConfigOverrides) -> Result<PublisherConfig> {
@@ -217,6 +382,43 @@ fn resolve_target(target: RawTarget, seen: &mut HashSet<String>) -> Result<Publi
     })
 }
 
+fn validate_target_config_edit(edit: &TargetConfigEdit) -> Result<()> {
+    validate_target_name(&edit.name)?;
+    validate_no_control_chars("target event_id", &edit.event_id)?;
+    validate_event_id(&edit.name, &edit.event_id)?;
+    validate_stream_delay_secs(&edit.name, edit.stream_delay_secs)?;
+    validate_token_file_readable(&edit.token_file)
+}
+
+fn validate_target_name(name: &str) -> Result<()> {
+    if name.trim().is_empty() {
+        return Err(anyhow!("target name must not be empty"));
+    }
+    validate_no_control_chars("target name", name)
+}
+
+fn validate_no_control_chars(label: &str, value: &str) -> Result<()> {
+    if value.chars().any(char::is_control) {
+        return Err(anyhow!("{label} must not contain control characters"));
+    }
+    Ok(())
+}
+
+fn validate_stream_delay_secs(target_name: &str, stream_delay_secs: Option<f64>) -> Result<()> {
+    resolve_stream_delay(target_name, stream_delay_secs).map(|_| ())
+}
+
+fn validate_token_file_readable(path: &Path) -> Result<()> {
+    let metadata =
+        fs::metadata(path).with_context(|| format!("inspect token file {}", path.display()))?;
+    if !metadata.is_file() {
+        return Err(anyhow!("token file {} is not a file", path.display()));
+    }
+    fs::File::open(path)
+        .with_context(|| format!("read token file {}", path.display()))
+        .map(|_| ())
+}
+
 /// Resolves a target's broadcast stream delay.
 ///
 /// The delay compensates for the buffering between the publisher and a
@@ -261,6 +463,171 @@ fn validate_event_id(target_name: &str, event_id: &str) -> Result<()> {
         ));
     }
     Ok(())
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct TargetStanzaSpan {
+    start: usize,
+    end: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TableHeaderKind {
+    Target,
+    TargetChild,
+    Other,
+}
+
+fn target_stanza_named(text: &str, lines: &[&str], name: &str) -> Result<Option<TargetStanzaSpan>> {
+    for span in target_stanza_spans(lines) {
+        let stanza = lines[span.start..span.end].concat();
+        if target_name_from_stanza(&stanza)?.as_deref() == Some(name) {
+            return Ok(Some(span));
+        }
+    }
+
+    let summaries = list_config_targets_from_str(text)?;
+    if summaries.iter().any(|target| target.name == name) {
+        return Err(anyhow!("could not locate target stanza {name}"));
+    }
+    Ok(None)
+}
+
+fn target_name_from_stanza(stanza: &str) -> Result<Option<String>> {
+    let value: toml::Value = toml::from_str(stanza).context("parse target stanza")?;
+    Ok(value
+        .get("target")
+        .and_then(toml::Value::as_array)
+        .and_then(|targets| targets.first())
+        .and_then(|target| target.get("name"))
+        .and_then(toml::Value::as_str)
+        .map(str::to_owned))
+}
+
+fn target_stanza_spans(lines: &[&str]) -> Vec<TargetStanzaSpan> {
+    let mut spans = Vec::new();
+    let mut current_start = None;
+
+    for (index, line) in lines.iter().enumerate() {
+        match table_header_kind(line) {
+            Some(TableHeaderKind::Target) => {
+                if let Some(start) = current_start {
+                    spans.push(TargetStanzaSpan {
+                        start,
+                        end: trim_span_end(lines, start, index),
+                    });
+                }
+                current_start = Some(index);
+            }
+            Some(TableHeaderKind::Other) => {
+                if let Some(start) = current_start.take() {
+                    spans.push(TargetStanzaSpan {
+                        start,
+                        end: trim_span_end(lines, start, index),
+                    });
+                }
+            }
+            Some(TableHeaderKind::TargetChild) | None => {}
+        }
+    }
+
+    if let Some(start) = current_start {
+        spans.push(TargetStanzaSpan {
+            start,
+            end: trim_span_end(lines, start, lines.len()),
+        });
+    }
+
+    spans
+}
+
+fn trim_span_end(lines: &[&str], start: usize, mut end: usize) -> usize {
+    while end > start && is_blank_or_comment(lines[end - 1]) {
+        end -= 1;
+    }
+    end
+}
+
+fn is_blank_or_comment(line: &str) -> bool {
+    let trimmed = line.trim();
+    trimmed.is_empty() || trimmed.starts_with('#')
+}
+
+fn table_header_kind(line: &str) -> Option<TableHeaderKind> {
+    let trimmed = line.trim_start();
+    if !trimmed.starts_with('[') {
+        return None;
+    }
+
+    let header = trimmed.split('#').next()?.trim();
+    if header == "[[target]]" {
+        return Some(TableHeaderKind::Target);
+    }
+    if (header.starts_with("[target.") && header.ends_with(']'))
+        || (header.starts_with("[[target.") && header.ends_with("]]"))
+    {
+        return Some(TableHeaderKind::TargetChild);
+    }
+    Some(TableHeaderKind::Other)
+}
+
+fn split_preserving_newlines(text: &str) -> Vec<&str> {
+    text.split_inclusive('\n').collect()
+}
+
+fn append_target_config_stanza(text: &str, stanza: &str) -> String {
+    if text.is_empty() {
+        return stanza.to_owned();
+    }
+
+    let mut edited = text.to_owned();
+    if !edited.ends_with('\n') {
+        edited.push('\n');
+    }
+    edited.push('\n');
+    edited.push_str(stanza);
+    edited
+}
+
+fn render_target_config_stanza(edit: &TargetConfigEdit) -> String {
+    let mut stanza = String::new();
+    stanza.push_str("[[target]]\n");
+    stanza.push_str(&format!("name = {}\n", toml_string(&edit.name)));
+    stanza.push_str(&format!("event_id = {}\n", toml_string(&edit.event_id)));
+    stanza.push_str(&format!(
+        "token_file = {}\n",
+        toml_string(&edit.token_file.display().to_string())
+    ));
+    if let Some(stream_delay_secs) = edit.stream_delay_secs {
+        stanza.push_str(&format!("stream_delay_secs = {stream_delay_secs}\n"));
+    }
+    stanza
+}
+
+fn write_config_text_atomic(path: &Path, text: &str) -> Result<()> {
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let file_name = path
+        .file_name()
+        .ok_or_else(|| anyhow!("config path {} has no file name", path.display()))?;
+    let temp_name = format!(
+        ".{}.tmp-{}",
+        file_name.to_string_lossy(),
+        std::process::id()
+    );
+    let temp_path = parent.join(temp_name);
+    fs::write(&temp_path, text)
+        .with_context(|| format!("write temporary config file {}", temp_path.display()))?;
+    fs::rename(&temp_path, path).with_context(|| {
+        format!(
+            "rename temporary config file {} to {}",
+            temp_path.display(),
+            path.display()
+        )
+    })
+}
+
+fn toml_string(value: &str) -> String {
+    toml::Value::String(value.to_owned()).to_string()
 }
 
 fn resolve_token_file_path(
