@@ -298,6 +298,7 @@ Options:
 - `--endpoint <url>`: override the config `endpoint`.
 - `--dry-run`: print live value payloads to stdout instead of publishing.
 - `--verbose`: enable debug logging.
+- `--version`: print the package version and exit.
 
 Provision mode:
 
@@ -312,6 +313,10 @@ Provisioning writes the broadcaster token with mode `0600`, prints the
 provisioned `event_id`, and does not print the token. `--target` defaults to
 `default` when omitted.
 
+Add `--json` when another program calls `provision`. The JSON object contains
+`event_id`, `token_file`, `target`, `metadata_url`, `remote_value_url`,
+`events_url`, and `socket_io_url`. It does not contain the token.
+
 Target management:
 
 ```bash
@@ -324,6 +329,8 @@ musicindex-live-publisher target add \
 musicindex-live-publisher target list --config <path> --json
 
 musicindex-live-publisher target remove --config <path> --name <name>
+
+musicindex-live-publisher config show --config <path> --json
 ```
 
 `target add` validates that the token file exists and can be read. It writes the
@@ -337,6 +344,14 @@ and stream delays. It does not print token content.
 
 `target remove` removes the target stanza only. It does not remove the token
 file and does not contact the relay.
+
+`config show --json` prints `watch_dir`, `endpoint`, and the target array. Each
+target contains `name`, `event_id`, `token_file`, `stream_delay_secs`, and
+`fallback_configured`. It does not print token content or fallback destination
+addresses.
+
+When a JSON command fails after parsing its flags, stdout contains one object
+with an `error` field. The exit code stays the same as the non-JSON command.
 
 ## Producer TOML
 

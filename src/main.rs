@@ -7,9 +7,9 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result, anyhow};
 use musicindex_live_publisher::{
     ConfigEditError, ConfigOverrides, DEFAULT_CONFIG_PATH, DEFAULT_DEBOUNCE_WINDOW, DropEvent,
-    DropEventKind, DropWatcher, LiveValuePayload, PublishSchedule, RelayClient, RelayPublisher,
-    TargetConfigEdit, TargetConfigSummary, add_target_to_config, list_config_targets, load_config,
-    remove_target_from_config, write_token_file,
+    DropEventKind, DropWatcher, LiveValuePayload, PublishSchedule, RedactedPublisherConfig,
+    RelayClient, RelayPublisher, TargetConfigEdit, TargetConfigSummary, add_target_to_config,
+    list_config_targets, load_config, remove_target_from_config, show_config, write_token_file,
 };
 use notify::event::{CreateKind, ModifyKind, RemoveKind, RenameMode};
 use notify::{EventKind, RecursiveMode, Watcher};
@@ -24,14 +24,29 @@ const EXIT_TARGET_NOT_FOUND: i32 = 3;
 fn main() -> Result<()> {
     let cli = Cli::parse(std::env::args_os())?;
     init_tracing(cli.verbose)?;
+    let json_errors = cli.command.wants_json_errors();
 
+    if let Err(error) = run_cli(cli) {
+        return handle_command_error(error, json_errors);
+    }
+
+    Ok(())
+}
+
+fn run_cli(cli: Cli) -> Result<()> {
     match cli.command {
         Command::Provision {
             endpoint,
             token_file,
             target,
-        } => return provision(&endpoint, &token_file, &target),
-        Command::Target(command) => return run_target_command(command).or_else(exit_target_error),
+            json,
+        } => return provision(&endpoint, &token_file, &target, json),
+        Command::Target(command) => return run_target_command(command),
+        Command::Config(command) => return run_config_command(command),
+        Command::Version => {
+            println!("{}", env!("CARGO_PKG_VERSION"));
+            return Ok(());
+        }
         Command::Run => {}
     }
 
@@ -128,8 +143,22 @@ enum Command {
         endpoint: String,
         token_file: PathBuf,
         target: String,
+        json: bool,
     },
     Target(TargetCommand),
+    Config(ConfigCommand),
+    Version,
+}
+
+impl Command {
+    fn wants_json_errors(&self) -> bool {
+        match self {
+            Self::Provision { json, .. } => *json,
+            Self::Target(TargetCommand::List(command)) => command.json,
+            Self::Config(ConfigCommand::Show(command)) => command.json,
+            Self::Run | Self::Target(_) | Self::Version => false,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -158,6 +187,17 @@ struct TargetRemoveCommand {
     name: String,
 }
 
+#[derive(Debug)]
+enum ConfigCommand {
+    Show(ConfigShowCommand),
+}
+
+#[derive(Debug)]
+struct ConfigShowCommand {
+    config: PathBuf,
+    json: bool,
+}
+
 impl Cli {
     fn parse<I, S>(args: I) -> Result<Self>
     where
@@ -171,6 +211,16 @@ impl Cli {
         let remaining = args.collect::<Vec<_>>();
         if remaining
             .first()
+            .is_some_and(|value| value == OsStr::new("--version"))
+        {
+            if remaining.len() != 1 {
+                return Err(anyhow!("--version does not accept arguments"));
+            }
+            cli.command = Command::Version;
+            return Ok(cli);
+        }
+        if remaining
+            .first()
             .is_some_and(|value| value == OsStr::new("provision"))
         {
             cli.command = parse_provision(remaining.into_iter().skip(1))?;
@@ -181,6 +231,13 @@ impl Cli {
             .is_some_and(|value| value == OsStr::new("target"))
         {
             cli.command = parse_target(remaining.into_iter().skip(1))?;
+            return Ok(cli);
+        }
+        if remaining
+            .first()
+            .is_some_and(|value| value == OsStr::new("config"))
+        {
+            cli.command = parse_config(remaining.into_iter().skip(1))?;
             return Ok(cli);
         }
         let mut args = remaining.into_iter();
@@ -205,6 +262,48 @@ impl Cli {
 
         Ok(cli)
     }
+}
+
+fn parse_config(mut args: impl Iterator<Item = OsString>) -> Result<Command> {
+    let subcommand = args
+        .next()
+        .ok_or_else(|| anyhow!("config requires a subcommand"))?;
+    let command = match subcommand.to_str() {
+        Some("show") => ConfigCommand::Show(parse_config_show(args)?),
+        Some(value) => return Err(anyhow!("unknown config subcommand {value}")),
+        None => {
+            return Err(anyhow!(
+                "argument is not valid UTF-8: {}",
+                subcommand.to_string_lossy()
+            ));
+        }
+    };
+    Ok(Command::Config(command))
+}
+
+fn parse_config_show(mut args: impl Iterator<Item = OsString>) -> Result<ConfigShowCommand> {
+    let mut config = None;
+    let mut json = false;
+
+    while let Some(arg) = args.next() {
+        match arg.to_str() {
+            Some("--config") => config = Some(next_path(&mut args, "--config")?),
+            Some("--json") => json = true,
+            Some(flag) if flag.starts_with("--") => return Err(anyhow!("unknown flag {flag}")),
+            Some(value) => return Err(anyhow!("unexpected argument {value}")),
+            None => {
+                return Err(anyhow!(
+                    "argument is not valid UTF-8: {}",
+                    arg.to_string_lossy()
+                ));
+            }
+        }
+    }
+
+    Ok(ConfigShowCommand {
+        config: config.unwrap_or_else(|| PathBuf::from(DEFAULT_CONFIG_PATH)),
+        json,
+    })
 }
 
 fn parse_target(mut args: impl Iterator<Item = OsString>) -> Result<Command> {
@@ -323,12 +422,14 @@ fn parse_provision(mut args: impl Iterator<Item = OsString>) -> Result<Command> 
     let mut endpoint = None;
     let mut token_file = None;
     let mut target = None;
+    let mut json = false;
 
     while let Some(arg) = args.next() {
         match arg.to_str() {
             Some("--endpoint") => endpoint = Some(next_string(&mut args, "--endpoint")?),
             Some("--token-file") => token_file = Some(next_path(&mut args, "--token-file")?),
             Some("--target") => target = Some(next_string(&mut args, "--target")?),
+            Some("--json") => json = true,
             Some(flag) if flag.starts_with("--") => return Err(anyhow!("unknown flag {flag}")),
             Some(value) => return Err(anyhow!("unexpected argument {value}")),
             None => {
@@ -351,6 +452,7 @@ fn parse_provision(mut args: impl Iterator<Item = OsString>) -> Result<Command> 
         endpoint: endpoint.ok_or_else(|| anyhow!("provision requires --endpoint <url>"))?,
         token_file: token_file.ok_or_else(|| anyhow!("provision requires --token-file <path>"))?,
         target,
+        json,
     })
 }
 
@@ -417,15 +519,40 @@ fn run_target_command(command: TargetCommand) -> Result<()> {
     Ok(())
 }
 
-fn exit_target_error(error: anyhow::Error) -> Result<()> {
-    if let Some(error) = error.downcast_ref::<ConfigEditError>() {
+fn run_config_command(command: ConfigCommand) -> Result<()> {
+    match command {
+        ConfigCommand::Show(command) => {
+            let config = show_config(&command.config)?;
+            if command.json {
+                println!("{}", render_config_show_json(&config)?);
+            } else {
+                print!("{}", render_config_show_text(&config));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn handle_command_error(error: anyhow::Error, json: bool) -> Result<()> {
+    let exit_code = command_exit_code(&error).unwrap_or(1);
+    if json {
+        println!("{}", serde_json::json!({ "error": format!("{error:#}") }));
+        std::process::exit(exit_code);
+    }
+    if command_exit_code(&error).is_some() {
         eprintln!("{error}");
-        std::process::exit(match error {
-            ConfigEditError::TargetExists(_) => EXIT_TARGET_EXISTS,
-            ConfigEditError::TargetNotFound(_) => EXIT_TARGET_NOT_FOUND,
-        });
+        std::process::exit(exit_code);
     }
     Err(error)
+}
+
+fn command_exit_code(error: &anyhow::Error) -> Option<i32> {
+    error
+        .downcast_ref::<ConfigEditError>()
+        .map(|error| match error {
+            ConfigEditError::TargetExists(_) => EXIT_TARGET_EXISTS,
+            ConfigEditError::TargetNotFound(_) => EXIT_TARGET_NOT_FOUND,
+        })
 }
 
 #[derive(Serialize)]
@@ -447,6 +574,29 @@ fn render_target_list_text(targets: &[TargetConfigSummary]) -> String {
             target.event_id,
             target.token_file.display(),
             target.stream_delay_secs
+        ));
+    }
+    output
+}
+
+fn render_config_show_json(config: &RedactedPublisherConfig) -> Result<String> {
+    serde_json::to_string_pretty(config).context("serialize config show JSON")
+}
+
+fn render_config_show_text(config: &RedactedPublisherConfig) -> String {
+    let mut output = format!(
+        "watch_dir={}\nendpoint={}\n",
+        config.watch_dir.display(),
+        config.endpoint
+    );
+    for target in &config.targets {
+        output.push_str(&format!(
+            "target {}\tevent_id={}\ttoken_file={}\tstream_delay_secs={}\tfallback_configured={}\n",
+            target.name,
+            target.event_id,
+            target.token_file.display(),
+            target.stream_delay_secs,
+            target.fallback_configured
         ));
     }
     output
@@ -595,11 +745,25 @@ fn emit_payloads(
     Ok(())
 }
 
-fn provision(endpoint: &str, token_file: &Path, target: &str) -> Result<()> {
+fn provision(endpoint: &str, token_file: &Path, target: &str, json: bool) -> Result<()> {
     let client = RelayClient::new(musicindex_live_publisher::DEFAULT_REQUEST_TIMEOUT)?;
     let item = client.provision(endpoint)?;
     write_token_file(token_file, &item.broadcaster_token)?;
 
+    if json {
+        println!("{}", render_provision_json(&item, token_file, target)?);
+        return Ok(());
+    }
+
+    print_provision_text(&item, token_file, target);
+    Ok(())
+}
+
+fn print_provision_text(
+    item: &musicindex_live_publisher::ProvisionedLiveItem,
+    token_file: &Path,
+    target: &str,
+) {
     println!("Live item provisioned.");
     println!(
         "The broadcaster token was returned exactly once and cannot be recovered by the relay."
@@ -613,8 +777,34 @@ fn provision(endpoint: &str, token_file: &Path, target: &str) -> Result<()> {
         "token_file = {}",
         toml_string(&token_file.display().to_string())
     );
+}
 
-    Ok(())
+#[derive(Serialize)]
+struct ProvisionJsonOutput<'a> {
+    event_id: &'a str,
+    token_file: String,
+    target: &'a str,
+    metadata_url: &'a str,
+    remote_value_url: &'a str,
+    events_url: &'a str,
+    socket_io_url: &'a str,
+}
+
+fn render_provision_json(
+    item: &musicindex_live_publisher::ProvisionedLiveItem,
+    token_file: &Path,
+    target: &str,
+) -> Result<String> {
+    serde_json::to_string_pretty(&ProvisionJsonOutput {
+        event_id: &item.event_id,
+        token_file: token_file.display().to_string(),
+        target,
+        metadata_url: &item.metadata_url,
+        remote_value_url: &item.remote_value_url,
+        events_url: &item.events_url,
+        socket_io_url: &item.socket_io_url,
+    })
+    .context("serialize provision JSON")
 }
 
 fn toml_string(value: &str) -> String {
@@ -638,10 +828,11 @@ mod tests {
             .map(OsString::from),
         )?;
 
-        let Command::Provision { target, .. } = command else {
+        let Command::Provision { target, json, .. } = command else {
             panic!("expected provision command");
         };
         assert_eq!(target, "default");
+        assert!(!json);
         Ok(())
     }
 
@@ -660,10 +851,32 @@ mod tests {
             .map(OsString::from),
         )?;
 
-        let Command::Provision { target, .. } = command else {
+        let Command::Provision { target, json, .. } = command else {
             panic!("expected provision command");
         };
         assert_eq!(target, "late-night");
+        assert!(!json);
+        Ok(())
+    }
+
+    #[test]
+    fn provision_accepts_json_flag() -> Result<()> {
+        let command = parse_provision(
+            [
+                "--endpoint",
+                "https://api.example.test",
+                "--token-file",
+                "/tmp/default.token",
+                "--json",
+            ]
+            .into_iter()
+            .map(OsString::from),
+        )?;
+
+        let Command::Provision { json, .. } = command else {
+            panic!("expected provision command");
+        };
+        assert!(json);
         Ok(())
     }
 
@@ -761,6 +974,78 @@ mod tests {
         assert_eq!(value["targets"][0]["event_id"], "event-default");
         assert_eq!(value["targets"][0]["token_file"], "/tmp/default.token");
         assert!(!output.contains("secret-token"));
+        Ok(())
+    }
+
+    #[test]
+    fn config_show_parser_accepts_json() -> Result<()> {
+        let command = parse_config(
+            ["show", "--config", "/tmp/publisher.toml", "--json"]
+                .into_iter()
+                .map(OsString::from),
+        )?;
+
+        let Command::Config(ConfigCommand::Show(command)) = command else {
+            panic!("expected config show command");
+        };
+        assert_eq!(command.config, PathBuf::from("/tmp/publisher.toml"));
+        assert!(command.json);
+        Ok(())
+    }
+
+    #[test]
+    fn version_parser_accepts_only_version_flag() -> Result<()> {
+        let cli = Cli::parse(["publisher", "--version"])?;
+
+        assert!(matches!(cli.command, Command::Version));
+        Ok(())
+    }
+
+    #[test]
+    fn provision_json_output_redacts_token() -> Result<()> {
+        let item = musicindex_live_publisher::ProvisionedLiveItem {
+            event_id: "created-event".to_owned(),
+            broadcaster_token: "created-secret".to_owned(),
+            metadata_url: "/v1/liveitems/created-event/metadata".to_owned(),
+            remote_value_url: "/v1/liveitems/created-event/remoteValue".to_owned(),
+            events_url: "/v1/liveitems/created-event/events".to_owned(),
+            socket_io_url: "/event?event_id=created-event".to_owned(),
+        };
+
+        let output = render_provision_json(&item, Path::new("/tmp/default.token"), "default")?;
+        let value: serde_json::Value = serde_json::from_str(&output)?;
+
+        assert_eq!(value["event_id"], "created-event");
+        assert_eq!(value["token_file"], "/tmp/default.token");
+        assert_eq!(value["target"], "default");
+        assert!(value.get("broadcaster_token").is_none());
+        assert!(!output.contains("created-secret"));
+        Ok(())
+    }
+
+    #[test]
+    fn config_show_json_output_redacts_secret_fields() -> Result<()> {
+        let config = RedactedPublisherConfig {
+            watch_dir: PathBuf::from("/tmp/watch"),
+            endpoint: "https://api.example.test".to_owned(),
+            targets: vec![musicindex_live_publisher::RedactedPublisherTarget {
+                name: "default".to_owned(),
+                event_id: "event-default".to_owned(),
+                token_file: PathBuf::from("/tmp/default.token"),
+                stream_delay_secs: 12.5,
+                fallback_configured: true,
+            }],
+        };
+
+        let output = render_config_show_json(&config)?;
+        let value: serde_json::Value = serde_json::from_str(&output)?;
+
+        assert_eq!(value["watch_dir"], "/tmp/watch");
+        assert_eq!(value["endpoint"], "https://api.example.test");
+        assert_eq!(value["targets"][0]["fallback_configured"], true);
+        assert!(value["targets"][0].get("fallback").is_none());
+        assert!(!output.contains("secret-token"));
+        assert!(!output.contains("03station"));
         Ok(())
     }
 

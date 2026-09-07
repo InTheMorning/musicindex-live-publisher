@@ -107,6 +107,24 @@ pub struct TargetConfigSummary {
     pub stream_delay_secs: f64,
 }
 
+/// A redacted publisher config summary for control surfaces.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct RedactedPublisherConfig {
+    pub watch_dir: PathBuf,
+    pub endpoint: String,
+    pub targets: Vec<RedactedPublisherTarget>,
+}
+
+/// A redacted target summary for control surfaces.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct RedactedPublisherTarget {
+    pub name: String,
+    pub event_id: String,
+    pub token_file: PathBuf,
+    pub stream_delay_secs: f64,
+    pub fallback_configured: bool,
+}
+
 /// A config edit failure with a stable command-line meaning.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConfigEditError {
@@ -166,11 +184,20 @@ struct RawTargetSummaryConfig {
 }
 
 #[derive(Debug, Deserialize)]
+struct RawPublisherConfigSummary {
+    watch_dir: PathBuf,
+    endpoint: String,
+    #[serde(rename = "target")]
+    targets: Vec<RawTargetSummary>,
+}
+
+#[derive(Debug, Deserialize)]
 struct RawTargetSummary {
     name: String,
     event_id: String,
     token_file: PathBuf,
     stream_delay_secs: Option<f64>,
+    fallback: Option<toml::Value>,
 }
 
 /// Loads, validates, and resolves token files for a service config.
@@ -220,6 +247,17 @@ pub fn list_config_targets(path: &Path) -> Result<Vec<TargetConfigSummary>> {
         fs::read_to_string(path).with_context(|| format!("read config file {}", path.display()))?;
     list_config_targets_from_str(&text)
         .with_context(|| format!("parse config targets {}", path.display()))
+}
+
+/// Reads a redacted publisher config without loading token content.
+///
+/// # Errors
+///
+/// Returns an error when the config file cannot be read or TOML is invalid.
+pub fn show_config(path: &Path) -> Result<RedactedPublisherConfig> {
+    let text =
+        fs::read_to_string(path).with_context(|| format!("read config file {}", path.display()))?;
+    show_config_from_str(&text).with_context(|| format!("parse config {}", path.display()))
 }
 
 /// Adds or replaces one target stanza in the config file.
@@ -278,6 +316,33 @@ pub fn list_config_targets_from_str(text: &str) -> Result<Vec<TargetConfigSummar
         .collect()
 }
 
+/// Reads a redacted publisher config from TOML text.
+///
+/// # Errors
+///
+/// Returns an error when TOML is invalid or the config has invalid target
+/// summary data.
+pub fn show_config_from_str(text: &str) -> Result<RedactedPublisherConfig> {
+    let raw: RawPublisherConfigSummary =
+        toml::from_str(text).context("parse config TOML for config show")?;
+    if raw.targets.is_empty() {
+        return Err(anyhow!("config must define at least one target"));
+    }
+
+    let mut seen = HashSet::new();
+    let targets = raw
+        .targets
+        .into_iter()
+        .map(|target| redacted_target_from_raw(target, &mut seen))
+        .collect::<Result<Vec<_>>>()?;
+
+    Ok(RedactedPublisherConfig {
+        watch_dir: raw.watch_dir,
+        endpoint: raw.endpoint,
+        targets,
+    })
+}
+
 /// Adds or replaces one target stanza in TOML text.
 ///
 /// # Errors
@@ -322,6 +387,26 @@ pub fn remove_target_from_config_text(text: &str, name: &str) -> Result<String> 
     let mut edited = lines[..span.start].concat();
     edited.push_str(&lines[span.end..].concat());
     Ok(edited)
+}
+
+fn redacted_target_from_raw(
+    target: RawTargetSummary,
+    seen: &mut HashSet<String>,
+) -> Result<RedactedPublisherTarget> {
+    if !seen.insert(target.name.clone()) {
+        return Err(anyhow!("duplicate target name {}", target.name));
+    }
+    validate_target_name(&target.name)?;
+    validate_no_control_chars("target event_id", &target.event_id)?;
+    validate_event_id(&target.name, &target.event_id)?;
+    validate_stream_delay_secs(&target.name, target.stream_delay_secs)?;
+    Ok(RedactedPublisherTarget {
+        name: target.name,
+        event_id: target.event_id,
+        token_file: target.token_file,
+        stream_delay_secs: target.stream_delay_secs.unwrap_or(0.0),
+        fallback_configured: target.fallback.is_some(),
+    })
 }
 
 fn resolve_config(raw: RawConfig, overrides: ConfigOverrides) -> Result<PublisherConfig> {

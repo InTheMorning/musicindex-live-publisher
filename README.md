@@ -164,6 +164,8 @@ musicindex-live-publisher provision \
 ```
 
 The command prints the `[[target]]` stanza to paste into the config.
+Use `--json` when another program calls this command. The JSON object contains
+the token file path and never the token.
 
 You can also update the target list with the publisher CLI. These commands keep
 the token as a file path. They do not print token content.
@@ -182,9 +184,18 @@ musicindex-live-publisher target list \
 musicindex-live-publisher target remove \
   --config ~/.config/musicindex-live-publisher/mixxx/config.toml \
   --name late-night
+
+musicindex-live-publisher config show \
+  --config ~/.config/musicindex-live-publisher/mixxx/config.toml \
+  --json
+
+musicindex-live-publisher --version
 ```
 
 Use `--replace` with `target add` to replace an existing target stanza.
+`config show --json` reports the loaded config, target names, event IDs, token
+file paths, stream delays, and whether each target has a fallback. It never
+prints token content or fallback destination addresses.
 
 For additional events, repeat provisioning with another `--target` value and
 another token file, then add another `[[target]]` stanza. If a token is lost,

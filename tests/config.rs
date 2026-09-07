@@ -1,6 +1,10 @@
 use std::fs;
+use std::io::{BufRead, BufReader, Write};
+use std::net::{TcpListener, TcpStream};
 use std::path::Path;
 use std::process::Command;
+use std::sync::mpsc;
+use std::thread;
 use std::time::{Duration, Instant};
 
 use anyhow::{Result, anyhow};
@@ -75,6 +79,63 @@ fn publisher_command() -> Command {
     Command::new(env!("CARGO_BIN_EXE_musicindex-live-publisher"))
 }
 
+#[derive(Debug)]
+struct ProvisionStubServer {
+    endpoint: String,
+    received: mpsc::Receiver<String>,
+}
+
+impl ProvisionStubServer {
+    fn start(status: u16, body: Value) -> Result<Self> {
+        let listener = TcpListener::bind("127.0.0.1:0")?;
+        let endpoint = format!("http://{}", listener.local_addr()?);
+        let (sender, received) = mpsc::channel();
+        thread::spawn(move || {
+            let Ok((stream, _peer)) = listener.accept() else {
+                return;
+            };
+            let _ignored = handle_provision_connection(stream, status, &body.to_string())
+                .and_then(|path| sender.send(path).map_err(Into::into));
+        });
+
+        Ok(Self { endpoint, received })
+    }
+
+    fn wait_for_request(&self) -> Result<String> {
+        self.received
+            .recv_timeout(Duration::from_secs(2))
+            .map_err(Into::into)
+    }
+}
+
+fn handle_provision_connection(stream: TcpStream, status: u16, body: &str) -> Result<String> {
+    let mut reader = BufReader::new(stream);
+    let mut first_line = String::new();
+    reader.read_line(&mut first_line)?;
+    let path = first_line
+        .split_whitespace()
+        .nth(1)
+        .ok_or_else(|| anyhow!("request line missing path"))?
+        .to_owned();
+
+    loop {
+        let mut line = String::new();
+        reader.read_line(&mut line)?;
+        let trimmed = line.trim_end_matches(['\r', '\n']);
+        if trimmed.is_empty() {
+            break;
+        }
+    }
+
+    let reason = if status == 200 { "OK" } else { "Error" };
+    let raw = format!(
+        "HTTP/1.1 {status} {reason}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    );
+    reader.get_mut().write_all(raw.as_bytes())?;
+    Ok(path)
+}
+
 fn config_text_without_targets(watch_dir: &Path) -> String {
     format!(
         r#"
@@ -125,6 +186,215 @@ fn one_payload(payloads: Vec<musicindex_live_publisher::LiveValuePayload>) -> Re
         .next()
         .ok_or_else(|| anyhow!("expected one payload"))?;
     Ok(serde_json::to_value(payload)?)
+}
+
+fn provision_response_body() -> Value {
+    json!({
+        "event_id": "created-event",
+        "broadcaster_token": "created-secret",
+        "metadata_url": "/v1/liveitems/created-event/metadata",
+        "remote_value_url": "/v1/liveitems/created-event/remoteValue",
+        "events_url": "/v1/liveitems/created-event/events",
+        "socket_io_url": "/event?event_id=created-event"
+    })
+}
+
+#[test]
+fn provision_json_command_outputs_shape_without_token_content() -> Result<()> {
+    let server = ProvisionStubServer::start(200, provision_response_body())?;
+    let temp = TempDir::new()?;
+    let token_file = temp.path().join("default.token");
+
+    let output = publisher_command()
+        .arg("provision")
+        .arg("--endpoint")
+        .arg(&server.endpoint)
+        .arg("--target")
+        .arg("default")
+        .arg("--token-file")
+        .arg(&token_file)
+        .arg("--json")
+        .output()?;
+
+    assert!(
+        output.status.success(),
+        "provision --json should exit successfully"
+    );
+    assert_eq!(
+        server.wait_for_request()?,
+        "/v1/liveitems",
+        "provision should call the live item create route"
+    );
+    let stdout = String::from_utf8(output.stdout)?;
+    let value: Value = serde_json::from_str(&stdout)?;
+
+    assert_eq!(value["event_id"], "created-event");
+    assert_eq!(value["token_file"], token_file.display().to_string());
+    assert_eq!(value["target"], "default");
+    assert_eq!(
+        value["metadata_url"],
+        "/v1/liveitems/created-event/metadata"
+    );
+    assert_eq!(
+        value["remote_value_url"],
+        "/v1/liveitems/created-event/remoteValue"
+    );
+    assert_eq!(value["events_url"], "/v1/liveitems/created-event/events");
+    assert_eq!(value["socket_io_url"], "/event?event_id=created-event");
+    assert!(value.get("broadcaster_token").is_none());
+    assert!(!stdout.contains("created-secret"));
+    assert_eq!(fs::read_to_string(token_file)?, "created-secret\n");
+    Ok(())
+}
+
+#[test]
+fn provision_without_json_keeps_prose_output() -> Result<()> {
+    let server = ProvisionStubServer::start(200, provision_response_body())?;
+    let temp = TempDir::new()?;
+    let token_file = temp.path().join("default.token");
+
+    let output = publisher_command()
+        .arg("provision")
+        .arg("--endpoint")
+        .arg(&server.endpoint)
+        .arg("--target")
+        .arg("default")
+        .arg("--token-file")
+        .arg(&token_file)
+        .output()?;
+
+    assert!(
+        output.status.success(),
+        "provision without --json should exit successfully"
+    );
+    let stdout = String::from_utf8(output.stdout)?;
+    let expected = format!(
+        "Live item provisioned.\n\
+The broadcaster token was returned exactly once and cannot be recovered by the relay.\n\
+Token written to {}\n\n\
+[[target]]\n\
+name = \"default\"\n\
+event_id = \"created-event\"\n\
+token_file = \"{}\"\n",
+        token_file.display(),
+        token_file.display()
+    );
+
+    assert_eq!(stdout, expected);
+    assert!(!stdout.contains("created-secret"));
+    Ok(())
+}
+
+#[test]
+fn provision_json_failure_outputs_error_object() -> Result<()> {
+    let server = ProvisionStubServer::start(500, json!({"error": "boom"}))?;
+    let temp = TempDir::new()?;
+    let token_file = temp.path().join("default.token");
+
+    let output = publisher_command()
+        .arg("provision")
+        .arg("--endpoint")
+        .arg(&server.endpoint)
+        .arg("--token-file")
+        .arg(&token_file)
+        .arg("--json")
+        .output()?;
+
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "provision --json should keep the failure exit code"
+    );
+    let stdout = String::from_utf8(output.stdout)?;
+    let value: Value = serde_json::from_str(&stdout)?;
+
+    assert!(
+        value["error"]
+            .as_str()
+            .is_some_and(|error| { error.contains("POST /v1/liveitems failed with HTTP 500") })
+    );
+    assert!(!stdout.contains("created-secret"));
+    Ok(())
+}
+
+#[test]
+fn config_show_json_outputs_redacted_shape() -> Result<()> {
+    let temp = TempDir::new()?;
+    let watch_dir = temp.path().join("watch");
+    let token = write_token(temp.path(), "default.token", "secret-token")?;
+    let config_path = write_config(temp.path(), &config_text(&watch_dir, &token, None))?;
+
+    let output = publisher_command()
+        .arg("config")
+        .arg("show")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--json")
+        .output()?;
+
+    assert!(
+        output.status.success(),
+        "config show --json should exit successfully"
+    );
+    let stdout = String::from_utf8(output.stdout)?;
+    let value: Value = serde_json::from_str(&stdout)?;
+
+    assert_eq!(value["watch_dir"], watch_dir.display().to_string());
+    assert_eq!(value["endpoint"], "https://api.example.test");
+    assert_eq!(value["targets"][0]["name"], "default");
+    assert_eq!(value["targets"][0]["event_id"], "event-default");
+    assert_eq!(
+        value["targets"][0]["token_file"],
+        token.display().to_string()
+    );
+    assert_eq!(value["targets"][0]["stream_delay_secs"], 0.0);
+    assert_eq!(value["targets"][0]["fallback_configured"], true);
+    assert!(value["targets"][0].get("fallback").is_none());
+    assert!(!stdout.contains("secret-token"));
+    assert!(!stdout.contains("03station"));
+    Ok(())
+}
+
+#[test]
+fn config_show_json_failure_outputs_error_object() -> Result<()> {
+    let temp = TempDir::new()?;
+    let missing = temp.path().join("missing.toml");
+
+    let output = publisher_command()
+        .arg("config")
+        .arg("show")
+        .arg("--config")
+        .arg(&missing)
+        .arg("--json")
+        .output()?;
+
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "config show --json should keep the failure exit code"
+    );
+    let stdout = String::from_utf8(output.stdout)?;
+    let value: Value = serde_json::from_str(&stdout)?;
+
+    assert!(value["error"].as_str().is_some_and(|error| {
+        error.contains("read config file") && error.contains("missing.toml")
+    }));
+    Ok(())
+}
+
+#[test]
+fn version_command_prints_package_version() -> Result<()> {
+    let output = publisher_command().arg("--version").output()?;
+
+    assert!(
+        output.status.success(),
+        "--version should exit successfully"
+    );
+    assert_eq!(
+        String::from_utf8(output.stdout)?,
+        format!("{}\n", env!("CARGO_PKG_VERSION"))
+    );
+    Ok(())
 }
 
 #[test]

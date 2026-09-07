@@ -142,6 +142,19 @@ The command prints a `[[target]]` stanza. Keep the `event_id` — listeners
 subscribe by it, so changing it later means republishing your RSS live value
 block.
 
+Use JSON mode when a control surface provisions the item:
+
+```bash
+musicindex-live-publisher provision \
+  --endpoint https://api.musicindex.org \
+  --target default \
+  --token-file ~/.config/musicindex-live-publisher/mixxx/tokens/default.token \
+  --json
+```
+
+The JSON object contains the token file path. It never contains the token
+content. A caller that needs the token reads the token file.
+
 ## Configuration
 
 `~/.config/musicindex-live-publisher/mixxx/config.toml`:
@@ -174,6 +187,24 @@ and startup fails with a specific message if one is missing.
 
 See [configuration options](musicindex-live-publisher-configuration.md) for the
 full publisher and producer option reference.
+
+To verify that the binary is installed:
+
+```bash
+musicindex-live-publisher --version
+```
+
+To show the loaded config in a machine-readable form:
+
+```bash
+musicindex-live-publisher config show \
+  --config ~/.config/musicindex-live-publisher/mixxx/config.toml \
+  --json
+```
+
+The output shows target names, event IDs, token file paths, stream delays, and
+whether each target has a fallback. It does not show token content or fallback
+destination addresses.
 
 ## Future Player Instances
 
