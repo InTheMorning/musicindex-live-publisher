@@ -1,5 +1,11 @@
 # Documentation
 
+## Architecture
+
+- [Broadcast chain boundaries](architecture/broadcast-chain-boundaries.md) —
+  what this repository consumes and produces, which neighbor owns each
+  contract, and the known limits of the chain
+
 ## ADRs
 
 - [ADR 0001: Rust now-playing lifecycle](adr/0001-rust-now-playing-lifecycle.md)

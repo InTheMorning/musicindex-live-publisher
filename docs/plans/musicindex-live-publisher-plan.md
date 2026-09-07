@@ -39,7 +39,8 @@ This plan uses **`musicindex-live-publisher`**: the symmetric client to
 | Component | Location | Role |
 |---|---|---|
 | `musicindex-live-relay` | `~/build/splitkit` | Server. Socket.IO + SSE + HTTP, memory-only. No v4vmm dependency. |
-| Live client | `v4vmm/src/api.rs`, `v4vmm/src/cli.rs` | Creates live items, publishes metadata. ADR 0018, ADR 0019. ~350 lines. |
+| Live client | `v4vmm/src/api.rs`, `v4vmm/src/cli.rs` | Creates live items and reads snapshots. The publish half is withdrawn by `v4vmm` ADR 0059. ~350 lines. |
+| Control surface | `v4vmm` `Broadcast` frame | Registers events, starts and stops services, shows listener truth. `v4vmm` ADR 0059. Planned. |
 | Payload examples | `~/build/splitkit/hgh-example-{1,2,3}.json` | Real Curiohoster live value payloads. |
 | Metadata producer | `mixxx-now-playing` (in flight) | Emits V4V track metadata with `Value Routes`. Presence means a track is playing. |
 
@@ -289,16 +290,26 @@ stream end to end.
 
 ## Cutover
 
-Removing the client from `v4vmm` is agreed, but it is a change to a different
-repository and needs its own plan and commit there. Sequence:
+Resolved on 2026-09-06. `v4vmm` ADR 0059 supersedes ADR 0018 and ADR 0019, and
+`docs/plans/adr-0059-broadcast-control-surface-phase-plan.md` in that repository
+holds the work.
 
-1. This service runs the private stream successfully for a full show.
-2. Open a plan in `v4vmm` to remove `v4vmm liveitem *`, superseding ADR 0018 and
-   ADR 0019 with a pointer to this project.
-3. Remove the live surface from `v4vmm/src/api.rs` and `v4vmm/src/cli.rs`.
+Two facts changed the original sequence. No operator ever ran the `v4vmm`
+publish path, so it was never a working fallback. It also sends the wrapped
+body form, which listener apps cannot read for payment splits. A path that
+nobody used and that produces the wrong shape is not a safety net.
 
-Do not remove anything from `v4vmm` before step 1. It is the only working
-publisher today and the fallback if this service has a problem.
+The revised sequence:
+
+1. `v4vmm` phase 1 removes `publish_live_metadata`,
+   `publish_live_metadata_with_token`, and the `v4vmm liveitem publish`
+   commands.
+2. `v4vmm` keeps `create`, `health`, and `latest` for event registration and
+   for listener-truth reads.
+3. This service stays the only sender of live payloads.
+
+`v4vmm` becomes a producer later, for its built-in `mpv` player only. It then
+writes `musicindex.nowplaying/1` drop files like any other producer.
 
 ## Risks
 

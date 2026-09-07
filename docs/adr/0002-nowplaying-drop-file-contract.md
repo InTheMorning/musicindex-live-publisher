@@ -3,6 +3,12 @@
 Status: Accepted
 Date: 2026-09-04
 
+Amended 2026-09-06: `v4vmm` accepted its ADR 0059 and became the control
+surface for this chain. Two statements below now have a known outcome. The
+`v4vmm` live client loses its publish half, and `v4vmm` becomes a producer for
+its built-in `mpv` player. This contract does not change. See
+`docs/architecture/broadcast-chain-boundaries.md`.
+
 ## Context
 
 `musicindex-live-publisher` watches for track metadata from producers such as
@@ -80,7 +86,10 @@ Example:
 ## Alternatives Considered
 
 Directly depending on `v4vmm` was rejected because this publisher must build
-independently and because `v4vmm`'s live client will be removed after cutover.
+independently and because the publish half of the `v4vmm` live client is
+withdrawn. `v4vmm` ADR 0059 records that decision. `v4vmm` keeps the live item
+create and read operations for event registration, and this publisher stays the
+only sender of payloads.
 
 Reading relay payloads directly from producers was rejected because the publisher
 owns transformation and clear semantics. Producers supply facts about the
