@@ -103,6 +103,7 @@ broadcast control surface (`v4vmm` ADR 0059). Task 001 gates `v4vmm` task 014.
 - [Rust now-playing review checklist](reviews/rust-now-playing-review-checklist.md)
 - [Now-playing / live publisher audit review](reviews/nowplaying-publisher-audit-review.md) — accuracy, stability, and security audit of both crates at `1dea27f`
 - [Publisher control CLI review checklist](reviews/publisher-control-cli-review-checklist.md)
+- [Publisher control CLI implementation review](reviews/publisher-control-cli-implementation-review.md)
 
 ## Runbooks
 

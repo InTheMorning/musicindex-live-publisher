@@ -36,16 +36,20 @@ Reviewed work:
 
 ## Review Result
 
-Status: Pending
+Status: Pass - 2026-09-07
 
 Required fixes:
 
-- Pending review.
+- None.
 
 Optional improvements:
 
-- Pending review.
+- Add exact `config show` JSON examples after the first `v4vmm` consumer lands.
 
 Merge recommendation:
 
-- Pending review.
+- Merge.
+
+Review artifact:
+
+- `docs/reviews/publisher-control-cli-implementation-review.md`

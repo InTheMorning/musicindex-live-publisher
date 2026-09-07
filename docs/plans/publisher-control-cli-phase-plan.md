@@ -2,7 +2,10 @@
 
 ## Status
 
-Accepted - 2026-09-07.
+Implemented - 2026-09-07.
+
+The implementation review is
+`docs/reviews/publisher-control-cli-implementation-review.md`.
 
 ## Goal
 
@@ -52,6 +55,8 @@ and read publisher state without editing configuration files directly.
 3. Review the implementation against ADR 0004 and the task packets.
 4. Set ADR 0004 and this plan to `Implemented` when the review records no open
    gates.
+
+All steps are complete as of 2026-09-07.
 
 ## Schema And API Implications
 

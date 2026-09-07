@@ -1,7 +1,11 @@
 # ADR 0004: Publisher Control CLI
 
-Status: Accepted
+Status: Implemented
 Date: 2026-09-07
+
+Implemented 2026-09-07: control surface tasks 001 and 002 landed. The
+implementation review is
+`docs/reviews/publisher-control-cli-implementation-review.md`.
 
 ## Context
 
