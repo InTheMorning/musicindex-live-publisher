@@ -1,5 +1,13 @@
 # Control Surface Task 002: Machine-Readable CLI Surface
 
+Status: Implemented - 2026-09-07 (`459854c`). Every criterion is mechanical.
+This packet has no visual criteria, because it adds no user interface.
+
+The contract below records what shipped, read from `src/main.rs` and
+`src/config.rs` on 2026-09-08. `v4vmm` ADR 0059 task 009 does not yet consume
+`--version`, so it still reports one service state fewer. That follow-up is
+recorded below and is not done.
+
 ## Goal
 
 Let another program read the state of this package without parsing prose. Add
@@ -68,14 +76,80 @@ Let another program read the state of this package without parsing prose. Add
    State that the token reaches the token file only, and that a caller reads it
    from there.
 
+## Contract With The Control Surface
+
+`v4vmm` runs these commands over a transport and parses the result. A change
+here is a cross-repository change.
+
+`--version` prints the bare version on one line and exits `0`. It does not print
+the package name:
+
+```text
+0.4.1
+```
+
+The caller separates three cases, so keep them distinct:
+
+| Observation | Meaning to the caller |
+|---|---|
+| the binary is absent, or the shell reports "not found" | not installed |
+| `--version` exits `0`, and `config show --json` holds an empty target array | installed but not configured |
+| `--version` exits `0`, and at least one target is present | installed and configured |
+
+`config show --json` prints `RedactedPublisherConfig`. Its target elements are
+`RedactedPublisherTarget`, which carries the four keys that `target list --json`
+prints in control-surface task 001, plus the fallback flag. The two commands use
+two types, so they can drift. Keep the shared keys identical:
+
+```json
+{
+  "watch_dir": "/run/user/1000/musicindex-live-publisher/mixxx/nowplaying",
+  "endpoint": "https://relay.example",
+  "targets": [
+    {
+      "name": "default",
+      "event_id": "01J8Z...",
+      "token_file": "/home/operator/.config/musicindex-live-publisher/mixxx/tokens/default",
+      "stream_delay_secs": 0.0,
+      "fallback_configured": false
+    }
+  ]
+}
+```
+
+**Do not let the two commands drift.** A target in `config show` and the same
+target in `target list` carry identical values for the shared keys.
+
+An empty target array prints `[]`, never an absent key and never `null`.
+
+A failure with `--json` prints one object with an `error` field on stdout and
+keeps the exit code.
+
+## What This Needs From v4vmm Afterwards
+
+`v4vmm` `ServiceState` today holds `Active`, `Inactive`, `Failed`,
+`NotInstalled`, `NotReachable`, and `Unknown`. It has no state for "installed
+but not configured", so it cannot use the middle row of the table above.
+
+Landing this packet does not change `v4vmm` on its own. A `v4vmm` packet must
+add the state and read it from these two commands. Until then, an installed and
+unconfigured publisher keeps reporting as it does now.
+
+Record that follow-up before this packet is called complete.
+
 ## Acceptance Criteria
 
 - `provision` without `--json` prints exactly what it printed before.
 - `provision --json` prints one object and nothing else on stdout, and that
   object holds no token.
 - `config show --json` never holds token content.
-- `--version` exits zero and prints the version.
 - Exit codes are unchanged.
+- `--version` prints the bare version on one line, without the package name, and
+  exits `0`.
+- A target in `config show --json` and the same target in `target list --json`
+  carry identical values for `name`, `event_id`, `token_file`, and
+  `stream_delay_secs`.
+- An empty target array prints `[]`.
 
 ## Test Commands
 

@@ -1,5 +1,13 @@
 # Control Surface Task 001: Target Management Commands
 
+Status: Implemented - 2026-09-07 (`a5b434e`). Every criterion is mechanical.
+This packet has no visual criteria, because it adds no user interface.
+
+`v4vmm` ADR 0059 task 014 consumes these commands. The contract below records
+what shipped, read from `src/main.rs` and `src/config.rs` on 2026-09-08. It is
+not a proposal. Another repository parses this, so a change here is a
+cross-repository change.
+
 ## Goal
 
 Add commands that add, list, and remove a publish target in the configuration
@@ -74,6 +82,44 @@ file. This lets a control surface manage targets without writing the file.
 7. Add a test that no command prints token content.
 8. Document the three commands in the configuration runbook and in `README.md`.
 
+## Contract With The Control Surface
+
+`v4vmm` runs these commands over a transport and parses the result. These are
+not implementation details. A change here is a cross-repository change.
+
+`target list --json` prints one object that holds a `targets` array. It is not
+a bare array:
+
+```json
+{
+  "targets": [
+    {
+      "name": "default",
+      "event_id": "01J8Z...",
+      "token_file": "/home/operator/.config/musicindex-live-publisher/mixxx/tokens/default",
+      "stream_delay_secs": 0.0
+    }
+  ]
+}
+```
+
+The element keys match `TargetConfigSummary` in `src/config.rs`. An empty target
+list prints `{"targets": []}`.
+
+Exit codes, because the caller separates these states without reading text:
+
+| Code | Meaning | Constant |
+|---|---|---|
+| 0 | success | |
+| 2 | target exists, from `add` without `--replace` | `EXIT_TARGET_EXISTS` |
+| 3 | target not found, from `remove` | `EXIT_TARGET_NOT_FOUND` |
+| 1 | every other failure, including an unknown subcommand | |
+
+**Exit `2` does not mean a usage error here.** A caller must not read `2` as
+"this publisher has no target commands". An older publisher without these
+commands fails with `1` and the message `unknown target subcommand`, so the
+caller separates the two by message, not by code alone.
+
 ## Acceptance Criteria
 
 - A second target can be added to an existing configuration without `--force`
@@ -83,6 +129,10 @@ file. This lets a control surface manage targets without writing the file.
 - Duplicate name and missing name return distinct exit codes.
 - The service reads a configuration written by these commands without a change
   to `load_config`.
+- `target list --json` prints `{"targets": [...]}` with the four element keys
+  named in the contract above, and an empty list prints `{"targets": []}`.
+- `remove` of an absent target exits `3`. `add` of an existing name without
+  `--replace` exits `2`.
 
 ## Test Commands
 
