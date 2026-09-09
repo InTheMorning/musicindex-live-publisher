@@ -112,13 +112,28 @@ Exit codes, because the caller separates these states without reading text:
 |---|---|---|
 | 0 | success | |
 | 2 | target exists, from `add` without `--replace` | `EXIT_TARGET_EXISTS` |
+
+`v4vmm` passes `--replace` when it attaches, so a re-attach overwrites rather
+than failing. Exit `2` reaches a caller that omits the flag.
+
 | 3 | target not found, from `remove` | `EXIT_TARGET_NOT_FOUND` |
 | 1 | every other failure, including an unknown subcommand | |
 
 **Exit `2` does not mean a usage error here.** A caller must not read `2` as
-"this publisher has no target commands". An older publisher without these
-commands fails with `1` and the message `unknown target subcommand`, so the
-caller separates the two by message, not by code alone.
+"this publisher has no target commands".
+
+An older publisher without these commands does not reach the `target` parser at
+all. The word falls through the top-level dispatch into the run-mode argument
+parser, and the message is `unexpected argument target`. That is the marker a
+caller reads for "these commands are absent".
+
+`unknown target subcommand` is a different answer. It comes from a publisher
+that **has** these commands and was given a subcommand it does not know. A
+caller must not read it as an absent feature.
+
+Corrected 2026-09-09. The first version of this contract named the wrong
+message, and a caller that trusted it would have reported a working publisher as
+too old.
 
 ## Acceptance Criteria
 
