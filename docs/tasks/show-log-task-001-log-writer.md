@@ -1,5 +1,10 @@
 # Show Log Task 001: Show Log Writer
 
+Status: Not started - 2026-09-18. The writer needs a timestamp-source decision
+before implementation. ADR 0003 defines producer time, but version 1 drop files
+contain no producer timestamp. The scheduler's `Instant` values cannot supply
+that wall-clock fact. Resolve the contract before changing code.
+
 ## Goal
 
 Write the `musicindex.showlog/1` append-only log from the publish loop. One line
@@ -34,9 +39,10 @@ for each track and each clear, with both timestamps and the publish result.
 
 - **A log failure never stops a publish.** Catch the error, warn through
   `tracing`, and continue. Payment routing is the primary duty.
-- **`aired_at` is the published time**, not the time the drop file appeared.
-  `src/schedule.rs` holds `queued_at` and `due_at`. Record `observed_at` from
-  the first and `aired_at` from the moment of release.
+- Record `observed_at` from the producer-time source approved under ADR 0003.
+  Do not substitute queue time or file-read time for an unknown producer time.
+- Record `aired_at` at the actual send. Do not calculate it from the configured delay.
+- `queued_at` and `due_at` are monotonic `Instant` values. They are not wall-clock timestamps.
 - Append and flush one line at a time. Never rewrite a line and never rewrite
   the file.
 - Never write a token, and never write a fallback destination address that the
@@ -55,18 +61,18 @@ for each track and each clear, with both timestamps and the publish result.
 3. Serialize one entry to one line of JSON with no newline inside it.
 4. Add `ShowLog` with `open(path)` and `append(entry)`. `append` writes the
    line, writes a newline, and flushes.
-5. Add a log path and a retention period to the configuration. Both are
-   optional. The default path is the state directory of the instance.
-6. Build the entry where the payload is released, so the release time is
-   available for `aired_at`. Carry `observed_at` from the schedule alongside
-   the payload.
+5. Specify the log-path and retention settings before implementation.
+   The packet must explain how the operator enables logging and resolves the
+   instance state path. Missing log configuration must create no file.
+6. Carry the approved producer timestamp with the payload.
+   Record the actual send time as `aired_at`. Preserve both facts in the entry.
 7. Record the publish result after the relay answers. A retryable result is
    logged with its own value, not as a success.
 8. On startup, remove a log file older than the retention period. Log the
    count.
 9. Add tests:
    - a track entry holds every ADR 0003 field
-   - `aired_at` minus `observed_at` equals the configured stream delay
+   - injected producer and send times remain unchanged, including when their difference exceeds the configured delay
    - a clear entry is written when playback stops
    - a second entry for the same block GUID is appended, not merged
    - a write failure warns and the publish loop continues
@@ -76,7 +82,7 @@ for each track and each clear, with both timestamps and the publish result.
 ## Acceptance Criteria
 
 - The log holds one valid JSON object for each line.
-- `aired_at` reflects the stream delay.
+- Tests prove that the entry preserves the supplied producer time and actual send time.
 - A route revision appears as a second line for the same block GUID.
 - A failed log write does not stop publishing.
 - No secret appears in the log.
@@ -99,8 +105,9 @@ for each track and each clear, with both timestamps and the publish result.
 
 ## Escalation Triggers
 
-- The release path does not carry the observed time, and plumbing it needs a
-  change to the schedule contract.
+- The producer timestamp source remains undefined or requires a drop-file schema change.
+- The release path cannot preserve the approved timestamp without a schedule contract change.
+- The contract does not define timestamps for a failed or unsent publication.
 - A publish result is not available at the point the entry is written. Report
   it rather than logging an optimistic result.
 
@@ -120,7 +127,7 @@ Goal:
 
 Constraints:
 - A log failure never stops a publish. Warn and continue.
-- `aired_at` is the release time, not the drop-file time.
+- Preserve the approved producer time. Record `aired_at` at the actual send.
 - Append and flush one line at a time. Never rewrite.
 - Never write a token. Opt-in: no configured path means no file.
 - Do not add a show concept.
@@ -130,7 +137,7 @@ Do not touch:
   behavior
 
 Acceptance criteria:
-- Every ADR 0003 field present, `aired_at` reflects the delay, revisions append.
+- Tests prove that every ADR 0003 field is present and both recorded times remain unchanged. Revisions append.
 - A write failure does not stop the loop. No secret in the log.
 
 Test commands:

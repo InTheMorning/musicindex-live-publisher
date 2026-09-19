@@ -1,5 +1,8 @@
 # Show Log Task 002: Read Contract And Documentation
 
+Status: Not started - 2026-09-18. This packet follows the writer and its timestamp-source decision.
+The corrected reader instructions follow ADR 0003's existing real-time rule.
+
 ## Goal
 
 Give consumers a documented way to read the log, and document the operator
@@ -44,15 +47,16 @@ surface. This is the half `v4vmm` builds against.
 
 1. Add `read_entries(path)` that returns the valid entries and the count of
    lines it skipped.
-2. Add `entries_between(path, start, end)` that filters on `aired_at`.
+2. Add `entries_between(path, start, end)` that filters on `observed_at`.
 3. Add `latest_for_blocks(entries)` that applies the supersede rule and returns
-   one entry for each block, in `aired_at` order.
+   one entry for each block, in `observed_at` order.
 4. Add a `show-log` command that prints entries as JSON for a time range, so an
    operator and a remote consumer can read the log without a Rust dependency.
 5. Add tests:
    - a damaged last line is skipped and the rest parse
    - an unknown schema version is skipped
-   - a time range selects the right entries
+   - a range selects by `observed_at` when `aired_at` lies outside the range
+   - block ordering uses `observed_at` when delivery order differs
    - the supersede rule keeps the last entry for a block
    - an empty file returns no entries and no error
 6. Document the contract in `README.md`: the schema, the field list, both
@@ -69,6 +73,7 @@ surface. This is the half `v4vmm` builds against.
 - A damaged last line does not fail a read.
 - The supersede rule is applied in one place and tested.
 - A consumer can read a time range without linking this crate.
+- Tests prove that ranges and ordering use `observed_at`, independent of delivery delay.
 - `README.md` documents the schema, both timestamps, and which one an episode
   uses.
 - The boundaries document lists the log as a produced contract.
@@ -93,8 +98,8 @@ surface. This is the half `v4vmm` builds against.
 
 - A consumer needs a field the writer does not record. That is a schema version
   change, not an addition.
-- The time range filter is ambiguous for an entry that has no `aired_at`
-  because the publish failed.
+- An entry lacks `observed_at`, or the writer contract does not define its timestamp source.
+  Resolve the contract before implementation. Do not substitute `aired_at`.
 
 ## Prompt for lower-context coding model
 
@@ -113,7 +118,8 @@ Constraints:
 - Tolerate a damaged last line. Ignore an unknown schema version.
 - The supersede rule lives in the reader. Last entry for a block wins.
 - The file is the contract. A consumer may read it without this crate.
-- No show concept. The caller passes a time range.
+- No show concept. The caller passes a time range in `observed_at`.
+- Sort episode and operator results by `observed_at`. Keep `aired_at` for live delivery facts.
 
 Do not touch:
 - the writer behavior, the publish loop, the drop-file contract

@@ -1,7 +1,17 @@
 # ADR 0003: Show log contract
 
-Status: Accepted
-Date: 2026-09-06
+## Status
+
+Accepted - 2026-09-06.
+
+Reconciled 2026-09-18: the reader packet now uses `observed_at` for episode and
+operator ranges. Removed older explanations that contradicted the real-time decision.
+Implementation has not started.
+
+The timestamp source remains an implementation prerequisite. Version 1 drop
+files contain no producer timestamp. The scheduler stores monotonic `Instant`
+values, not wall-clock event times. Resolve that source in the owning contract
+before implementing the writer. This correction does not choose a new source.
 
 Amended 2026-09-07: the first draft told a consumer to build chapter and value
 time split start times from `aired_at`. That is wrong. `butt` records at the
@@ -32,9 +42,8 @@ Two facts about this service control the contract.
 
 **A published payload is delayed.** `src/schedule.rs` holds each payload for the
 target stream delay, because listeners hear a track several seconds after the
-producer writes the drop file. The recording comes from the encoder output, so
-the recording timeline matches the delayed time. A consumer that uses the drop
-time puts every chapter and every value time split early by the whole delay.
+producer writes the drop file. A local encoder recording precedes that delivery
+delay. Its episode timeline uses `observed_at`. Applying the live delay would offset its chapters and value splits.
 
 **A block can be revised.** The schedule replaces a pending payload that repeats
 an `(eventGuid, blockGuid)` pair. That is the MusicIndex value-route upgrade,
@@ -105,10 +114,9 @@ live listener's app flips the value block near the moment that listener hears
 the change. It is a delivery time for the live path and nothing more. It does
 not describe the audio, and it must not drive a recorded episode.
 
-A recorder that pulls the stream after the icecast server sits on the other
-side of that delay and aligns closer to `aired_at`. A consumer must therefore
-know which side of the delay its recording came from. The log states the facts
-and does not choose.
+A post-icecast recording can drift from producer time. It requires correction
+to the same real-time timeline before episode generation. The configured live
+delay is an estimate, not proof of that correction.
 
 ### The delay is an estimate, not a measurement
 
@@ -185,9 +193,8 @@ none of that. It stays a small service that records facts.
 ### Use SQLite for the log
 
 Rejected. The log is append-only and is read whole. SQLite adds a dependency
-and a corruption mode to a workload that a text file serves correctly. The
-relay repository chose SQLite for durable identity, which is a different
-workload.
+and a corruption mode to a workload that a text file serves correctly.
+Relay identity persistence is a separate workload with its own storage decision.
 
 ### One log file for each show
 
@@ -200,7 +207,7 @@ Positive:
 
 - A show recorded from now on can become an episode later, even before the
   generation code exists.
-- The delay problem is solved once, in the component that owns the delay.
+- Both recorded times remain available for later calibration.
 - A route revision is visible instead of silently lost.
 - `v4vmm` reads a documented file rather than reconstructing a timeline.
 
@@ -217,6 +224,9 @@ Negative and risks:
 - The contract now has a second version to maintain beside the drop file.
 
 ## Follow-Up Work
+
+- Resolve the producer timestamp source before writer implementation.
+  Preserve the distinction between producer time, publisher observation and delivery time.
 
 - Episode generation in `v4vmm`, which is a separate ADR in that repository.
 - A podping step after the feed updates.

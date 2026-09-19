@@ -6,7 +6,12 @@ The packets here belong to a system that spans three repositories. The
 cross-repository order lives in `v4vmm`:
 `docs/plans/broadcast-chain-delivery-order.md`. Read it before you start.
 
-Control surface 001 blocks `v4vmm` task 014. Do it first.
+Control-surface tasks 001 and 002 are complete. The v4vmm attach-event packet is
+also complete. Follow the current cross-repository order for new work.
+
+Show-log tasks 001 and 002 remain unstarted. Writer 001 first needs a decision
+about the producer timestamp source. A scheduled real show makes that writer
+the next priority. Confirm that logging works before the show.
 
 ## Architecture
 
@@ -19,8 +24,8 @@ Control surface 001 blocks `v4vmm` task 014. Do it first.
 - [ADR 0001: Rust now-playing lifecycle](adr/0001-rust-now-playing-lifecycle.md)
 - [ADR 0002: Now-playing drop-file contract](adr/0002-nowplaying-drop-file-contract.md)
 - [ADR 0003: Show log contract](adr/0003-show-log-contract.md) — the
-  append-only log this service keeps so `v4vmm` can generate a recorded
-  episode
+  accepted append-only log contract for future episode generation. Implementation
+  and the producer timestamp source remain open
 - [ADR 0004: Publisher control CLI](adr/0004-publisher-control-cli.md) — the
   target and JSON commands that let `v4vmm` control this repository without
   writing its configuration file
