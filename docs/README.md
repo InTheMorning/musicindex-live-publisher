@@ -29,6 +29,9 @@ the next priority. Confirm that logging works before the show.
 - [ADR 0004: Publisher control CLI](adr/0004-publisher-control-cli.md) — the
   target and JSON commands that let `v4vmm` control this repository without
   writing its configuration file
+- [ADR 0005: Producer liveness, the dead block and the relay lease](adr/0005-producer-liveness-and-dead-block.md)
+  — Proposed. The producer lock, the dead block that replaces the configured
+  fallback, the relay keepalive, and a limit on the expiry timer until MIDI
 
 ## Plans
 
@@ -41,6 +44,8 @@ the next priority. Confirm that logging works before the show.
 - [Publisher control CLI phase plan](plans/publisher-control-cli-phase-plan.md)
   — command-line target management and machine-readable state for the control
   surface
+- [Relay lease keepalive](plans/relay-lease-keepalive.md) — the order of work
+  for ADR 0005 and the relay lease
 
 ## Tasks
 
