@@ -18,6 +18,9 @@ the next priority. Confirm that logging works before the show.
 - [Broadcast chain boundaries](architecture/broadcast-chain-boundaries.md) —
   what this repository consumes and produces, which neighbor owns each
   contract, and the known limits of the chain
+- [Mixxx interfaces](architecture/mixxx-interfaces.md) — advisory. What Mixxx
+  2.5.6 gives to an external program: controllers, deck controls, the history
+  database and the track duration, with the evidence for each fact
 
 ## ADRs
 
@@ -32,6 +35,9 @@ the next priority. Confirm that logging works before the show.
 - [ADR 0005: Producer liveness, the dead block and the relay lease](adr/0005-producer-liveness-and-dead-block.md)
   — Proposed. The producer lock, the dead block that replaces the configured
   fallback, the relay keepalive, and a limit on the expiry timer until MIDI
+- [ADR 0006: Mixxx MIDI connector](adr/0006-mixxx-midi-connector.md) —
+  Proposed. A kernel virtual MIDI port gives the producer the deck play state,
+  so a stop or a pause ends the payment at once
 
 ## Plans
 
