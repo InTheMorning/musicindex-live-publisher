@@ -114,7 +114,7 @@ This service routes money. These rules are not style preferences.
   payloads in `tests/fixtures/`.
 - Watcher tests use `tempfile`. Do not depend on a real inotify race.
 - Relay tests use a stubbed status code or a local relay built from
-  `~/build/splitkit`. Do not call a public relay in a test.
+  `~/build/musicindex-live-relay`. Do not call a public relay in a test.
 - Every payment rule in section 4 has a test.
 
 ## Neighbors
@@ -122,7 +122,7 @@ This service routes money. These rules are not style preferences.
 | Repository | Relation |
 |---|---|
 | `v4vmm` | Writes the MusicIndex tags this chain reads. Registers events. Starts and stops these services. Sends no payloads. |
-| `splitkit` | The relay. Receives the payloads this service sends. |
+| `musicindex-live-relay` | The relay. Receives the payloads this service sends. |
 
 Do not add a build dependency on either one. Every contract is a file format,
 an HTTP call, or a command-line interface.

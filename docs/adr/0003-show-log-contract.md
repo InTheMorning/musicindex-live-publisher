@@ -8,6 +8,9 @@ Reconciled 2026-09-18: the reader packet now uses `observed_at` for episode and
 operator ranges. Removed older explanations that contradicted the real-time decision.
 Implementation has not started.
 
+Amended 2026-09-27: the relay repository is now `musicindex-live-relay`. The
+follow-up list below uses the new name. No decision changed.
+
 The timestamp source remains an implementation prerequisite. Version 1 drop
 files contain no producer timestamp. The scheduler stores monotonic `Instant`
 values, not wall-clock event times. Resolve that source in the owning contract
@@ -236,7 +239,7 @@ Negative and risks:
   estimate becomes a calibration.
 - Whether the live delay belongs at the relay, applied only to the socket.io
   emission, rather than at this service. See the interoperability note in the
-  `splitkit` repository.
+  `musicindex-live-relay` repository.
 
 ## References
 

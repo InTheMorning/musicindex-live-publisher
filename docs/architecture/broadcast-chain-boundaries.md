@@ -12,12 +12,12 @@ The full chain map lives in `v4vmm`:
 | Neighbor | Repository | Relation |
 |---|---|---|
 | `v4vmm` | `v4vmm` | Writes the MusicIndex tags this chain reads. Controls this service. Reads relay snapshots. |
-| `musicindex-live-relay` | `splitkit` | Receives the payloads this service sends. |
+| `musicindex-live-relay` | `musicindex-live-relay` | Receives the payloads this service sends. |
 | Mixxx | external | The player that `mixxx-now-playing` observes. |
 | Liquidsoap | external | A future player. It needs a producer that writes the same drop file. |
 
 This repository has no build dependency on `v4vmm` and no build dependency on
-`splitkit`. Each contract below is a file format or an HTTP call.
+`musicindex-live-relay`. Each contract below is a file format or an HTTP call.
 
 ## What This Repository Consumes
 
@@ -140,4 +140,4 @@ the exit codes and the output.
 - `docs/runbooks/musicindex-live-publisher-configuration.md`
 - `v4vmm`: `docs/architecture/broadcast-chain.md`
 - `v4vmm`: `docs/adr/0059-broadcast-control-surface.md`
-- `splitkit`: `README.md` and `docs/interoperability.md`
+- `musicindex-live-relay`: `README.md` and `docs/interoperability.md`

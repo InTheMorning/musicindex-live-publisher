@@ -249,7 +249,7 @@ Strongly recommended before pointing at production, because a payload mistake in
 production routes real boosts to real destinations.
 
 ```bash
-BIND=127.0.0.1:8018 ~/build/splitkit/target/release/musicindex-live-relay &
+BIND=127.0.0.1:8018 ~/build/musicindex-live-relay/target/release/musicindex-live-relay &
 
 musicindex-live-publisher provision \
   --endpoint http://127.0.0.1:8018 \
