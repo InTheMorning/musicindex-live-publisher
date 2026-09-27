@@ -44,8 +44,9 @@ the next priority. Confirm that logging works before the show.
 - [Publisher control CLI phase plan](plans/publisher-control-cli-phase-plan.md)
   — command-line target management and machine-readable state for the control
   surface
-- [Relay lease keepalive](plans/relay-lease-keepalive.md) — the order of work
-  for ADR 0005 and the relay lease
+- [Relay lease keepalive phase plan](plans/relay-lease-keepalive.md) — the
+  producer lock, the dead block and the keepalive for ADR 0005, and the order
+  of work with `musicindex-live-relay` ADR 0002
 
 ## Tasks
 
@@ -108,12 +109,22 @@ broadcast control surface (`v4vmm` ADR 0059). Task 001 gates `v4vmm` task 014.
 - [001 — Target management commands](tasks/control-surface-task-001-target-management.md)
 - [002 — Machine-readable CLI surface](tasks/control-surface-task-002-machine-readable-cli.md)
 
+Relay lease packets. ADR 0005 governs them. Tasks 001 and 002 can go in either
+order. Task 003 needs both. Task 004 needs task 003 and `musicindex-live-relay`
+tasks 001 and 002.
+
+- [001 — Producer lock and expiry maximum](tasks/relay-lease-task-001-producer-lock-and-expiry-max.md)
+- [002 — The dead block](tasks/relay-lease-task-002-dead-block.md)
+- [003 — Producer liveness in the publisher](tasks/relay-lease-task-003-producer-liveness.md)
+- [004 — The keepalive](tasks/relay-lease-task-004-keepalive.md)
+
 ## Reviews
 
 - [Rust now-playing review checklist](reviews/rust-now-playing-review-checklist.md)
 - [Now-playing / live publisher audit review](reviews/nowplaying-publisher-audit-review.md) — accuracy, stability, and security audit of both crates at `1dea27f`
 - [Publisher control CLI review checklist](reviews/publisher-control-cli-review-checklist.md)
 - [Publisher control CLI implementation review](reviews/publisher-control-cli-implementation-review.md)
+- [Relay lease review checklist](reviews/relay-lease-review-checklist.md)
 
 ## Runbooks
 

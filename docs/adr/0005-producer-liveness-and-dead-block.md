@@ -3,11 +3,15 @@
 Status: Proposed
 Date: 2026-09-27
 
-This ADR becomes Accepted when two conditions are true:
+This ADR becomes Accepted when the operator accepts it. Only §Publisher
+Behavior depends on the relay. The keepalive rules in that section wait for
+`musicindex-live-relay` ADR 0002, which defines the keepalive route and the
+interval.
 
-- `musicindex-live-relay` accepts an ADR for its live lease. That ADR must
-  define the keepalive route and the keepalive interval.
-- An operator completes the Mixxx duration check in §Verification.
+Amended 2026-09-27: the acceptance no longer waits for the relay ADR or the
+Mixxx duration check. The Mixxx check gives evidence for a future MIDI ADR,
+not for a rule here. The startup rule now publishes one block for each target.
+No decision changed.
 
 ## Context
 
@@ -113,8 +117,12 @@ dead block.
 - When the producer lock becomes free, the publisher publishes the dead block
   one time and then stops the keepalive. The relay ends the lease after one
   lease duration.
-- At startup, the publisher publishes the dead block one time. This replaces a
+- At startup, the publisher publishes one block for each target. It is the
+  track block when the producer lock is held and a drop file for that target
+  is present. In all other conditions, it is the dead block. This replaces a
   snapshot that a previous run left on the relay.
+- While the producer lock is free, the publisher ignores the drop files. A
+  killed producer can leave a file, and that file is stale.
 - If the publisher process stops, no keepalive goes out, and the relay ends
   the lease.
 
@@ -130,7 +138,8 @@ supersedes it.
 - The expiry timer never uses an RSS duration or the `TLEN` tag. Both are
   written by parties outside the audio stream. v4vmm can write `TLEN`.
 - The expiry timer uses the duration from the audio stream headers, limited to
-  a maximum. The default maximum is 600 seconds.
+  a maximum. The default maximum is 600 seconds. `--expiry-max` sets it and
+  replaces `--expiry-fallback`.
 - A track with no stream duration uses the maximum.
 - `duration_secs` in the drop file comes from the same source. ADR 0002 records
   that source and records that nothing verifies it.
@@ -157,7 +166,7 @@ Mechanical. Each invariant gets a unit test in the crate that owns it:
   by the test.
 - The producer: the lock, the duration source and the maximum.
 
-Manual, until MIDI exists. An operator loads an MP3 with no VBR header into a
+Manual evidence for the future MIDI ADR. An operator loads an MP3 with no VBR header into a
 Mixxx deck. The operator compares `[ChannelN],duration` with a decoded sample
 count, for example from `ffprobe -count_packets`. The result shows if the
 Mixxx deck value comes from the decoder. A test cannot do this check, because
@@ -165,8 +174,9 @@ it needs a running Mixxx. The MIDI ADR uses the result.
 
 ## Changes At Acceptance
 
-These documents state the present rule. They change when this ADR becomes
-Accepted, in the same commit as the code:
+These documents state the present rule. Each one changes in the same commit
+as the code that makes it wrong. The task packets in
+`docs/plans/relay-lease-keepalive.md` name the owner of each change:
 
 - ADR 0002: record the producer lock and the provenance of `duration_secs`.
   Its invariant "Removing a file means stopped" changes to "Removing a file
@@ -176,8 +186,8 @@ Accepted, in the same commit as the code:
   "When no payable block plays, publish the dead block".
 - `README.md` and the configuration runbook: remove `[target.fallback]` and
   `--fallback-value-block`.
-- ADR 0004: `config show --json` loses `fallback_configured`. The JSON output
-  is a contract for `v4vmm`, so `v4vmm` must change in its own commit.
+- ADR 0004: `config show --json` loses `fallback_configured`. On 2026-09-27,
+  no code in `v4vmm/src` read that field, so `v4vmm` needs no change.
 
 ## Non-Goals
 
@@ -231,7 +241,7 @@ Negative and risks:
 - A DJ who stops a V4V track in the middle keeps its artist payable until the
   expiry ends. The maximum limits this, and MIDI removes it.
 - A client that shows payment errors shows them for the dead block.
-- `config show --json` changes, so `v4vmm` must change.
+- `config show --json` loses one field. A caller that reads it breaks.
 
 ## References
 
@@ -240,3 +250,4 @@ Negative and risks:
 - `docs/adr/0002-nowplaying-drop-file-contract.md`
 - `docs/adr/0004-publisher-control-cli.md`
 - `musicindex-live-relay`: `docs/plans/live-lease-heartbeat-proposal.md`
+- `musicindex-live-relay`: `docs/adr/0002-live-lease.md`
