@@ -13,7 +13,7 @@ The full chain map lives in `v4vmm`:
 |---|---|---|
 | `v4vmm` | `v4vmm` | Writes the MusicIndex tags this chain reads. Controls this service. Reads relay snapshots. |
 | `musicindex-live-relay` | `musicindex-live-relay` | Receives the payloads this service sends. |
-| Mixxx | external | The player that `mixxx-now-playing` observes. |
+| Mixxx | external | The player that `mixxx-now-playing` observes. See `mixxx-interfaces.md`. |
 | Liquidsoap | external | A future player. It needs a producer that writes the same drop file. |
 
 This repository has no build dependency on `v4vmm` and no build dependency on
