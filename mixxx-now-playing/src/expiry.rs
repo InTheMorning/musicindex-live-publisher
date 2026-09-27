@@ -18,9 +18,12 @@ impl Expiry {
         started_at: Instant,
         track_duration: Option<Duration>,
         slack: Duration,
-        fallback: Duration,
+        max: Duration,
     ) -> Self {
-        let ttl = track_duration.map_or(fallback, |duration| duration.saturating_add(slack));
+        let ttl = match track_duration {
+            Some(duration) => duration.min(max).saturating_add(slack),
+            None => max,
+        };
         Self {
             deadline: started_at.checked_add(ttl),
         }

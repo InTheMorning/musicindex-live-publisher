@@ -6,7 +6,7 @@ use mixxx_now_playing::sink::{OutputFile, Presence};
 use tempfile::TempDir;
 
 #[test]
-fn expiry_adds_slack_to_track_duration() {
+fn expiry_adds_slack_to_track_duration_under_max() {
     let started_at = Instant::now();
     let expiry = Expiry::duration(
         started_at,
@@ -24,6 +24,22 @@ fn expiry_adds_slack_to_track_duration() {
 }
 
 #[test]
+fn expiry_clamps_track_duration_over_max_then_adds_slack() {
+    let started_at = Instant::now();
+    let expiry = Expiry::duration(
+        started_at,
+        Some(Duration::from_secs(900)),
+        Duration::from_secs(5),
+        Duration::from_secs(600),
+    );
+
+    assert_eq!(
+        expiry.deadline(),
+        started_at.checked_add(Duration::from_secs(605))
+    );
+}
+
+#[test]
 fn expiry_none_never_expires() {
     let started_at = Instant::now();
     let expiry = Expiry::none();
@@ -33,7 +49,7 @@ fn expiry_none_never_expires() {
 }
 
 #[test]
-fn expiry_uses_fallback_without_duration() {
+fn expiry_uses_max_without_duration() {
     let started_at = Instant::now();
     let expiry = Expiry::duration(
         started_at,

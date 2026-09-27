@@ -28,7 +28,7 @@ pub(crate) struct Cli {
     pub(crate) target: String,
     pub(crate) expiry: ExpiryMode,
     pub(crate) expiry_slack: Duration,
-    pub(crate) expiry_fallback: Duration,
+    pub(crate) expiry_max: Duration,
     pub(crate) no_api: bool,
     pub(crate) api_timeout: Duration,
     pub(crate) strip_hyphens: bool,
@@ -48,7 +48,7 @@ impl Default for Cli {
             target: "default".to_owned(),
             expiry: ExpiryMode::Duration,
             expiry_slack: Duration::from_secs(5),
-            expiry_fallback: Duration::from_secs(600),
+            expiry_max: Duration::from_secs(600),
             no_api: false,
             api_timeout: Duration::from_secs(5),
             strip_hyphens: true,
@@ -81,8 +81,13 @@ impl Cli {
                 Some("--expiry-slack") => {
                     cli.expiry_slack = next_duration(&mut args, "--expiry-slack")?;
                 }
+                Some("--expiry-max") => {
+                    cli.expiry_max = next_duration(&mut args, "--expiry-max")?;
+                }
                 Some("--expiry-fallback") => {
-                    cli.expiry_fallback = next_duration(&mut args, "--expiry-fallback")?;
+                    return Err(anyhow!(
+                        "--expiry-fallback was removed; use --expiry-max instead"
+                    ));
                 }
                 Some("--no-api") => cli.no_api = true,
                 Some("--api-timeout") => {
@@ -179,5 +184,32 @@ fn next_expiry_mode(args: &mut impl Iterator<Item = OsString>) -> Result<ExpiryM
             "unsupported --expiry {other:?}; use duration or none"
         )),
         None => Err(anyhow!("--expiry value is not valid UTF-8")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use super::*;
+
+    #[test]
+    fn expiry_max_sets_the_expiry_max_field() -> Result<()> {
+        let cli = Cli::parse(["mixxx-now-playing", "--expiry-max", "120"])?;
+
+        assert_eq!(cli.expiry_max, Duration::from_secs(120));
+        Ok(())
+    }
+
+    #[test]
+    fn expiry_fallback_is_rejected_and_names_expiry_max() {
+        let error = Cli::parse(["mixxx-now-playing", "--expiry-fallback", "120"])
+            .expect_err("--expiry-fallback must fail");
+
+        let message = error.to_string();
+        assert!(
+            message.contains("--expiry-max"),
+            "error message {message:?} does not name --expiry-max"
+        );
     }
 }

@@ -9,6 +9,16 @@ surface for this chain. Two statements below now have a known outcome. The
 its built-in `mpv` player. This contract does not change. See
 `docs/architecture/broadcast-chain-boundaries.md`.
 
+Amended 2026-09-27: a producer holds an exclusive lock on `.producer.lock` in
+its drop directory for the life of the process. ADR 0005 names this lock as
+the source of truth for producer liveness. `duration_secs` comes from the
+audio stream headers. No code checks it.
+
+The invariant "A present file means playing" changes to "A present file means
+a block plays". The invariant "Removing a file means stopped" changes to
+"Removing a file means no payable block". §Decision states the same meaning. No
+decision here changes.
+
 ## Context
 
 `musicindex-live-publisher` watches for track metadata from producers such as
@@ -23,8 +33,9 @@ input contract that can be produced by any local process.
 The input is a JSON drop file owned by `musicindex-live-publisher`, with schema
 string `musicindex.nowplaying/1`.
 
-Presence is the signal: a file present in the watched directory means that track
-is playing. Removing the file means the track stopped.
+Presence is the signal: a file present in the watched directory means that a
+block plays. Removing the file means that no payable block plays. The lock file
+`.producer.lock` in the same directory tells if the producer runs (ADR 0005).
 
 Producers must write to a temporary file in the same directory and then `rename`
 it into place. Consumers read only renamed files.
@@ -113,8 +124,8 @@ Schema changes require a new version string and parser support.
 
 - Unknown schema versions are ignored.
 - Malformed JSON is an input error for the parser.
-- A present file means playing.
-- Removing a file means stopped.
+- A present file means a block plays.
+- Removing a file means no payable block.
 - `value_routes` uses the exact `PaymentRoute` field names:
   `recipient_name`, `route_type`, `address`, `split`, `fee`, `custom_key`,
   `custom_value`.

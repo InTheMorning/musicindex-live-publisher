@@ -1,10 +1,11 @@
 mod cli;
 mod config;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use mixxx_now_playing::classify::is_v4v_track;
 use mixxx_now_playing::expiry::Expiry;
 use mixxx_now_playing::history::{HistoryWatcher, TrackRow};
+use mixxx_now_playing::lock::ProducerLock;
 use mixxx_now_playing::musicindex::{
     ResolvedRouteResult, RouteRequestStatus, ValueRouteResolver, ValueRoutesSource,
     apply_resolution_to_tags, result_matches_current,
@@ -45,13 +46,21 @@ fn main() -> Result<()> {
 }
 
 fn run(cli: &cli::Cli, config: &config::ResolvedConfig) -> Result<()> {
-    let mut runtime = Runtime::new(cli, config)?;
-
     if cli.once {
+        let mut runtime = Runtime::new(cli, config)?;
         runtime.process_latest(Instant::now())?;
         runtime.wait_for_once_route_resolution()?;
         return Ok(());
     }
+
+    // `Runtime::new` writes to the drop directory. The producer must hold
+    // the lock first. The `_lock` binding keeps the lock alive for the rest
+    // of this function.
+    let drop_dir = drop_directory(&config.id3_file)?;
+    let _lock = ProducerLock::acquire(&drop_dir)
+        .with_context(|| format!("acquire producer lock in {}", drop_dir.display()))?;
+
+    let mut runtime = Runtime::new(cli, config)?;
 
     let _cleanup = MetadataCleanup::new(config.id3_file.clone());
     let (terminated, wakeup) = install_signal_flags()?;
@@ -68,6 +77,22 @@ fn run(cli: &cli::Cli, config: &config::ResolvedConfig) -> Result<()> {
 
     runtime.metadata.set(Presence::Absent)?;
     Ok(())
+}
+
+/// Returns the drop directory, the parent directory of the metadata output.
+///
+/// # Errors
+///
+/// Returns an error when `id3_file` has no parent directory.
+fn drop_directory(id3_file: &Path) -> Result<PathBuf> {
+    match id3_file.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => Ok(parent.to_path_buf()),
+        Some(_) => Ok(PathBuf::from(".")),
+        None => Err(anyhow!(
+            "id3 file {} has no parent directory",
+            id3_file.display()
+        )),
+    }
 }
 
 fn render_metadata_content(
@@ -212,7 +237,7 @@ impl<'a> Runtime<'a> {
                 now,
                 tags.duration,
                 self.cli.expiry_slack,
-                self.cli.expiry_fallback,
+                self.cli.expiry_max,
             ),
             cli::ExpiryMode::None => Expiry::none(),
         };

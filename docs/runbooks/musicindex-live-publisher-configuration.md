@@ -404,8 +404,8 @@ Options:
   Default: `duration`.
 - `--expiry-slack <seconds>`: extra seconds added to known track duration.
   Default: `5`.
-- `--expiry-fallback <seconds>`: expiry for tracks with unknown duration.
-  Default: `600`.
+- `--expiry-max <seconds>`: maximum expiry time for a track. A longer or
+  unknown duration uses this value. Default: `600`.
 - `--no-api`: use embedded tag value routes only; do not query MusicIndex.
 - `--api-timeout <seconds>`: MusicIndex route lookup timeout. Default: `5`.
 - `--strip-hyphens`: strip hyphens in the plain text now-playing line. Default.
