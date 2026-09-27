@@ -133,7 +133,7 @@ Implement only this task. Do not redesign the architecture.
 Read:
 - docs/adr/0005-producer-liveness-and-dead-block.md
 - docs/tasks/relay-lease-task-004-keepalive.md
-- /home/citizen/build/musicindex-live-relay/docs/adr/0002-live-lease.md
+- ../musicindex-live-relay/docs/adr/0002-live-lease.md
 - src/relay.rs
 - src/main.rs
 - src/liveness.rs
@@ -156,7 +156,7 @@ Do not touch:
 - mixxx-now-playing/**
 - src/watcher.rs, src/livevalue.rs, src/config.rs, src/schedule.rs
 - The payload shape
-- /home/citizen/build/musicindex-live-relay/**
+- ../musicindex-live-relay/**
 
 Acceptance criteria:
 - StubServer tests: no interval gives no keepalive; an interval of 1 second gives a keepalive with the bearer token and an empty body; Producer(Missing) stops keepalives; a 409 republishes the last payload with the same blockGuid; a 403 makes check_health fail; a 503 retries.

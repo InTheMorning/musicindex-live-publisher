@@ -134,7 +134,7 @@ Read:
 - mixxx-now-playing/src/expiry.rs
 - mixxx-now-playing/tests/expiry.rs
 - mixxx-now-playing/tests/lifecycle.rs
-- /home/citizen/.agents/skills/asd-ste100/SKILL.md (for the ADR 0002 and runbook prose)
+- ~/.agents/skills/asd-ste100/SKILL.md (for the ADR 0002 and runbook prose)
 
 Goal:
 - The producer holds an exclusive lock on `<drop dir>/.producer.lock` while it runs.

@@ -28,7 +28,7 @@ into `/usr/bin`.
 On Arch Linux, prefer the local package:
 
 ```bash
-cd /home/citizen/build/musicindex-live-publisher/packaging/arch
+cd path/to/musicindex-live-publisher/packaging/arch
 makepkg -Csi
 ```
 

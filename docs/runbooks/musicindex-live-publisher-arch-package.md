@@ -14,7 +14,7 @@ The package also installs the systemd user units and example configuration.
 `packaging/arch/PKGBUILD` is a local working-tree package:
 
 - Package name: `musicindex-live-publisher-git`
-- Source: the local checkout at `/home/citizen/build/musicindex-live-publisher`, or
+- Source: the checkout that contains `packaging/arch/PKGBUILD`, or
   `$MUSICINDEX_LIVE_PUBLISHER_REPO` when set
 - Installed binaries: `/usr/bin/musicindex-live-publisher` and
   `/usr/bin/mixxx-now-playing`
@@ -44,7 +44,7 @@ For runtime testing, install Mixxx and make sure it has created
 ## Build And Install
 
 ```bash
-cd /home/citizen/build/musicindex-live-publisher/packaging/arch
+cd path/to/musicindex-live-publisher/packaging/arch
 makepkg -Csi
 ```
 
@@ -54,7 +54,7 @@ missing build dependencies with pacman, and installs the resulting package.
 If you keep the package directory somewhere else, point it at this checkout:
 
 ```bash
-MUSICINDEX_LIVE_PUBLISHER_REPO=/home/citizen/build/musicindex-live-publisher makepkg -Csi
+MUSICINDEX_LIVE_PUBLISHER_REPO=path/to/musicindex-live-publisher makepkg -Csi
 ```
 
 ## Configure
@@ -193,7 +193,7 @@ mixxx-now-playing \
 ## Upgrade
 
 ```bash
-cd /home/citizen/build/musicindex-live-publisher/packaging/arch
+cd path/to/musicindex-live-publisher/packaging/arch
 makepkg -Csi
 systemctl --user restart musicindex-live-publisher@mixxx.service
 systemctl --user restart mixxx-now-playing.service

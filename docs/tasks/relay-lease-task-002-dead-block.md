@@ -154,7 +154,7 @@ Read:
 - tests/config.rs, tests/watcher.rs, tests/relay.rs, tests/golden.rs
 - scripts/setup-mixxx-musicindex.sh
 - packaging/arch/PKGBUILD, packaging/arch/musicindex-live-publisher.install
-- /home/citizen/.agents/skills/asd-ste100/SKILL.md (for all document prose)
+- ~/.agents/skills/asd-ste100/SKILL.md (for all document prose)
 
 Goal:
 - Replace the configured fallback with one constant dead block from `dead_payload` in `src/livevalue.rs`.

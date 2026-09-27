@@ -84,7 +84,7 @@ surface. This is the half `v4vmm` builds against.
 - `cargo check --workspace --quiet`
 - `cargo test --workspace --quiet`
 - `cargo clippy --workspace --quiet -- -D warnings`
-- `python3 /home/citizen/.claude/plugins/marketplaces/local/plugins/ste100/scripts/ste_lint.py README.md docs/architecture/broadcast-chain-boundaries.md`
+- `python3 ~/.agents/skills/asd-ste100/scripts/ste_lint.py README.md docs/architecture/broadcast-chain-boundaries.md`
 
 ## Expected Final Report Format
 
