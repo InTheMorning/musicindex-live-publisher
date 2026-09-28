@@ -9,8 +9,9 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Result, anyhow};
 use musicindex_live_publisher::{
-    LiveValue, LiveValueDestination, LiveValueModel, LiveValuePayload, PublishOutcome,
-    PublisherConfig, PublisherTarget, RelayClient, RelayPublisher, RelayTarget, write_token_file,
+    LiveValue, LiveValueDestination, LiveValueModel, LiveValuePayload, ProducerState,
+    PublishOutcome, PublisherConfig, PublisherTarget, RelayClient, RelayPublisher, RelayTarget,
+    write_token_file,
 };
 use serde_json::{Value, json};
 use tempfile::TempDir;
@@ -77,6 +78,18 @@ impl StubServer {
             .lock()
             .map(|requests| requests.clone())
             .map_err(|_| anyhow!("request mutex poisoned"))
+    }
+
+    /// Asserts that no further request arrives within `duration`.
+    ///
+    /// Used to show a worker stopped its keepalive: with no timer armed,
+    /// the worker blocks on its command channel and never sends a request
+    /// again, so this never flakes on a slow machine.
+    fn expect_no_request_within(&self, duration: Duration) -> Result<()> {
+        match self.received.recv_timeout(duration) {
+            Ok(()) => Err(anyhow!("unexpected relay request arrived")),
+            Err(mpsc::RecvTimeoutError::Timeout | mpsc::RecvTimeoutError::Disconnected) => Ok(()),
+        }
     }
 }
 
@@ -165,6 +178,32 @@ fn accepted(seq: u64) -> StubResponse {
     }
 }
 
+fn accepted_with_interval(seq: u64, keepalive_interval_secs: u64) -> StubResponse {
+    StubResponse {
+        status: 200,
+        body: json!({
+            "event_id": "event-guid",
+            "accepted": true,
+            "seq": seq,
+            "lease_secs": 90,
+            "keepalive_interval_secs": keepalive_interval_secs,
+        })
+        .to_string(),
+    }
+}
+
+fn keepalive_renewed(keepalive_interval_secs: u64) -> StubResponse {
+    StubResponse {
+        status: 200,
+        body: json!({
+            "event_id": "event-guid",
+            "lease_expires_at": "2026-09-27T18:00:00Z",
+            "keepalive_interval_secs": keepalive_interval_secs,
+        })
+        .to_string(),
+    }
+}
+
 fn target(endpoint: &str) -> RelayTarget {
     RelayTarget {
         name: "default".to_owned(),
@@ -226,7 +265,13 @@ fn relay_publish_success_posts_direct_payload_and_returns_seq() -> Result<()> {
 
     let outcome = client.publish(&target(&server.endpoint), &payload("First"))?;
 
-    assert_eq!(outcome, PublishOutcome::Accepted { seq: 7 });
+    assert_eq!(
+        outcome,
+        PublishOutcome::Accepted {
+            seq: 7,
+            keepalive_interval_secs: None,
+        }
+    );
     server.wait_for_requests(1)?;
     let requests = server.requests()?;
     assert_eq!(requests[0].path, "/v1/liveitems/event-guid/metadata");
@@ -461,5 +506,206 @@ fn relay_worker_survives_a_dropped_payload() -> Result<()> {
         "worker should still accept work after 413"
     );
     assert_eq!(requests[1].body["title"], "Next Track");
+    Ok(())
+}
+
+#[test]
+fn relay_publish_response_without_interval_sends_no_keepalive() -> Result<()> {
+    // The second response answers a keepalive, so the stub counts one if the
+    // worker sends it.
+    let server = StubServer::start(vec![accepted(1), keepalive_renewed(1)])?;
+    let publisher = RelayPublisher::start_with_backoff(
+        &config(&server.endpoint),
+        Duration::from_millis(200),
+        Duration::from_secs(1),
+    )?;
+    publisher.set_producer(ProducerState::Running);
+
+    publisher.publish(payload("No Lease"))?;
+    server.wait_for_requests(1)?;
+
+    server.expect_no_request_within(Duration::from_millis(300))?;
+    Ok(())
+}
+
+#[test]
+fn relay_publish_response_with_interval_sends_keepalive_with_bearer_and_no_body() -> Result<()> {
+    let server = StubServer::start(vec![accepted_with_interval(1, 1), keepalive_renewed(1)])?;
+    let publisher = RelayPublisher::start_with_backoff(
+        &config(&server.endpoint),
+        Duration::from_millis(200),
+        Duration::from_secs(1),
+    )?;
+    publisher.set_producer(ProducerState::Running);
+
+    publisher.publish(payload("With Lease"))?;
+    server.wait_for_requests(2)?;
+
+    let requests = server.requests()?;
+    assert_eq!(requests[1].path, "/v1/liveitems/event-guid/keepalive");
+    assert_eq!(
+        requests[1].authorization.as_deref(),
+        Some("Bearer secret-token")
+    );
+    assert_eq!(requests[1].body, Value::Null);
+    Ok(())
+}
+
+#[test]
+fn relay_producer_missing_stops_keepalive_requests() -> Result<()> {
+    // The third response answers one more keepalive, so the stub counts it if
+    // the worker sends it.
+    let server = StubServer::start(vec![
+        accepted_with_interval(1, 1),
+        keepalive_renewed(1),
+        keepalive_renewed(1),
+    ])?;
+    let publisher = RelayPublisher::start_with_backoff(
+        &config(&server.endpoint),
+        Duration::from_millis(200),
+        Duration::from_secs(1),
+    )?;
+    publisher.set_producer(ProducerState::Running);
+
+    publisher.publish(payload("Track"))?;
+    server.wait_for_requests(2)?;
+
+    publisher.set_producer_for_target("event-guid", ProducerState::Missing)?;
+
+    server.expect_no_request_within(Duration::from_millis(1500))?;
+    Ok(())
+}
+
+#[test]
+fn relay_set_producer_running_resumes_keepalive_after_missing() -> Result<()> {
+    let server = StubServer::start(vec![
+        accepted_with_interval(1, 1),
+        keepalive_renewed(1),
+        keepalive_renewed(1),
+    ])?;
+    let publisher = RelayPublisher::start_with_backoff(
+        &config(&server.endpoint),
+        Duration::from_millis(200),
+        Duration::from_secs(1),
+    )?;
+    publisher.set_producer(ProducerState::Running);
+
+    publisher.publish(payload("Track"))?;
+    server.wait_for_requests(2)?;
+
+    publisher.set_producer_for_target("event-guid", ProducerState::Missing)?;
+    server.expect_no_request_within(Duration::from_millis(500))?;
+
+    publisher.set_producer(ProducerState::Running);
+    server.wait_for_requests(1)?;
+
+    let requests = server.requests()?;
+    assert_eq!(requests.len(), 3);
+    assert_eq!(requests[2].path, "/v1/liveitems/event-guid/keepalive");
+    Ok(())
+}
+
+#[test]
+fn relay_keepalive_409_republishes_last_payload_with_same_block_guid() -> Result<()> {
+    let server = StubServer::start(vec![
+        accepted_with_interval(1, 1),
+        response(409),
+        accepted_with_interval(2, 1),
+    ])?;
+    let publisher = RelayPublisher::start_with_backoff(
+        &config(&server.endpoint),
+        Duration::from_millis(200),
+        Duration::from_secs(1),
+    )?;
+    publisher.set_producer(ProducerState::Running);
+
+    publisher.publish(payload("Track"))?;
+    server.wait_for_requests(3)?;
+
+    let requests = server.requests()?;
+    assert_eq!(requests[0].path, "/v1/liveitems/event-guid/metadata");
+    assert_eq!(requests[1].path, "/v1/liveitems/event-guid/keepalive");
+    assert_eq!(requests[2].path, "/v1/liveitems/event-guid/metadata");
+    assert_eq!(requests[2].body["blockGuid"], requests[0].body["blockGuid"]);
+    assert_eq!(requests[2].body["title"], "Track");
+    Ok(())
+}
+
+#[test]
+fn relay_keepalive_403_sets_fatal_state() -> Result<()> {
+    let server = StubServer::start(vec![accepted_with_interval(1, 1), response(403)])?;
+    let publisher = RelayPublisher::start_with_backoff(
+        &config(&server.endpoint),
+        Duration::from_millis(200),
+        Duration::from_secs(1),
+    )?;
+    publisher.set_producer(ProducerState::Running);
+
+    publisher.publish(payload("Track"))?;
+    server.wait_for_requests(2)?;
+
+    let deadline = Instant::now() + Duration::from_secs(2);
+    let mut result = Ok(());
+    while Instant::now() < deadline {
+        result = publisher.check_health();
+        if result.is_err() {
+            break;
+        }
+        thread::sleep(Duration::from_millis(20));
+    }
+
+    assert!(result.is_err(), "check_health should report the 403");
+    Ok(())
+}
+
+#[test]
+fn relay_keepalive_503_retries_then_succeeds() -> Result<()> {
+    let server = StubServer::start(vec![
+        accepted_with_interval(1, 1),
+        response(503),
+        keepalive_renewed(1),
+    ])?;
+    let publisher = RelayPublisher::start_with_backoff(
+        &config(&server.endpoint),
+        Duration::from_millis(100),
+        Duration::from_millis(500),
+    )?;
+    publisher.set_producer(ProducerState::Running);
+
+    publisher.publish(payload("Track"))?;
+    server.wait_for_requests(3)?;
+
+    let requests = server.requests()?;
+    assert_eq!(requests[1].path, "/v1/liveitems/event-guid/keepalive");
+    assert_eq!(requests[2].path, "/v1/liveitems/event-guid/keepalive");
+    publisher.check_health()?;
+    Ok(())
+}
+
+#[test]
+fn relay_producer_missing_stops_a_keepalive_in_retry() -> Result<()> {
+    // The third response answers a keepalive retry, so the stub counts that
+    // retry if the worker sends it. A request with no response left is not
+    // counted.
+    let server = StubServer::start(vec![
+        accepted_with_interval(1, 1),
+        response(503),
+        keepalive_renewed(1),
+    ])?;
+    let publisher = RelayPublisher::start_with_backoff(
+        &config(&server.endpoint),
+        Duration::from_millis(500),
+        Duration::from_secs(1),
+    )?;
+    publisher.set_producer(ProducerState::Running);
+
+    publisher.publish(payload("Track"))?;
+    server.wait_for_requests(2)?;
+
+    // The keepalive got 503 and waits for its retry. The producer goes missing
+    // during that wait, so the retry must not go out.
+    publisher.set_producer_for_target("event-guid", ProducerState::Missing)?;
+
+    server.expect_no_request_within(Duration::from_millis(1500))?;
     Ok(())
 }

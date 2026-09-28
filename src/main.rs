@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
@@ -100,12 +101,22 @@ fn run_cli(cli: Cli) -> Result<()> {
     wait_for_watch_dir(&config.watch_dir)?;
     let producer_state = probe_producer(&config.watch_dir)?;
     tracing::info!(producer = %producer_state, "probed producer lock at startup");
+    // The startup probe result is the first `Producer` command every worker
+    // sees (relay-lease-task-004), before any payload. This gates whether a
+    // worker may ever consider a keepalive: see `keepalive_wait` in
+    // `src/relay.rs`.
+    if let Some(publisher) = publisher.as_ref() {
+        publisher.set_producer(producer_state);
+    }
     // Startup state is recovery, not a track change: the drop file may have
     // been sitting there for most of a song, and holding it would leave the
     // relay serving nothing for the length of the delay. Emit it directly.
+    let mut pending_missing = HashMap::new();
     emit_payloads(
         processor.startup_payloads(&config.watch_dir, producer_state)?,
         publisher.as_ref(),
+        &mut pending_missing,
+        producer_state,
     )?;
     run_watch_loop(
         &config.watch_dir,
@@ -113,6 +124,7 @@ fn run_cli(cli: Cli) -> Result<()> {
         &mut schedule,
         publisher.as_ref(),
         producer_state,
+        pending_missing,
     )
 }
 
@@ -637,6 +649,7 @@ fn run_watch_loop(
     schedule: &mut PublishSchedule,
     publisher: Option<&RelayPublisher>,
     mut producer_state: ProducerState,
+    mut pending_missing: HashMap<String, String>,
 ) -> Result<()> {
     let (sender, receiver) = mpsc::channel();
     let mut watcher = notify::recommended_watcher(sender).context("create filesystem watcher")?;
@@ -657,10 +670,17 @@ fn run_watch_loop(
                     watch_dir,
                     processor,
                     schedule,
+                    publisher,
+                    &mut pending_missing,
                     producer_state,
                     Instant::now(),
                 )?;
-                emit_payloads(schedule.take_due(Instant::now()), publisher)?;
+                emit_payloads(
+                    schedule.take_due(Instant::now()),
+                    publisher,
+                    &mut pending_missing,
+                    producer_state,
+                )?;
                 if let Some(publisher) = publisher {
                     publisher.check_health()?;
                 }
@@ -673,8 +693,15 @@ fn run_watch_loop(
         match event {
             Ok(event) => {
                 let now = Instant::now();
-                producer_state =
-                    update_producer_state(watch_dir, processor, schedule, producer_state, now)?;
+                producer_state = update_producer_state(
+                    watch_dir,
+                    processor,
+                    schedule,
+                    publisher,
+                    &mut pending_missing,
+                    producer_state,
+                    now,
+                )?;
                 if matches!(producer_state, ProducerState::Missing) {
                     tracing::debug!("discarding drop file event while the producer is missing");
                 } else {
@@ -684,7 +711,12 @@ fn run_watch_loop(
                         }
                     }
                 }
-                emit_payloads(schedule.take_due(Instant::now()), publisher)?;
+                emit_payloads(
+                    schedule.take_due(Instant::now()),
+                    publisher,
+                    &mut pending_missing,
+                    producer_state,
+                )?;
             }
             Err(error) => return Err(error).context("watch directory event error"),
         }
@@ -696,12 +728,22 @@ fn run_watch_loop(
 ///
 /// A change from running to missing publishes the dead block for each
 /// target through `schedule` and clears the watcher's block identity state.
+/// It also records each target's dead-block `blockGuid` in `pending_missing`,
+/// keyed by `eventGuid`. `emit_payloads` reads that record: only once a
+/// target's own dead block leaves `schedule` does its worker learn the
+/// producer is missing and stop its keepalive (relay-lease-task-004). A
+/// stream delay can outlast the relay lease, so stopping the keepalive any
+/// earlier could let the lease expire before the dead block goes out.
 ///
 /// A change from missing to running publishes nothing and does not scan the
 /// drop directory. The producer takes its lock before it removes a stale drop
 /// file, so a scan at that moment could publish the stale track. The producer
 /// writes its present track again after it starts, and that event reaches the
-/// watch loop as usual. The dead block stays live until then.
+/// watch loop as usual. The dead block stays live until then. This change
+/// also tells every worker `Producer(Running)` at once, and forgets any
+/// `pending_missing` record left over from a dead block that had not yet
+/// been released: a worker must not later be told the producer is missing
+/// when it has since returned.
 ///
 /// # Errors
 ///
@@ -710,6 +752,8 @@ fn update_producer_state(
     watch_dir: &Path,
     processor: &mut DropWatcher,
     schedule: &mut PublishSchedule,
+    publisher: Option<&RelayPublisher>,
+    pending_missing: &mut HashMap<String, String>,
     previous: ProducerState,
     now: Instant,
 ) -> Result<ProducerState> {
@@ -725,6 +769,7 @@ fn update_producer_state(
                 "producer lock freed; publishing the dead block for each target"
             );
             for payload in processor.producer_missing_payloads() {
+                pending_missing.insert(payload.event_guid.clone(), payload.block_guid.clone());
                 schedule.schedule(payload, now);
             }
         }
@@ -733,9 +778,46 @@ fn update_producer_state(
                 producer = %current,
                 "producer lock held again; waiting for the producer to write its drop file"
             );
+            pending_missing.clear();
+            if let Some(publisher) = publisher {
+                publisher.set_producer(ProducerState::Running);
+            }
         }
     }
     Ok(current)
+}
+
+/// Decides which targets' workers should learn the producer is missing, for
+/// one batch of payloads `PublishSchedule` just released.
+///
+/// `pending` maps an `eventGuid` to the `blockGuid` `update_producer_state`
+/// recorded for that target's dead block on the last missing-producer
+/// transition. A released payload that matches a recorded pair is that
+/// transition's dead block reaching the relay: its entry is removed from
+/// `pending` either way, and its `eventGuid` is returned only if
+/// `producer_state` is still [`ProducerState::Missing`]. When the producer
+/// has since returned, the transition is stale, so the match is still
+/// cleared but nothing is returned: relay-lease-task-004 forbids sending a
+/// stale `Producer(Missing)` to a worker whose producer already came back.
+fn missing_transitions_for_released(
+    released: &[LiveValuePayload],
+    pending: &mut HashMap<String, String>,
+    producer_state: ProducerState,
+) -> Vec<String> {
+    let mut targets = Vec::new();
+    for payload in released {
+        let matches_recorded = pending
+            .get(&payload.event_guid)
+            .is_some_and(|block_guid| *block_guid == payload.block_guid);
+        if !matches_recorded {
+            continue;
+        }
+        pending.remove(&payload.event_guid);
+        if matches!(producer_state, ProducerState::Missing) {
+            targets.push(payload.event_guid.clone());
+        }
+    }
+    targets
 }
 
 /// Returns how long the watch loop may block before it must act again.
@@ -795,15 +877,32 @@ fn remove_events(paths: Vec<PathBuf>) -> Vec<DropEvent> {
         .collect()
 }
 
+/// Publishes each released payload and, for a target whose dead block just
+/// went out, tells that target's worker the producer is missing.
+///
+/// See `missing_transitions_for_released` and `update_producer_state` for
+/// the rule this follows (ADR 0005, relay-lease-task-004). Each payload is
+/// sent to its target's worker before that target's `Producer(Missing)`
+/// command: they share one channel, so this order is what the worker
+/// receives them in.
 fn emit_payloads(
     payloads: Vec<LiveValuePayload>,
     publisher: Option<&RelayPublisher>,
+    pending_missing: &mut HashMap<String, String>,
+    producer_state: ProducerState,
 ) -> Result<()> {
+    let missing_targets =
+        missing_transitions_for_released(&payloads, pending_missing, producer_state);
     for payload in payloads {
         if let Some(publisher) = publisher {
             publisher.publish(payload)?;
         } else {
             println!("{}", serde_json::to_string_pretty(&payload)?);
+        }
+    }
+    if let Some(publisher) = publisher {
+        for event_id in &missing_targets {
+            publisher.set_producer_for_target(event_id, ProducerState::Missing)?;
         }
     }
     Ok(())
@@ -878,6 +977,66 @@ fn toml_string(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn payload_for(event_guid: &str, block_guid: &str) -> LiveValuePayload {
+        musicindex_live_publisher::dead_payload(event_guid, block_guid)
+    }
+
+    #[test]
+    fn missing_transitions_ignores_a_released_payload_with_a_different_block_guid() {
+        let mut pending = HashMap::from([("event".to_owned(), "dead-guid".to_owned())]);
+        let released = vec![payload_for("event", "other-guid")];
+
+        let targets =
+            missing_transitions_for_released(&released, &mut pending, ProducerState::Missing);
+
+        assert!(targets.is_empty());
+        assert_eq!(pending.get("event"), Some(&"dead-guid".to_owned()));
+    }
+
+    #[test]
+    fn missing_transitions_fires_when_the_recorded_dead_block_is_released() {
+        let mut pending = HashMap::from([("event".to_owned(), "dead-guid".to_owned())]);
+        let released = vec![payload_for("event", "dead-guid")];
+
+        let targets =
+            missing_transitions_for_released(&released, &mut pending, ProducerState::Missing);
+
+        assert_eq!(targets, vec!["event".to_owned()]);
+        assert!(pending.is_empty());
+    }
+
+    #[test]
+    fn missing_transitions_forgets_the_recorded_guid_but_does_not_fire_once_the_producer_returned()
+    {
+        let mut pending = HashMap::from([("event".to_owned(), "dead-guid".to_owned())]);
+        let released = vec![payload_for("event", "dead-guid")];
+
+        let targets =
+            missing_transitions_for_released(&released, &mut pending, ProducerState::Running);
+
+        assert!(targets.is_empty());
+        assert!(pending.is_empty());
+    }
+
+    #[test]
+    fn missing_transitions_handles_more_than_one_target_independently() {
+        let mut pending = HashMap::from([
+            ("event-a".to_owned(), "dead-a".to_owned()),
+            ("event-b".to_owned(), "dead-b".to_owned()),
+        ]);
+        let released = vec![
+            payload_for("event-a", "dead-a"),
+            payload_for("event-b", "not-the-recorded-one"),
+        ];
+
+        let targets =
+            missing_transitions_for_released(&released, &mut pending, ProducerState::Missing);
+
+        assert_eq!(targets, vec!["event-a".to_owned()]);
+        assert_eq!(pending.get("event-b"), Some(&"dead-b".to_owned()));
+        assert!(!pending.contains_key("event-a"));
+    }
 
     #[test]
     fn provision_defaults_target_to_default() -> Result<()> {

@@ -12,7 +12,7 @@ The full chain map lives in `v4vmm`:
 | Neighbor | Repository | Relation |
 |---|---|---|
 | `v4vmm` | `v4vmm` | Writes the MusicIndex tags this chain reads. Controls this service. Reads relay snapshots. |
-| `musicindex-live-relay` | `musicindex-live-relay` | Receives the payloads this service sends. |
+| `musicindex-live-relay` | `musicindex-live-relay` | Receives the payloads this service sends. Runs the keepalive route `POST /v1/liveitems/{event_id}/keepalive` that renews its live lease (relay ADR 0002). |
 | Mixxx | external | The player that `mixxx-now-playing` observes. See `mixxx-interfaces.md`. |
 | Liquidsoap | external | A future player. It needs a producer that writes the same drop file. |
 

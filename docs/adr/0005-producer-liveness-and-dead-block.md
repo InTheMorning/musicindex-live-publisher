@@ -1,7 +1,10 @@
 # ADR 0005: Producer Liveness, The Dead Block And The Relay Lease
 
-Status: Accepted
+Status: Implemented
 Date: 2026-09-27
+
+Implemented 2026-09-28: relay lease tasks 001 to 004 are merged. The review
+is `docs/reviews/relay-lease-review-checklist.md`.
 
 Accepted 2026-09-27 by the operator. Only §Publisher Behavior depends on the
 relay. The keepalive rules in that section use `musicindex-live-relay` ADR

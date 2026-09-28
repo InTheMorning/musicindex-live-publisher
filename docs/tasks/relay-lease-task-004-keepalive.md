@@ -1,7 +1,8 @@
 # Relay Lease Task 004: The Keepalive
 
-Status: Blocked - 2026-09-27. It needs task 003 here, and
-`musicindex-live-relay` ADR 0002 with its tasks 001 and 002.
+Status: Implemented - 2026-09-28. The review made a keepalive retry stop when
+the producer goes missing, and made three tests count a request that must not
+happen.
 
 Every criterion is mechanical. This packet has no visual criteria, because it
 adds no user interface.

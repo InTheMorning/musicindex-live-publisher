@@ -33,7 +33,7 @@ the next priority. Confirm that logging works before the show.
   target and JSON commands that let `v4vmm` control this repository without
   writing its configuration file
 - [ADR 0005: Producer liveness, the dead block and the relay lease](adr/0005-producer-liveness-and-dead-block.md)
-  — Accepted. The producer lock, the dead block that replaces the configured
+  — Implemented. The producer lock, the dead block that replaces the configured
   fallback, the relay keepalive, and a limit on the expiry timer without the
   MIDI connector
 - [ADR 0006: Mixxx MIDI connector](adr/0006-mixxx-midi-connector.md) —

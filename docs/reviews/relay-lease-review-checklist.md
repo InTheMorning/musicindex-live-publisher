@@ -60,4 +60,21 @@ Contracts and scope:
 
 ## Review Result
 
-Status: Open - 2026-09-27. No packet is complete.
+Status: Pass - 2026-09-28. All four packets are merged, and each required
+check holds on `master`.
+
+The review changed these items:
+
+- Task 001: ADR 0002 §Decision now states the same meaning as its changed
+  invariants.
+- Task 002: a runbook example no longer shows the station as the payee of a
+  track.
+- Task 003: the publisher does not scan the drop directory when the producer
+  comes back. A scan could publish a stale track.
+- Task 004: a keepalive in retry stops when the producer goes missing. Three
+  tests now count a request that must not happen.
+
+One accepted exception to "each dead block gets a fresh `blockGuid`": the dead
+block for an empty route list keeps the block identity of its track. A later
+route upgrade for the same track then keeps the same `blockGuid`, the same as
+any route upgrade.
