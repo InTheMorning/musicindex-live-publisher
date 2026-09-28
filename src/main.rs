@@ -7,9 +7,10 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result, anyhow};
 use musicindex_live_publisher::{
     ConfigEditError, ConfigOverrides, DEFAULT_CONFIG_PATH, DEFAULT_DEBOUNCE_WINDOW, DropEvent,
-    DropEventKind, DropWatcher, LiveValuePayload, PublishSchedule, RedactedPublisherConfig,
-    RelayClient, RelayPublisher, TargetConfigEdit, TargetConfigSummary, add_target_to_config,
-    list_config_targets, load_config, remove_target_from_config, show_config, write_token_file,
+    DropEventKind, DropWatcher, LiveValuePayload, ProducerState, PublishSchedule,
+    RedactedPublisherConfig, RelayClient, RelayPublisher, TargetConfigEdit, TargetConfigSummary,
+    add_target_to_config, list_config_targets, load_config, probe_producer,
+    remove_target_from_config, show_config, write_token_file,
 };
 use notify::event::{CreateKind, ModifyKind, RemoveKind, RenameMode};
 use notify::{EventKind, RecursiveMode, Watcher};
@@ -97,11 +98,13 @@ fn run_cli(cli: Cli) -> Result<()> {
     );
 
     wait_for_watch_dir(&config.watch_dir)?;
+    let producer_state = probe_producer(&config.watch_dir)?;
+    tracing::info!(producer = %producer_state, "probed producer lock at startup");
     // Startup state is recovery, not a track change: the drop file may have
     // been sitting there for most of a song, and holding it would leave the
     // relay serving nothing for the length of the delay. Emit it directly.
     emit_payloads(
-        processor.initial_payloads(&config.watch_dir)?,
+        processor.startup_payloads(&config.watch_dir, producer_state)?,
         publisher.as_ref(),
     )?;
     run_watch_loop(
@@ -109,6 +112,7 @@ fn run_cli(cli: Cli) -> Result<()> {
         &mut processor,
         &mut schedule,
         publisher.as_ref(),
+        producer_state,
     )
 }
 
@@ -632,6 +636,7 @@ fn run_watch_loop(
     processor: &mut DropWatcher,
     schedule: &mut PublishSchedule,
     publisher: Option<&RelayPublisher>,
+    mut producer_state: ProducerState,
 ) -> Result<()> {
     let (sender, receiver) = mpsc::channel();
     let mut watcher = notify::recommended_watcher(sender).context("create filesystem watcher")?;
@@ -648,6 +653,13 @@ fn run_watch_loop(
         let event = match receiver.recv_timeout(next_wakeup(schedule, Instant::now())) {
             Ok(event) => event,
             Err(mpsc::RecvTimeoutError::Timeout) => {
+                producer_state = update_producer_state(
+                    watch_dir,
+                    processor,
+                    schedule,
+                    producer_state,
+                    Instant::now(),
+                )?;
                 emit_payloads(schedule.take_due(Instant::now()), publisher)?;
                 if let Some(publisher) = publisher {
                     publisher.check_health()?;
@@ -660,10 +672,16 @@ fn run_watch_loop(
         };
         match event {
             Ok(event) => {
-                for drop_event in normalize_notify_event(event) {
-                    let now = Instant::now();
-                    for payload in processor.process_event(drop_event, now)? {
-                        schedule.schedule(payload, now);
+                let now = Instant::now();
+                producer_state =
+                    update_producer_state(watch_dir, processor, schedule, producer_state, now)?;
+                if matches!(producer_state, ProducerState::Missing) {
+                    tracing::debug!("discarding drop file event while the producer is missing");
+                } else {
+                    for drop_event in normalize_notify_event(event) {
+                        for payload in processor.process_event(drop_event, now)? {
+                            schedule.schedule(payload, now);
+                        }
                     }
                 }
                 emit_payloads(schedule.take_due(Instant::now()), publisher)?;
@@ -671,6 +689,53 @@ fn run_watch_loop(
             Err(error) => return Err(error).context("watch directory event error"),
         }
     }
+}
+
+/// Probes the producer lock and, on a change, publishes the transition's
+/// block for each affected target (ADR 0005).
+///
+/// A change from running to missing publishes the dead block for each
+/// target through `schedule` and clears the watcher's block identity state.
+///
+/// A change from missing to running publishes nothing and does not scan the
+/// drop directory. The producer takes its lock before it removes a stale drop
+/// file, so a scan at that moment could publish the stale track. The producer
+/// writes its present track again after it starts, and that event reaches the
+/// watch loop as usual. The dead block stays live until then.
+///
+/// # Errors
+///
+/// Returns an error when the probe fails.
+fn update_producer_state(
+    watch_dir: &Path,
+    processor: &mut DropWatcher,
+    schedule: &mut PublishSchedule,
+    previous: ProducerState,
+    now: Instant,
+) -> Result<ProducerState> {
+    let current = probe_producer(watch_dir)?;
+    if current == previous {
+        return Ok(current);
+    }
+
+    match current {
+        ProducerState::Missing => {
+            tracing::info!(
+                producer = %current,
+                "producer lock freed; publishing the dead block for each target"
+            );
+            for payload in processor.producer_missing_payloads() {
+                schedule.schedule(payload, now);
+            }
+        }
+        ProducerState::Running => {
+            tracing::info!(
+                producer = %current,
+                "producer lock held again; waiting for the producer to write its drop file"
+            );
+        }
+    }
+    Ok(current)
 }
 
 /// Returns how long the watch loop may block before it must act again.

@@ -1,7 +1,7 @@
 # Relay Lease Task 003: Producer Liveness In The Publisher
 
-Status: Ready - 2026-09-27. It needs tasks 001 and 002. It does not need the
-relay.
+Status: Implemented - 2026-09-27. The review removed the scan on a change to
+`Running`. See §Review Change.
 
 Every criterion is mechanical. This packet has no visual criteria, because it
 adds no user interface.
@@ -168,3 +168,13 @@ At the end, report:
 3. behavior changed
 4. deviations from task
 5. unresolved concerns
+
+## Review Change
+
+Changed 2026-09-27 in the review. A change from `Missing` to `Running` does not
+scan the drop directory. The producer takes its lock before it removes a
+stale drop file. A scan in that short time could find the stale file and
+publish the stale track. The producer writes its present track again after it
+starts, so the watch loop receives that file as a normal event. The scan method
+stays, because the startup rule uses it. The constraint, the goal sentence and
+the prompt text above describe the design before this change.

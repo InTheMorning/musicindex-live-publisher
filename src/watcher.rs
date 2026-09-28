@@ -1,6 +1,6 @@
 //! Drop directory event processing.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -8,7 +8,9 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result};
 use uuid::Uuid;
 
-use crate::{DropFile, LiveValuePayload, dead_payload, parse, payload_from_dropfile};
+use crate::{
+    DropFile, LiveValuePayload, ProducerState, dead_payload, parse, payload_from_dropfile,
+};
 
 /// Debounce window for repeated filesystem notifications on one path.
 pub const DEFAULT_DEBOUNCE_WINDOW: Duration = Duration::from_millis(75);
@@ -93,22 +95,77 @@ impl DropWatcher {
         }
     }
 
-    /// Emits the startup state for an existing drop directory.
+    /// Computes the startup payload for each configured target (ADR 0005).
     ///
-    /// If no final drop files are present, this emits the dead block (ADR
-    /// 0005) for each target.
-    pub fn initial_payloads(&mut self, watch_dir: &Path) -> Result<Vec<LiveValuePayload>> {
+    /// A target's block is its track block only when the producer is
+    /// running and a file for that target is present. Every other target's
+    /// block is the dead block. Startup always publishes one block for each
+    /// target, because it replaces whatever payload a previous run may have
+    /// left live on the relay.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the watch directory cannot be read.
+    pub fn startup_payloads(
+        &mut self,
+        watch_dir: &Path,
+        producer: ProducerState,
+    ) -> Result<Vec<LiveValuePayload>> {
+        let track_payloads = match producer {
+            ProducerState::Running => self.scan_track_payloads(watch_dir)?,
+            // ADR 0005: a missing producer means every target gets the dead
+            // block, so scanning the directory would be wasted work.
+            ProducerState::Missing => Vec::new(),
+        };
+
+        let present: HashSet<String> = track_payloads
+            .iter()
+            .map(|payload| payload.event_guid.clone())
+            .collect();
+
+        let mut payloads = track_payloads;
+        payloads.extend(
+            self.targets
+                .values()
+                .filter(|target| !present.contains(&target.event_guid))
+                .map(|target| dead_payload(&target.event_guid, &fresh_guid())),
+        );
+        Ok(payloads)
+    }
+
+    /// Scans the watch directory for present, parseable track payloads.
+    ///
+    /// This emits no dead block for a target with no file, and no dead
+    /// block for an empty directory. It is the scan half of
+    /// [`DropWatcher::startup_payloads`], and it is also what the watch loop
+    /// runs when the producer lock returns after being free: ADR 0005 keeps
+    /// the dead block already live for a target with no track payload, so a
+    /// republish would only repeat it under a new `blockGuid`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the watch directory cannot be read.
+    pub fn scan_track_payloads(&mut self, watch_dir: &Path) -> Result<Vec<LiveValuePayload>> {
         let mut paths = final_drop_files(watch_dir)?;
         paths.sort();
-
-        if paths.is_empty() {
-            return Ok(self.dead_payloads());
-        }
 
         paths
             .iter()
             .filter_map(|path| self.payload_for_upsert(path).transpose())
             .collect()
+    }
+
+    /// Emits the dead block for each configured target and clears block
+    /// identity state.
+    ///
+    /// ADR 0005: when the producer lock frees, the publisher publishes the
+    /// dead block once for each target. A path's block identity must not
+    /// survive this call: the next file that lands on a path the producer
+    /// reused is a new occupant, not a rewrite of the block that was live
+    /// before the producer left, so it must mint a fresh `blockGuid`.
+    pub fn producer_missing_payloads(&mut self) -> Vec<LiveValuePayload> {
+        self.blocks.clear();
+        self.dead_payloads()
     }
 
     /// Processes one normalized event and returns payloads to emit.

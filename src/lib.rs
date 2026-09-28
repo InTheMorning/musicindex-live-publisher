@@ -5,6 +5,7 @@
 
 pub mod config;
 pub mod dropfile;
+pub mod liveness;
 pub mod livevalue;
 pub mod relay;
 pub mod schedule;
@@ -17,6 +18,7 @@ pub use config::{
     load_config_bytes, remove_target_from_config, show_config, show_config_from_str,
 };
 pub use dropfile::{DropFile, PaymentRoute, SCHEMA_VERSION, parse};
+pub use liveness::{LOCK_FILE_NAME, ProducerState, probe_producer};
 pub use livevalue::{
     LiveValue, LiveValueDestination, LiveValueModel, LiveValuePayload, dead_payload,
     destination_from_payment_route, format_split, payload_from_dropfile,

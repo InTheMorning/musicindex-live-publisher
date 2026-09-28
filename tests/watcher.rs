@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Result, anyhow};
 use musicindex_live_publisher::{
-    DropEvent, DropEventKind, DropWatcher, WatchTarget, is_final_drop_file,
+    DropEvent, DropEventKind, DropWatcher, ProducerState, WatchTarget, is_final_drop_file,
 };
 use serde_json::{Value, json};
 use tempfile::TempDir;
@@ -205,30 +205,141 @@ fn watcher_ignores_temp_file_and_rename_to_final_is_one_payload() -> Result<()> 
 }
 
 #[test]
-fn watcher_initial_state_with_existing_file_publishes_track() -> Result<()> {
+fn watcher_startup_running_with_existing_file_publishes_track() -> Result<()> {
     let temp = TempDir::new()?;
     let path = temp.path().join("nowplaying.json");
     let mut watcher = DropWatcher::new(target(), Duration::from_millis(75));
 
     write(&path, dropfile("Already Playing"))?;
-    let payload = one_payload(watcher.initial_payloads(temp.path())?)?;
+    let payload = one_payload(watcher.startup_payloads(temp.path(), ProducerState::Running)?)?;
 
     assert_eq!(payload["title"], "Already Playing");
     Ok(())
 }
 
 #[test]
-fn watcher_initial_state_empty_directory_publishes_dead_block() -> Result<()> {
+fn watcher_startup_running_with_empty_directory_publishes_dead_block() -> Result<()> {
     let temp = TempDir::new()?;
     let mut watcher = DropWatcher::new(target(), Duration::from_millis(75));
 
-    let payload = one_payload(watcher.initial_payloads(temp.path())?)?;
+    let payload = one_payload(watcher.startup_payloads(temp.path(), ProducerState::Running)?)?;
 
     assert_eq!(payload["title"], "No V4V track playing");
     assert_eq!(
         payload["value"]["destinations"][0]["name"],
         "No V4V payment route"
     );
+    Ok(())
+}
+
+#[test]
+fn watcher_startup_missing_with_file_present_publishes_dead_block() -> Result<()> {
+    let temp = TempDir::new()?;
+    let path = temp.path().join("nowplaying.json");
+    let mut watcher = DropWatcher::new(target(), Duration::from_millis(75));
+
+    write(&path, dropfile("Left Behind"))?;
+    let payload = one_payload(watcher.startup_payloads(temp.path(), ProducerState::Missing)?)?;
+
+    assert_eq!(payload["title"], "No V4V track playing");
+    Ok(())
+}
+
+#[test]
+fn watcher_startup_fills_a_target_with_no_file_with_the_dead_block() -> Result<()> {
+    let temp = TempDir::new()?;
+    let present_path = temp.path().join("default.json");
+    let other = WatchTarget {
+        name: "other".to_owned(),
+        event_guid: "event-guid-other".to_owned(),
+    };
+    let mut watcher =
+        DropWatcher::new_targets(vec![target(), other.clone()], Duration::from_millis(75));
+
+    write(&present_path, dropfile("Only Default Plays"))?;
+    let mut payloads = watcher.startup_payloads(temp.path(), ProducerState::Running)?;
+    payloads.sort_by(|a, b| a.event_guid.cmp(&b.event_guid));
+
+    assert_eq!(payloads.len(), 2);
+    let default_payload = payloads
+        .iter()
+        .find(|payload| payload.event_guid == "event-guid")
+        .ok_or_else(|| anyhow!("expected a payload for the default target"))?;
+    let other_payload = payloads
+        .iter()
+        .find(|payload| payload.event_guid == other.event_guid)
+        .ok_or_else(|| anyhow!("expected a payload for the other target"))?;
+    assert_eq!(default_payload.title, "Only Default Plays");
+    assert_eq!(other_payload.title, "No V4V track playing");
+    Ok(())
+}
+
+#[test]
+fn watcher_scan_track_payloads_gives_no_dead_block_for_an_empty_directory() -> Result<()> {
+    let temp = TempDir::new()?;
+    let mut watcher = DropWatcher::new(target(), Duration::from_millis(75));
+
+    let payloads = watcher.scan_track_payloads(temp.path())?;
+
+    assert!(payloads.is_empty());
+    Ok(())
+}
+
+#[test]
+fn watcher_scan_track_payloads_gives_the_track_for_a_present_file() -> Result<()> {
+    let temp = TempDir::new()?;
+    let path = temp.path().join("nowplaying.json");
+    let mut watcher = DropWatcher::new(target(), Duration::from_millis(75));
+
+    write(&path, dropfile("Rescanned Track"))?;
+    let payload = one_payload(watcher.scan_track_payloads(temp.path())?)?;
+
+    assert_eq!(payload["title"], "Rescanned Track");
+    Ok(())
+}
+
+#[test]
+fn watcher_producer_missing_payloads_gives_one_dead_block_for_each_target() -> Result<()> {
+    let other = WatchTarget {
+        name: "other".to_owned(),
+        event_guid: "event-guid-other".to_owned(),
+    };
+    let mut watcher =
+        DropWatcher::new_targets(vec![target(), other.clone()], Duration::from_millis(75));
+
+    let mut payloads = watcher.producer_missing_payloads();
+    payloads.sort_by(|a, b| a.event_guid.cmp(&b.event_guid));
+
+    assert_eq!(payloads.len(), 2);
+    assert!(
+        payloads
+            .iter()
+            .all(|payload| payload.title == "No V4V track playing")
+    );
+    assert_eq!(payloads[0].event_guid, "event-guid");
+    assert_eq!(payloads[1].event_guid, other.event_guid);
+    Ok(())
+}
+
+#[test]
+fn watcher_producer_missing_payloads_clears_block_state_for_a_reused_path() -> Result<()> {
+    let temp = TempDir::new()?;
+    let path = temp.path().join("nowplaying.json");
+    let mut watcher = DropWatcher::new(target(), Duration::from_millis(0));
+
+    write(&path, dropfile("Before Producer Left"))?;
+    let before = one_payload(watcher.process_event(upsert(&path), Instant::now())?)?;
+    let before_block = before["blockGuid"]
+        .as_str()
+        .ok_or_else(|| anyhow!("blockGuid should be a string"))?
+        .to_owned();
+
+    watcher.producer_missing_payloads();
+
+    write(&path, dropfile("Before Producer Left"))?;
+    let after = one_payload(watcher.process_event(upsert(&path), Instant::now())?)?;
+
+    assert_ne!(after["blockGuid"], before_block);
     Ok(())
 }
 
