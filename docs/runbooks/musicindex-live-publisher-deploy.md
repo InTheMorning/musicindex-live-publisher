@@ -19,9 +19,9 @@ into `/usr/bin`.
 - A V4V music directory (default `~/V4Vmusic`).
 - A relay endpoint. `https://api.musicindex.org` for production, or a locally
   built `musicindex-live-relay` for rehearsal.
-- Optional station fallback split details. If omitted, the service starts,
-  logs a warning, and publishes a dead fallback route while idle or playing
-  non-V4V audio.
+
+The publisher uses a fixed dead block while idle or playing non-V4V audio
+(ADR 0005). No configuration changes it.
 
 ## Arch Package Install
 
@@ -41,8 +41,8 @@ path below is still useful on non-Arch hosts or while debugging.
 After the binaries are installed, the setup helper provisions the MusicIndex
 live item, writes the one-time broadcaster token, generates
 `musicindex-live-publisher@mixxx.service` and `mixxx-now-playing.service`, then
-starts the pipeline. With no fallback route options, idle/non-V4V playback uses
-the default dead fallback route:
+starts the pipeline. The publisher uses a fixed dead block for idle or
+non-V4V playback (ADR 0005). No setup flag changes it:
 
 ```bash
 setup-mixxx-musicindex
@@ -59,52 +59,6 @@ Permanent mode writes config and tokens under
 `~/.config/musicindex-live-publisher/mixxx/` and enables both user services.
 Temporary mode writes config and tokens under `$XDG_RUNTIME_DIR` and only starts
 the services; the generated unit files remain under `~/.config/systemd/user`.
-
-To receive station payments when no V4V track is playing, pass a fallback value
-block fragment:
-
-```bash
-setup-mixxx-musicindex --fallback-value-block ~/.config/musicindex-live-publisher/mixxx-fallback.toml
-```
-
-The fallback value block fragment is TOML for `[target.fallback]`. The model
-and destination fields are copied into the published value block; recipient
-`type`, `customKey`, and `customValue` are not rewritten:
-
-```toml
-title = "Homegrown Hits"
-image = "https://example.com/station-art.png"
-
-[model]
-type = "lightning"
-method = "keysend"
-
-[[destinations]]
-name = "Sharpie"
-type = "node"
-address = "YOUR_LIGHTNING_NODE_PUBKEY"
-split = "10"
-customKey = "696969"
-customValue = "5"
-```
-
-Replace `YOUR_LIGHTNING_NODE_PUBKEY` before running the setup script; it
-rejects placeholder fallback destinations before provisioning.
-
-For a single Lightning node recipient, the shortcut still works:
-
-```bash
-setup-mixxx-musicindex --fallback-address "$MUSICINDEX_FALLBACK_ADDRESS"
-```
-
-For a Lightning Address fallback recipient:
-
-```bash
-setup-mixxx-musicindex \
-  --fallback-type lnaddress \
-  --value-method lnaddress \
-  --fallback-address station@example.com
-```
 
 ## Build
 
@@ -169,8 +123,8 @@ name = "default"
 event_id = "replace-with-provisioned-event-guid"
 token_file = "~/.config/musicindex-live-publisher/mixxx/tokens/default.token"
 
-# Optional: add [target.fallback] to receive station fallback payments.
-# If omitted, the publisher logs a warning and uses a dead fallback route.
+# The publisher uses a fixed dead block while idle or non-V4V (ADR 0005).
+# No configuration changes it.
 ```
 
 Replace `event_id` with the value printed by `provision` before starting the
@@ -181,9 +135,9 @@ Keep one token file per target under
 reads these files as the same desktop user and the provision command writes
 them with mode `0600`.
 
-Splits are **decimal strings**, not numbers: `"100"`, `"49.51"`. Every
-configured fallback destination needs `name`, `type`, `address`, and `split`,
-and startup fails with a specific message if one is missing.
+Splits are **decimal strings**, not numbers: `"100"`, `"49.51"`. A track's
+`value_routes` entry needs `name`, `type`, `address`, and `split`, and the
+publisher skips a malformed drop file.
 
 See [configuration options](musicindex-live-publisher-configuration.md) for the
 full publisher and producer option reference.
@@ -202,9 +156,8 @@ musicindex-live-publisher config show \
   --json
 ```
 
-The output shows target names, event IDs, token file paths, stream delays, and
-whether each target has a fallback. It does not show token content or fallback
-destination addresses.
+The output shows target names, event IDs, token file paths, and stream
+delays. It does not show token content.
 
 ## Future Player Instances
 
@@ -267,12 +220,13 @@ curl -s http://127.0.0.1:8018/v1/liveitems/<event_id>/remoteValue | python3 -m j
 
 Check, in order:
 
-1. With no drop file present, the relay serves your **fallback** destinations.
-2. Playing a V4V track replaces them with the **track's** destinations, and
+1. With no drop file present, the relay serves the **dead block's**
+   destination.
+2. Playing a V4V track replaces it with the **track's** destinations, and
    `duration` is in seconds.
 3. Every destination has a non-empty `address`. A destination without one cannot
    be paid.
-4. Stopping the track restores the fallback.
+4. Stopping the track restores the dead block.
 5. Playing a second track changes `blockGuid` but not `eventGuid`.
 
 ## Start
@@ -309,9 +263,9 @@ systemctl --user disable --now mixxx-now-playing.service
 systemctl --user disable --now musicindex-live-publisher@mixxx.service
 ```
 
-The relay keeps serving the last payload it accepted. If that was a track rather
-than your fallback, publish the fallback once more before stopping, or the
-ended track keeps collecting boosts.
+The relay keeps serving the last payload it accepted. If that was a track
+rather than the dead block, publish the dead block again before stopping, or
+the ended track keeps collecting boosts.
 
 ## Failure Modes
 
@@ -331,10 +285,11 @@ ended track keeps collecting boosts.
   `skipping drop file for unknown target`.
 - **Producer restarts every 10 seconds** — expected when Mixxx is not running.
   The producer exits cleanly and `Restart=always` retries until Mixxx appears.
-- **`config must define at least one target`, or a fallback validation error** —
-  missing fallback destinations no longer block startup. A fallback validation
-  error means a configured route is malformed; fix or remove that fallback
-  block.
+- **`config must define at least one target`** — the config file has no
+  `[[target]]` stanza. Add one.
+- **`ADR 0005: [target.fallback] is removed...`** — the config holds a
+  `[target.fallback]` table. Remove that table. The publisher uses the fixed
+  dead block.
 
 ## Known Gaps
 

@@ -8,9 +8,7 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result};
 use uuid::Uuid;
 
-use crate::{
-    DropFile, LiveValue, LiveValuePayload, fallback_payload, parse, payload_from_dropfile,
-};
+use crate::{DropFile, LiveValuePayload, dead_payload, parse, payload_from_dropfile};
 
 /// Debounce window for repeated filesystem notifications on one path.
 pub const DEFAULT_DEBOUNCE_WINDOW: Duration = Duration::from_millis(75);
@@ -20,15 +18,6 @@ pub const DEFAULT_DEBOUNCE_WINDOW: Duration = Duration::from_millis(75);
 pub struct WatchTarget {
     pub name: String,
     pub event_guid: String,
-    pub fallback: FallbackConfig,
-}
-
-/// Fallback live value configuration.
-#[derive(Debug, Clone, PartialEq)]
-pub struct FallbackConfig {
-    pub title: String,
-    pub image: Option<String>,
-    pub value: LiveValue,
 }
 
 /// Filesystem actions that can affect the currently published payload.
@@ -106,13 +95,14 @@ impl DropWatcher {
 
     /// Emits the startup state for an existing drop directory.
     ///
-    /// If no final drop files are present, this emits the fallback payload.
+    /// If no final drop files are present, this emits the dead block (ADR
+    /// 0005) for each target.
     pub fn initial_payloads(&mut self, watch_dir: &Path) -> Result<Vec<LiveValuePayload>> {
         let mut paths = final_drop_files(watch_dir)?;
         paths.sort();
 
         if paths.is_empty() {
-            return Ok(self.fallback_payloads());
+            return Ok(self.dead_payloads());
         }
 
         paths
@@ -148,7 +138,7 @@ impl DropWatcher {
                 Ok(self
                     .targets
                     .get(&target_name)
-                    .map(|target| vec![fallback_payload_for_target(target)])
+                    .map(|target| vec![dead_payload(&target.event_guid, &fresh_guid())])
                     .unwrap_or_default())
             }
         }
@@ -183,7 +173,14 @@ impl DropWatcher {
             // Next track at a path the producer reuses: mint a fresh block.
             _ => fresh_guid(),
         };
-        let payload = payload_from_dropfile(&dropfile, &target.event_guid, &block_guid);
+        // ADR 0005: an empty value_routes list is not a payable block. The
+        // dead block replaces it entirely; it keeps neither the drop file's
+        // title nor its GUIDs.
+        let payload = if dropfile.value_routes.is_empty() {
+            dead_payload(&target.event_guid, &block_guid)
+        } else {
+            payload_from_dropfile(&dropfile, &target.event_guid, &block_guid)
+        };
         let should_emit = !self
             .blocks
             .get(&identity)
@@ -210,23 +207,12 @@ impl DropWatcher {
         Ok(should_emit.then_some(payload))
     }
 
-    fn fallback_payloads(&self) -> Vec<LiveValuePayload> {
+    fn dead_payloads(&self) -> Vec<LiveValuePayload> {
         self.targets
             .values()
-            .map(fallback_payload_for_target)
+            .map(|target| dead_payload(&target.event_guid, &fresh_guid()))
             .collect()
     }
-}
-
-fn fallback_payload_for_target(target: &WatchTarget) -> LiveValuePayload {
-    let image = target.fallback.image.as_deref();
-    fallback_payload(
-        &target.fallback.title,
-        image,
-        &target.event_guid,
-        &fresh_guid(),
-        &target.fallback.value,
-    )
 }
 
 #[derive(Debug)]

@@ -70,8 +70,10 @@ other without a failure.
 
 This service routes money. These rules are not style preferences.
 
-- **A stale destination sends a listener boost to the wrong artist.** When
-  playback clears, publish the fallback. Never leave the last track in place.
+- **A stale destination sends a listener boost to the wrong artist.** When no
+  payable block plays, publish the dead block (ADR 0005). Never leave the last
+  track in place.
+- The dead block is a constant. No configuration changes it.
 - A `split` is a decimal string in the payload, never a number. `90.0` renders
   `"90"` and `0.49` renders `"0.49"`.
 - Each track gets a fresh `blockGuid`.

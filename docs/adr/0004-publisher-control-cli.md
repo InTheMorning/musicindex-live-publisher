@@ -7,6 +7,9 @@ Implemented 2026-09-07: control surface tasks 001 and 002 landed. The
 implementation review is
 `docs/reviews/publisher-control-cli-implementation-review.md`.
 
+Amended 2026-09-27: ADR 0005 removes `fallback_configured` from `config show
+--json`. No decision here changed.
+
 ## Context
 
 `v4vmm` ADR 0059 makes `v4vmm` the control surface for the broadcast chain.

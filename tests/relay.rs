@@ -9,9 +9,8 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Result, anyhow};
 use musicindex_live_publisher::{
-    FallbackConfig, LiveValue, LiveValueDestination, LiveValueModel, LiveValuePayload,
-    PublishOutcome, PublisherConfig, PublisherTarget, RelayClient, RelayPublisher, RelayTarget,
-    write_token_file,
+    LiveValue, LiveValueDestination, LiveValueModel, LiveValuePayload, PublishOutcome,
+    PublisherConfig, PublisherTarget, RelayClient, RelayPublisher, RelayTarget, write_token_file,
 };
 use serde_json::{Value, json};
 use tempfile::TempDir;
@@ -216,26 +215,6 @@ fn config(endpoint: &str) -> PublisherConfig {
             token_file: Path::new("/tmp/default.token").to_path_buf(),
             token: "secret-token".to_owned(),
             stream_delay: Duration::ZERO,
-            fallback: FallbackConfig {
-                title: "Station".to_owned(),
-                image: None,
-                value: LiveValue {
-                    model: LiveValueModel {
-                        kind: "lightning".to_owned(),
-                        method: "keysend".to_owned(),
-                        suggested: None,
-                    },
-                    destinations: vec![LiveValueDestination {
-                        kind: Some("node".to_owned()),
-                        name: Some("Station".to_owned()),
-                        address: Some("03station".to_owned()),
-                        split: Some("100".to_owned()),
-                        custom_key: None,
-                        custom_value: None,
-                        fee: None,
-                    }],
-                },
-            },
         }],
     }
 }

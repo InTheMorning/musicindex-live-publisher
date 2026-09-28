@@ -18,8 +18,8 @@ pub use config::{
 };
 pub use dropfile::{DropFile, PaymentRoute, SCHEMA_VERSION, parse};
 pub use livevalue::{
-    LiveValue, LiveValueDestination, LiveValueModel, LiveValuePayload,
-    destination_from_payment_route, fallback_payload, format_split, payload_from_dropfile,
+    LiveValue, LiveValueDestination, LiveValueModel, LiveValuePayload, dead_payload,
+    destination_from_payment_route, format_split, payload_from_dropfile,
 };
 pub use relay::{
     DEFAULT_INITIAL_BACKOFF, DEFAULT_MAX_BACKOFF, DEFAULT_REQUEST_TIMEOUT, ProvisionedLiveItem,
@@ -27,6 +27,5 @@ pub use relay::{
 };
 pub use schedule::PublishSchedule;
 pub use watcher::{
-    DEFAULT_DEBOUNCE_WINDOW, DropEvent, DropEventKind, DropWatcher, FallbackConfig, WatchTarget,
-    is_final_drop_file,
+    DEFAULT_DEBOUNCE_WINDOW, DropEvent, DropEventKind, DropWatcher, WatchTarget, is_final_drop_file,
 };

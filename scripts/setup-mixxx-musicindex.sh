@@ -9,17 +9,6 @@ mode=permanent
 start_services=1
 force=0
 
-fallback_title=${MUSICINDEX_FALLBACK_TITLE:-Mixxx Live}
-fallback_name=${MUSICINDEX_FALLBACK_NAME:-Station}
-fallback_type=${MUSICINDEX_FALLBACK_TYPE:-node}
-fallback_address=${MUSICINDEX_FALLBACK_ADDRESS:-}
-fallback_split=${MUSICINDEX_FALLBACK_SPLIT:-100}
-fallback_image=${MUSICINDEX_FALLBACK_IMAGE:-}
-fallback_value_block=${MUSICINDEX_FALLBACK_VALUE_BLOCK:-}
-value_type=${MUSICINDEX_VALUE_TYPE:-lightning}
-value_method=${MUSICINDEX_VALUE_METHOD:-keysend}
-value_suggested=${MUSICINDEX_VALUE_SUGGESTED:-}
-
 publisher_bin=${MUSICINDEX_LIVE_PUBLISHER_BIN:-/usr/bin/musicindex-live-publisher}
 producer_bin=${MIXXX_NOW_PLAYING_BIN:-/usr/bin/mixxx-now-playing}
 
@@ -29,10 +18,13 @@ target=default
 usage() {
   cat <<'USAGE'
 Usage:
-  setup-mixxx-musicindex [--permanent|--temporary] [--fallback-value-block FILE | --fallback-address ADDRESS] [options]
+  setup-mixxx-musicindex [--permanent|--temporary] [options]
 
 Provisions a MusicIndex live item for Mixxx, writes the broadcaster token and
 publisher config, generates user systemd units, and starts the Mixxx pipeline.
+
+The publisher uses a fixed dead block while idle or playing non-V4V audio
+(ADR 0005). No option in this script changes it.
 
 Modes:
   --permanent          Store config/token under ~/.config and enable services.
@@ -42,40 +34,13 @@ Modes:
 Options:
   --endpoint URL       MusicIndex relay endpoint.
                        Default: https://api.musicindex.org
-  --fallback-address ADDRESS
-                       Shortcut for one Podcasting valueRecipient address.
-                       If neither fallback option is set, the publisher uses a
-                       default dead fallback route and logs a warning.
-                       Or set MUSICINDEX_FALLBACK_ADDRESS.
-  --fallback-value-block FILE
-                       TOML fallback value block fragment. Or set
-                       MUSICINDEX_FALLBACK_VALUE_BLOCK.
-  --value-type TEXT    Value model type for the shortcut. Default: lightning
-                       Or set MUSICINDEX_VALUE_TYPE.
-  --value-method TEXT  Value model method for the shortcut. Default: keysend
-                       Or set MUSICINDEX_VALUE_METHOD.
-  --value-suggested TEXT
-                       Optional value model suggested amount for the shortcut.
-                       Or set MUSICINDEX_VALUE_SUGGESTED.
-  --fallback-title TEXT
-                       Fallback title. Default: Mixxx Live
-  --fallback-name TEXT
-                       Fallback destination name. Default: Station
-  --fallback-type TEXT
-                       Fallback destination type for the shortcut.
-                       Default: node
-  --fallback-split DECIMAL
-                       Fallback split as a string value. Default: 100
-  --fallback-image URL Optional fallback image URL.
   --force              Replace existing generated files and back up conflicts.
   --no-start           Write files but do not start services.
   -h, --help           Show this help.
 
 Examples:
   setup-mixxx-musicindex
-  setup-mixxx-musicindex --fallback-value-block ~/.config/musicindex-live-publisher/mixxx-fallback.toml
-  setup-mixxx-musicindex --fallback-address "$MUSICINDEX_FALLBACK_ADDRESS"
-  setup-mixxx-musicindex --fallback-type lnaddress --value-method lnaddress --fallback-address station@example.com
+  setup-mixxx-musicindex --temporary
 USAGE
 }
 
@@ -109,46 +74,6 @@ while (($#)); do
       endpoint=$(require_arg "$1" "${2-}")
       shift 2
       ;;
-    --fallback-address)
-      fallback_address=$(require_arg "$1" "${2-}")
-      shift 2
-      ;;
-    --fallback-value-block|--value-block)
-      fallback_value_block=$(require_arg "$1" "${2-}")
-      shift 2
-      ;;
-    --value-type)
-      value_type=$(require_arg "$1" "${2-}")
-      shift 2
-      ;;
-    --value-method)
-      value_method=$(require_arg "$1" "${2-}")
-      shift 2
-      ;;
-    --value-suggested)
-      value_suggested=$(require_arg "$1" "${2-}")
-      shift 2
-      ;;
-    --fallback-title|--station-title)
-      fallback_title=$(require_arg "$1" "${2-}")
-      shift 2
-      ;;
-    --fallback-name)
-      fallback_name=$(require_arg "$1" "${2-}")
-      shift 2
-      ;;
-    --fallback-type)
-      fallback_type=$(require_arg "$1" "${2-}")
-      shift 2
-      ;;
-    --fallback-split)
-      fallback_split=$(require_arg "$1" "${2-}")
-      shift 2
-      ;;
-    --fallback-image)
-      fallback_image=$(require_arg "$1" "${2-}")
-      shift 2
-      ;;
     --force)
       force=1
       shift
@@ -167,24 +92,6 @@ while (($#)); do
   esac
 done
 
-if [[ -z "$fallback_value_block" ]]; then
-  if [[ -n "$fallback_address" ]]; then
-    [[ -n "$value_type" ]] || die "--value-type must not be empty"
-    [[ -n "$value_method" ]] || die "--value-method must not be empty"
-    [[ -n "$fallback_type" ]] || die "--fallback-type must not be empty"
-    [[ "$fallback_split" =~ ^[0-9]+([.][0-9]+)?$ ]] \
-      || die "--fallback-split must be a decimal string such as 100 or 49.51"
-    case "$fallback_address" in
-      YOUR_*|*your-*|*replace-with*|03...)
-        die "--fallback-address is still an example placeholder"
-        ;;
-    esac
-  else
-    warn "no fallback payment route configured; generated config will use the publisher's default dead fallback route while idle/non-V4V"
-    warn "configure --fallback-value-block or --fallback-address later if this stream should receive station fallback payments"
-  fi
-fi
-
 reject_newline() {
   local name=$1
   local value=$2
@@ -195,29 +102,7 @@ reject_newline() {
   esac
 }
 
-for name in endpoint fallback_title fallback_name fallback_type fallback_address fallback_split fallback_image fallback_value_block value_type value_method value_suggested; do
-  reject_newline "$name" "${!name}"
-done
-
-if [[ -n "$fallback_value_block" ]]; then
-  [[ -r "$fallback_value_block" ]] || die "cannot read fallback value block: $fallback_value_block"
-  [[ -s "$fallback_value_block" ]] || die "fallback value block is empty: $fallback_value_block"
-  if grep -Eq '^[[:space:]]*(watch_dir|endpoint|event_id|token_file)[[:space:]]*=' "$fallback_value_block"; then
-    die "fallback value block must not contain publisher config fields"
-  fi
-  if grep -Eq '^[[:space:]]*\[\[?target' "$fallback_value_block"; then
-    die "fallback value block must be a fallback fragment, not a full target config"
-  fi
-  if grep -Eq 'YOUR_|your-|replace-with|03\.\.\.' "$fallback_value_block"; then
-    die "fallback value block still contains an example placeholder"
-  fi
-  grep -Eq '^[[:space:]]*title[[:space:]]*=' "$fallback_value_block" \
-    || die "fallback value block must define title"
-  grep -Eq '^[[:space:]]*(model[[:space:]]*=|\[(value\.)?model\])' "$fallback_value_block" \
-    || die "fallback value block must define model"
-  grep -Eq '^[[:space:]]*(destinations[[:space:]]*=|\[\[?(value\.)?destinations\]\]?)' "$fallback_value_block" \
-    || die "fallback value block must define destinations"
-fi
+reject_newline endpoint "$endpoint"
 
 resolve_command() {
   local command_name=$1
@@ -283,38 +168,6 @@ toml_string() {
   value=${value//\\/\\\\}
   value=${value//\"/\\\"}
   printf '"%s"' "$value"
-}
-
-emit_fallback_value_block() {
-  if [[ -n "$fallback_value_block" ]]; then
-    sed -E \
-      -e 's/^[[:space:]]*\[model\][[:space:]]*$/    [target.fallback.value.model]/' \
-      -e 's/^[[:space:]]*\[value\][[:space:]]*$/    [target.fallback.value]/' \
-      -e 's/^[[:space:]]*\[value\.model\][[:space:]]*$/    [target.fallback.value.model]/' \
-      -e 's/^[[:space:]]*\[\[destinations\]\][[:space:]]*$/    [[target.fallback.value.destinations]]/' \
-      -e 's/^[[:space:]]*\[\[value\.destinations\]\][[:space:]]*$/    [[target.fallback.value.destinations]]/' \
-      -e 's/^/  /' \
-      "$fallback_value_block"
-    return
-  fi
-
-  printf '  title = %s\n' "$(toml_string "$fallback_title")"
-  if [[ -n "$fallback_image" ]]; then
-    printf '  image = %s\n' "$(toml_string "$fallback_image")"
-  fi
-  printf '\n'
-  printf '    [target.fallback.value.model]\n'
-  printf '    type = %s\n' "$(toml_string "$value_type")"
-  printf '    method = %s\n' "$(toml_string "$value_method")"
-  if [[ -n "$value_suggested" ]]; then
-    printf '    suggested = %s\n' "$(toml_string "$value_suggested")"
-  fi
-  printf '\n'
-  printf '    [[target.fallback.value.destinations]]\n'
-  printf '    name = %s\n' "$(toml_string "$fallback_name")"
-  printf '    type = %s\n' "$(toml_string "$fallback_type")"
-  printf '    address = %s\n' "$(toml_string "$fallback_address")"
-  printf '    split = %s\n' "$(toml_string "$fallback_split")"
 }
 
 file_has_marker() {
@@ -393,15 +246,9 @@ backup_file "$config_file"
   printf 'name = %s\n' "$(toml_string "$target")"
   printf 'event_id = %s\n' "$(toml_string "$event_id")"
   printf 'token_file = %s\n' "$(toml_string "$token_file")"
-  if [[ -n "$fallback_value_block" || -n "$fallback_address" ]]; then
-    printf '\n'
-    printf '  [target.fallback]\n'
-    emit_fallback_value_block
-  else
-    printf '\n'
-    printf '# No fallback payment route configured.\n'
-    printf '# The publisher logs a warning and uses a dead fallback route while idle/non-V4V.\n'
-  fi
+  printf '\n'
+  printf '# The publisher uses a fixed dead block while idle or non-V4V (ADR 0005).\n'
+  printf '# No configuration changes it.\n'
 } | write_generated_file "$config_file" 0600
 
 backup_file "$publisher_unit"

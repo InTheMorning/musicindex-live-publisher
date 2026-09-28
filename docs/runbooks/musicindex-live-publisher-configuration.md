@@ -50,8 +50,8 @@ name = "default"
 event_id = "replace-with-provisioned-event-guid"
 token_file = "~/.config/musicindex-live-publisher/mixxx/tokens/default.token"
 
-# Optional: add [target.fallback] to receive station fallback payments.
-# If omitted, the publisher logs a warning and uses a dead fallback route.
+# The publisher uses a fixed dead block while idle or non-V4V (ADR 0005).
+# No configuration changes it.
 ```
 
 Required top-level fields:
@@ -72,7 +72,6 @@ Required target fields:
   `~/.config/musicindex-live-publisher/<instance>/tokens/`. `~/` expands to the
   service user's home directory. `%d/<name>` is also supported for custom systemd
   units that provide `CREDENTIALS_DIRECTORY`.
-- `[target.fallback]`: optional station-owned fallback live value block.
 
 Optional target fields:
 
@@ -81,19 +80,11 @@ Optional target fields:
   are negative, not finite, or above 300 are rejected at startup with the target
   name in the error.
 
-Fallback fields:
+A `[target.fallback]` table is a load error. ADR 0005 removes the configured
+fallback. The error names the ADR and the target, so an operator can remove
+the table.
 
-- `title`: fallback title shown when no track is playing. Defaults to
-  `No V4V track playing` when the fallback table is omitted.
-- `image`: optional artwork URL.
-- `value.model`: fallback value model. `type` and `method` must be non-empty.
-  `suggested` is optional when the value model needs it.
-- `value.destinations`: one or more fallback payment destinations. The older
-  direct `destinations = [...]` form is still accepted for existing configs; if
-  no model is configured, those legacy destinations use the default
-  `lightning`/`keysend` model.
-
-Destination fields:
+Destination fields, for a `value_routes` entry in the drop file:
 
 - `name`: recipient label.
 - `type`: recipient route type. Use `node` for a Lightning node pubkey
@@ -107,23 +98,22 @@ Destination fields:
 
 ## LNURL And Lightning Address Compatibility
 
-The publisher is metadata-only: it publishes the configured value block to the
+The publisher is metadata-only: it publishes the assembled value block to the
 MusicIndex relay and does not resolve or pay Lightning routes. Recipient
 compatibility therefore depends on the app or wallet that consumes the live
 value payload.
 
-For maximum Podcasting 2.0 compatibility, use a Lightning node recipient:
+A producer supplies a track's routes in the drop file's `value_routes` array
+(ADR 0002). For maximum Podcasting 2.0 compatibility, a producer uses a
+Lightning node recipient:
 
-```toml
-[target.fallback.value.model]
-type = "lightning"
-method = "keysend"
-
-[[target.fallback.value.destinations]]
-name = "Station"
-type = "node"
-address = "03..."
-split = "100"
+```json
+{
+  "recipient_name": "Artist",
+  "route_type": "node",
+  "address": "03...",
+  "split": 100.0
+}
 ```
 
 Lightning Address is supported as pass-through metadata by using the
@@ -132,26 +122,17 @@ Lightning Address recipients as email-like addresses that consuming apps
 resolve through well-known LNURL/keysend endpoints before payment. The
 publisher does not perform that resolution:
 
-```toml
-[target.fallback.value.model]
-type = "lightning"
-method = "lnaddress"
-
-[[target.fallback.value.destinations]]
-name = "Station"
-type = "lnaddress"
-address = "station@example.com"
-split = "100"
+```json
+{
+  "recipient_name": "Artist",
+  "route_type": "lnaddress",
+  "address": "artist@example.com",
+  "split": 100.0
+}
 ```
 
-The setup shortcut can generate the same shape:
-
-```bash
-setup-mixxx-musicindex \
-  --fallback-type lnaddress \
-  --value-method lnaddress \
-  --fallback-address station@example.com
-```
+The dead block (ADR 0005) uses the same fixed `lnaddress` shape, at the
+address `no-v4v-track@example.invalid`. No configuration changes it.
 
 Direct LNURL-pay URLs or bech32 LNURL strings are not a documented Podcasting
 `valueRecipient` type in the current namespace docs. This publisher will not
@@ -170,49 +151,49 @@ References:
 - LNURL [LUD-06 payRequest](https://raw.githubusercontent.com/lnurl/luds/luds/06.md)
   and [LUD-16 Lightning Address](https://raw.githubusercontent.com/lnurl/luds/luds/16.md).
 
-## Fallback Default
+## Dead Block
 
-Every target gets a fallback payload. This is an implementation safety measure,
-not a Podcasting namespace requirement.
+Each target gets the dead block (ADR 0005) when no payable block plays. This
+is a publisher safety measure, not a Podcasting namespace requirement.
 
-The publisher posts fallback metadata at startup when the watched directory has
-no current track, and again when a producer removes the drop file. Without
-publishing some fallback payload, the relay would keep serving the last
-successfully published track payload unless the software gained a separate,
-relay-supported clear operation. That stale-track state can route boosts to the
-previous song after playback has moved on, stopped, or switched to non-V4V
-audio.
+The publisher posts the dead block at startup when the watched directory has
+no current track. It posts the dead block again when a producer removes the
+drop file, or reports an empty `value_routes` list. Without the dead block,
+the relay keeps serving the last published track payload. The relay has no
+clear command of its own, so only a new publish can replace that payload. A
+stale track payload can then send a boost to the last song, after play moves
+on, stops, or changes to non-V4V audio.
 
-If no fallback payment route is configured, the publisher logs a warning and
-uses this deliberately dead value block:
+The dead block is a constant:
 
-```toml
-[target.fallback.value.model]
-type = "lightning"
-method = "lnaddress"
-
-[[target.fallback.value.destinations]]
-name = "No V4V payment route"
-type = "lnaddress"
-address = "no-v4v-track@example.invalid"
-split = "100"
+```json
+{
+  "title": "No V4V track playing",
+  "value": {
+    "model": { "type": "lightning", "method": "lnaddress" },
+    "destinations": [
+      {
+        "name": "No V4V payment route",
+        "type": "lnaddress",
+        "address": "no-v4v-track@example.invalid",
+        "split": "100"
+      }
+    ]
+  }
+}
 ```
 
-That default gives the stream no usable payment route when no V4V track is
-playing. Configure a station-owned fallback value block only when idle/non-V4V
-time should receive payments.
+That fixed block gives the stream no usable payment route when no V4V track
+plays. No configuration changes it.
 
 Validation rules:
 
 - There must be at least one target.
 - Target names must be unique and non-empty.
 - `event_id` must be non-empty and must not be the example placeholder.
-- Configured fallback destinations must include non-empty `name`, `type`,
-  `address`, and `split`.
-- Configured fallback destination `split` values must parse as finite decimals.
+- A `[target.fallback]` table in a target stanza is a load error that names
+  ADR 0005.
 - Empty token files are rejected.
-- Example placeholder destination addresses such as `YOUR_LIGHTNING_NODE_PUBKEY`
-  are rejected.
 - `stream_delay_secs` must be finite, must not be negative, and must not exceed
   300.
 
@@ -228,8 +209,8 @@ wrong artist. Set the delay to close the gap.
 
 What the delay covers:
 
-- Track payloads and the fallback that follows a removal are held for the same
-  duration, so a set never has a gap or an overlap.
+- Track payloads and the dead block that follows a removal are held for the
+  same duration, so a set never has a gap or an overlap.
 - Two tracks changing inside one delay window both publish, in order, each at
   its own deadline.
 - A producer rewrite of the same track — the MusicIndex value-route upgrade —
@@ -346,9 +327,8 @@ and stream delays. It does not print token content.
 file and does not contact the relay.
 
 `config show --json` prints `watch_dir`, `endpoint`, and the target array. Each
-target contains `name`, `event_id`, `token_file`, `stream_delay_secs`, and
-`fallback_configured`. It does not print token content or fallback destination
-addresses.
+target contains `name`, `event_id`, `token_file`, and `stream_delay_secs`. It
+does not print token content.
 
 When a JSON command fails after parsing its flags, stdout contains one object
 with an `error` field. The exit code stays the same as the non-JSON command.
@@ -415,7 +395,8 @@ Options:
 ## Drop File Contract
 
 The producer writes final `*.json` files by temp-file-plus-rename. The publisher
-ignores non-JSON files and publishes fallback when the final file disappears.
+ignores non-JSON files and publishes the dead block when the final file
+disappears.
 
 Current schema:
 

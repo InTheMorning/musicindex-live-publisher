@@ -591,12 +591,11 @@ fn render_config_show_text(config: &RedactedPublisherConfig) -> String {
     );
     for target in &config.targets {
         output.push_str(&format!(
-            "target {}\tevent_id={}\ttoken_file={}\tstream_delay_secs={}\tfallback_configured={}\n",
+            "target {}\tevent_id={}\ttoken_file={}\tstream_delay_secs={}\n",
             target.name,
             target.event_id,
             target.token_file.display(),
-            target.stream_delay_secs,
-            target.fallback_configured
+            target.stream_delay_secs
         ));
     }
     output
@@ -1033,7 +1032,6 @@ mod tests {
                 event_id: "event-default".to_owned(),
                 token_file: PathBuf::from("/tmp/default.token"),
                 stream_delay_secs: 12.5,
-                fallback_configured: true,
             }],
         };
 
@@ -1042,8 +1040,17 @@ mod tests {
 
         assert_eq!(value["watch_dir"], "/tmp/watch");
         assert_eq!(value["endpoint"], "https://api.example.test");
-        assert_eq!(value["targets"][0]["fallback_configured"], true);
-        assert!(value["targets"][0].get("fallback").is_none());
+        let mut target_keys: Vec<&str> = value["targets"][0]
+            .as_object()
+            .expect("target should be an object")
+            .keys()
+            .map(String::as_str)
+            .collect();
+        target_keys.sort_unstable();
+        assert_eq!(
+            target_keys,
+            vec!["event_id", "name", "stream_delay_secs", "token_file"]
+        );
         assert!(!output.contains("secret-token"));
         assert!(!output.contains("03station"));
         Ok(())

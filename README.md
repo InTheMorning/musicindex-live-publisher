@@ -8,11 +8,12 @@ This repository contains two Rust binaries:
 - `mixxx-now-playing` watches the Mixxx history database, writes icecast-friendly
   text output (for use with eg. Butt), and can write publisher drop files for V4V tracks.
 
-The publisher is a headless service. Producers write drop files with
-temp-file-plus-rename; presence means a track is playing, and file removal means
-the service publishes fallback metadata so boosts stop routing to the previous
-track. If no station fallback is configured, it publishes a dead fallback route
-and logs a warning.
+The publisher is a headless service. Producers write drop files by
+temp-file-plus-rename. A drop file that exists means a track plays. A producer
+removes the file when no track plays. The service then publishes the dead
+block (ADR 0005), so a boost stops going to the last track.
+
+The dead block is a constant. No configuration changes it.
 
 ## Repository Layout
 
@@ -68,8 +69,8 @@ name = "default"
 event_id = "replace-with-provisioned-event-guid"
 token_file = "~/.config/musicindex-live-publisher/mixxx/tokens/default.token"
 
-# Optional: add [target.fallback] to receive station fallback payments.
-# If omitted, the publisher logs a warning and uses a dead fallback route.
+# The publisher uses a fixed dead block while idle or non-V4V (ADR 0005).
+# No configuration changes it.
 ```
 
 Fields:
@@ -86,15 +87,16 @@ Fields:
 - `target.stream_delay_secs`: seconds to hold each payload so the published
   value block lines up with what listeners hear. Defaults to `0`. See the
   configuration runbook for how to measure it.
-- `target.fallback`: optional station-owned fallback value block used when
-  playback clears. If omitted, the publisher warns and uses a dead fallback
-  route: `lnaddress` recipient `no-v4v-track@example.invalid`.
+
+When no payable block plays, the publisher publishes the dead block (ADR
+0005). The dead block pays the fixed `lnaddress` recipient
+`no-v4v-track@example.invalid`. No configuration changes it.
 
 ## Provisioning
 
-For Mixxx, use the setup helper. With no fallback route options, it provisions
-MusicIndex and starts the services using a dead fallback route for idle/non-V4V
-playback:
+For Mixxx, use the setup helper. It provisions MusicIndex and starts the
+services. The publisher uses a fixed dead block for idle or non-V4V playback
+(ADR 0005). No setup flag changes it:
 
 ```bash
 setup-mixxx-musicindex
@@ -106,51 +108,6 @@ current login session:
 
 ```bash
 setup-mixxx-musicindex --temporary
-```
-
-To receive station payments when no V4V track is playing, pass a fallback value
-block:
-
-```bash
-setup-mixxx-musicindex --fallback-value-block ~/.config/musicindex-live-publisher/mixxx-fallback.toml
-```
-
-The value-block fragment is TOML for `[target.fallback]`. The model and
-destination fields are copied into the published value block; the setup helper
-does not rewrite recipient `type`, `customKey`, or `customValue` fields:
-
-```toml
-title = "Homegrown Hits"
-
-[model]
-type = "lightning"
-method = "keysend"
-
-[[destinations]]
-name = "Sharpie"
-type = "node"
-address = "YOUR_LIGHTNING_NODE_PUBKEY"
-split = "10"
-customKey = "696969"
-customValue = "5"
-```
-
-Replace `YOUR_LIGHTNING_NODE_PUBKEY` before running the setup script; it
-rejects placeholder fallback destinations before provisioning.
-
-For a single Lightning node recipient, the shortcut is:
-
-```bash
-setup-mixxx-musicindex --fallback-address "$MUSICINDEX_FALLBACK_ADDRESS"
-```
-
-For a Lightning Address fallback recipient, use:
-
-```bash
-setup-mixxx-musicindex \
-  --fallback-type lnaddress \
-  --value-method lnaddress \
-  --fallback-address station@example.com
 ```
 
 Manual provisioning still works. Create a live item and write the one-time
@@ -194,8 +151,7 @@ musicindex-live-publisher --version
 
 Use `--replace` with `target add` to replace an existing target stanza.
 `config show --json` reports the loaded config, target names, event IDs, token
-file paths, stream delays, and whether each target has a fallback. It never
-prints token content or fallback destination addresses.
+file paths, and stream delays. It never prints token content.
 
 For additional events, repeat provisioning with another `--target` value and
 another token file, then add another `[[target]]` stanza. If a token is lost,

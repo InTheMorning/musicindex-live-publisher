@@ -61,23 +61,11 @@ MUSICINDEX_LIVE_PUBLISHER_REPO=path/to/musicindex-live-publisher makepkg -Csi
 
 For Mixxx, use the setup helper. It provisions the live item, writes the token
 and config, generates `musicindex-live-publisher@mixxx.service`, and starts the
-pipeline. With no fallback route options, idle/non-V4V playback uses a dead
-fallback route:
+pipeline. The publisher uses a fixed dead block for idle or non-V4V playback
+(ADR 0005). No setup flag changes it:
 
 ```bash
 setup-mixxx-musicindex
-```
-
-To receive station payments when no V4V track is playing, pass a fallback value
-block:
-
-```bash
-install -d -m 0700 ~/.config/musicindex-live-publisher
-cp /usr/share/doc/musicindex-live-publisher/examples/mixxx-fallback-value-block.toml \
-  ~/.config/musicindex-live-publisher/mixxx-fallback.toml
-$EDITOR ~/.config/musicindex-live-publisher/mixxx-fallback.toml
-setup-mixxx-musicindex \
-  --fallback-value-block ~/.config/musicindex-live-publisher/mixxx-fallback.toml
 ```
 
 Use temporary mode for a current-login rehearsal:
@@ -85,10 +73,6 @@ Use temporary mode for a current-login rehearsal:
 ```bash
 setup-mixxx-musicindex --temporary
 ```
-
-The script refuses placeholder fallback destinations, so set `address` to the
-real recipient address before provisioning. For `type = "node"`, that is the
-Lightning node pubkey.
 
 For manual setup, create the user config directory:
 
@@ -118,8 +102,8 @@ Edit `~/.config/musicindex-live-publisher/mixxx/config.toml`:
 - Replace `event_id` with the provisioned value.
 - Keep
   `token_file = "~/.config/musicindex-live-publisher/mixxx/tokens/default.token"`.
-- Add a fallback value block only if idle/non-V4V time should receive station
-  payments.
+- Do not add a `[target.fallback]` table. The publisher uses the fixed dead
+  block (ADR 0005). No configuration changes it.
 
 Optional producer config:
 

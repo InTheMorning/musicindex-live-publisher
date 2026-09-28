@@ -9,7 +9,7 @@ use std::{env, fs};
 use anyhow::{Context, Result, anyhow};
 use serde::{Deserialize, Serialize};
 
-use crate::{FallbackConfig, LiveValue, LiveValueDestination, LiveValueModel, WatchTarget};
+use crate::WatchTarget;
 
 /// Default service configuration path.
 pub const DEFAULT_CONFIG_PATH: &str = "/etc/musicindex-live-publisher/config.toml";
@@ -21,21 +21,10 @@ pub const DEFAULT_CONFIG_PATH: &str = "/etc/musicindex-live-publisher/config.tom
 /// on air, where it would park every payload past the end of the show.
 const MAX_STREAM_DELAY_SECS: f64 = 300.0;
 
-const DEFAULT_DEAD_FALLBACK_TITLE: &str = "No V4V track playing";
-const DEFAULT_DEAD_FALLBACK_RECIPIENT_NAME: &str = "No V4V payment route";
-const DEFAULT_DEAD_FALLBACK_ADDRESS: &str = "no-v4v-track@example.invalid";
-
 const EVENT_ID_PLACEHOLDERS: &[&str] = &[
     "replace-with-provisioned-event-guid",
     "the-provisioned-event-guid",
     "<event_id>",
-];
-const DESTINATION_ADDRESS_PLACEHOLDERS: &[&str] = &[
-    "YOUR_LIGHTNING_DESTINATION",
-    "YOUR_LIGHTNING_NODE_PUBKEY",
-    "replace-with-lightning-destination",
-    "03your-node-pubkey",
-    "03...",
 ];
 
 /// Runtime service configuration.
@@ -54,7 +43,6 @@ pub struct PublisherTarget {
     pub token_file: PathBuf,
     pub token: String,
     pub stream_delay: Duration,
-    pub fallback: FallbackConfig,
 }
 
 impl fmt::Debug for PublisherTarget {
@@ -66,7 +54,6 @@ impl fmt::Debug for PublisherTarget {
             .field("token_file", &self.token_file)
             .field("token", &"<redacted>")
             .field("stream_delay", &self.stream_delay)
-            .field("fallback", &self.fallback)
             .finish()
     }
 }
@@ -77,7 +64,6 @@ impl PublisherTarget {
         WatchTarget {
             name: self.name.clone(),
             event_guid: self.event_id.clone(),
-            fallback: self.fallback.clone(),
         }
     }
 }
@@ -122,7 +108,6 @@ pub struct RedactedPublisherTarget {
     pub event_id: String,
     pub token_file: PathBuf,
     pub stream_delay_secs: f64,
-    pub fallback_configured: bool,
 }
 
 /// A config edit failure with a stable command-line meaning.
@@ -157,24 +142,9 @@ struct RawTarget {
     event_id: String,
     token_file: PathBuf,
     stream_delay_secs: Option<f64>,
-    fallback: Option<RawFallback>,
-}
-
-#[derive(Debug, Deserialize)]
-struct RawFallback {
-    title: Option<String>,
-    image: Option<String>,
-    model: Option<LiveValueModel>,
-    #[serde(default)]
-    destinations: Vec<LiveValueDestination>,
-    value: Option<RawFallbackValue>,
-}
-
-#[derive(Debug, Deserialize)]
-struct RawFallbackValue {
-    model: Option<LiveValueModel>,
-    #[serde(default)]
-    destinations: Vec<LiveValueDestination>,
+    /// Detects a removed `[target.fallback]` table (ADR 0005). The publisher
+    /// never reads its content.
+    fallback: Option<toml::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -306,6 +276,7 @@ pub fn list_config_targets_from_str(text: &str) -> Result<Vec<TargetConfigSummar
                 return Err(anyhow!("duplicate target name {}", target.name));
             }
             validate_stream_delay_secs(&target.name, target.stream_delay_secs)?;
+            reject_removed_fallback_table(&target.name, target.fallback.as_ref())?;
             Ok(TargetConfigSummary {
                 name: target.name,
                 event_id: target.event_id,
@@ -400,12 +371,12 @@ fn redacted_target_from_raw(
     validate_no_control_chars("target event_id", &target.event_id)?;
     validate_event_id(&target.name, &target.event_id)?;
     validate_stream_delay_secs(&target.name, target.stream_delay_secs)?;
+    reject_removed_fallback_table(&target.name, target.fallback.as_ref())?;
     Ok(RedactedPublisherTarget {
         name: target.name,
         event_id: target.event_id,
         token_file: target.token_file,
         stream_delay_secs: target.stream_delay_secs.unwrap_or(0.0),
-        fallback_configured: target.fallback.is_some(),
     })
 }
 
@@ -436,19 +407,8 @@ fn resolve_target(target: RawTarget, seen: &mut HashSet<String>) -> Result<Publi
         return Err(anyhow!("duplicate target name {}", target.name));
     }
     validate_event_id(&target.name, &target.event_id)?;
+    reject_removed_fallback_table(&target.name, target.fallback.as_ref())?;
     let stream_delay = resolve_stream_delay(&target.name, target.stream_delay_secs)?;
-
-    let fallback = target.fallback.map_or_else(
-        || {
-            Ok(default_dead_fallback(
-                &target.name,
-                None,
-                None,
-                "target has no fallback configuration",
-            ))
-        },
-        |fallback| resolve_fallback(&target.name, fallback),
-    )?;
 
     let token_file = resolve_token_file_path(
         &target.token_file,
@@ -463,7 +423,6 @@ fn resolve_target(target: RawTarget, seen: &mut HashSet<String>) -> Result<Publi
         token_file,
         token,
         stream_delay,
-        fallback,
     })
 }
 
@@ -743,204 +702,25 @@ fn resolve_token_file_path(
     Ok(token_file.to_path_buf())
 }
 
-fn resolve_fallback(target_name: &str, fallback: RawFallback) -> Result<FallbackConfig> {
-    let RawFallback {
-        title,
-        image,
-        model,
-        destinations: direct_destinations,
-        value,
-    } = fallback;
-    let title = title.unwrap_or_else(|| DEFAULT_DEAD_FALLBACK_TITLE.to_owned());
-    let (value_model, value_destinations) = match value {
-        Some(value) => (value.model, value.destinations),
-        None => (None, Vec::new()),
-    };
-
-    if model.is_some() && value_model.is_some() {
+/// Rejects a target stanza that still holds the removed `[target.fallback]`
+/// table.
+///
+/// ADR 0005 replaces the configured fallback with the fixed dead block in
+/// `livevalue::dead_payload`. The publisher never reads a `fallback` table;
+/// its mere presence is a load error that names the target so the operator
+/// can find and delete it.
+///
+/// # Errors
+///
+/// Returns an error naming ADR 0005 and the target when `fallback` is
+/// `Some`.
+fn reject_removed_fallback_table(target_name: &str, fallback: Option<&toml::Value>) -> Result<()> {
+    if fallback.is_some() {
         return Err(anyhow!(
-            "target {target_name} fallback must define model either directly or under value, not both"
-        ));
-    }
-
-    let has_direct_destinations = !direct_destinations.is_empty();
-    let has_value_destinations = !value_destinations.is_empty();
-    if has_direct_destinations && has_value_destinations {
-        return Err(anyhow!(
-            "target {target_name} fallback must define destinations either directly or under value, not both"
-        ));
-    }
-
-    let destinations = if has_direct_destinations {
-        direct_destinations
-    } else {
-        value_destinations
-    };
-
-    if destinations.is_empty() {
-        return Ok(default_dead_fallback(
-            target_name,
-            Some(title),
-            image,
-            "target fallback has no payment destinations",
-        ));
-    }
-
-    let model = model.or(value_model).unwrap_or_else(default_fallback_model);
-    validate_fallback_model(target_name, &model)?;
-    validate_fallback_destinations(target_name, &destinations)?;
-
-    Ok(FallbackConfig {
-        title,
-        image,
-        value: LiveValue {
-            model,
-            destinations,
-        },
-    })
-}
-
-fn default_dead_fallback(
-    target_name: &str,
-    title: Option<String>,
-    image: Option<String>,
-    reason: &str,
-) -> FallbackConfig {
-    tracing::warn!(
-        target = target_name,
-        reason,
-        fallback_type = "lnaddress",
-        fallback_address = DEFAULT_DEAD_FALLBACK_ADDRESS,
-        "FALLBACK PAYMENT ROUTE MISSING; publishing default dead fallback route during idle/non-V4V playback; configure target.fallback.value.destinations to receive station payments"
-    );
-    FallbackConfig {
-        title: title.unwrap_or_else(|| DEFAULT_DEAD_FALLBACK_TITLE.to_owned()),
-        image,
-        value: default_dead_fallback_value(),
-    }
-}
-
-fn default_dead_fallback_value() -> LiveValue {
-    LiveValue {
-        model: LiveValueModel {
-            kind: "lightning".to_owned(),
-            method: "lnaddress".to_owned(),
-            suggested: None,
-        },
-        destinations: vec![LiveValueDestination {
-            kind: Some("lnaddress".to_owned()),
-            name: Some(DEFAULT_DEAD_FALLBACK_RECIPIENT_NAME.to_owned()),
-            address: Some(DEFAULT_DEAD_FALLBACK_ADDRESS.to_owned()),
-            split: Some("100".to_owned()),
-            custom_key: None,
-            custom_value: None,
-            fee: None,
-        }],
-    }
-}
-
-fn default_fallback_model() -> LiveValueModel {
-    LiveValueModel {
-        kind: "lightning".to_owned(),
-        method: "keysend".to_owned(),
-        suggested: None,
-    }
-}
-
-fn validate_fallback_model(target_name: &str, model: &LiveValueModel) -> Result<()> {
-    if model.kind.trim().is_empty() {
-        return Err(anyhow!(
-            "target {target_name} fallback value model type must not be empty"
-        ));
-    }
-    if model.method.trim().is_empty() {
-        return Err(anyhow!(
-            "target {target_name} fallback value model method must not be empty"
+            "ADR 0005: [target.fallback] is removed. The publisher uses a fixed dead block. Delete this table from target {target_name}."
         ));
     }
     Ok(())
-}
-
-fn validate_fallback_destinations(
-    target_name: &str,
-    destinations: &[LiveValueDestination],
-) -> Result<()> {
-    if destinations.is_empty() {
-        return Err(anyhow!(
-            "target {target_name} fallback destinations must not be empty"
-        ));
-    }
-
-    for (index, destination) in destinations.iter().enumerate() {
-        validate_required_destination_field(
-            target_name,
-            index,
-            "name",
-            destination.name.as_deref(),
-        )?;
-        validate_required_destination_field(
-            target_name,
-            index,
-            "type",
-            destination.kind.as_deref(),
-        )?;
-        let address = validate_required_destination_field(
-            target_name,
-            index,
-            "address",
-            destination.address.as_deref(),
-        )?;
-        validate_destination_address(target_name, index, address)?;
-        let split = validate_required_destination_field(
-            target_name,
-            index,
-            "split",
-            destination.split.as_deref(),
-        )?;
-        let parsed = split.parse::<f64>().with_context(|| {
-            format!("target {target_name} fallback destination {index} split must be decimal")
-        })?;
-        if !parsed.is_finite() {
-            return Err(anyhow!(
-                "target {target_name} fallback destination {index} split must be finite"
-            ));
-        }
-    }
-
-    Ok(())
-}
-
-fn validate_destination_address(target_name: &str, index: usize, address: &str) -> Result<()> {
-    let address = address.trim();
-    if DESTINATION_ADDRESS_PLACEHOLDERS.contains(&address)
-        || address.contains("YOUR_")
-        || address.contains("your-")
-        || address.contains("replace-with")
-    {
-        return Err(anyhow!(
-            "target {target_name} fallback destination {index} address is still an example placeholder"
-        ));
-    }
-    Ok(())
-}
-
-fn validate_required_destination_field<'a>(
-    target_name: &str,
-    index: usize,
-    field: &str,
-    value: Option<&'a str>,
-) -> Result<&'a str> {
-    let Some(value) = value else {
-        return Err(anyhow!(
-            "target {target_name} fallback destination {index} missing {field}"
-        ));
-    };
-    if value.trim().is_empty() {
-        return Err(anyhow!(
-            "target {target_name} fallback destination {index} {field} must not be empty"
-        ));
-    }
-    Ok(value)
 }
 
 fn load_token_file(path: &Path) -> Result<String> {

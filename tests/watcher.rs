@@ -4,8 +4,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Result, anyhow};
 use musicindex_live_publisher::{
-    DropEvent, DropEventKind, DropWatcher, FallbackConfig, LiveValue, LiveValueDestination,
-    LiveValueModel, WatchTarget, is_final_drop_file,
+    DropEvent, DropEventKind, DropWatcher, WatchTarget, is_final_drop_file,
 };
 use serde_json::{Value, json};
 use tempfile::TempDir;
@@ -14,26 +13,6 @@ fn target() -> WatchTarget {
     WatchTarget {
         name: "default".to_owned(),
         event_guid: "event-guid".to_owned(),
-        fallback: FallbackConfig {
-            title: "Station".to_owned(),
-            image: None,
-            value: LiveValue {
-                model: LiveValueModel {
-                    kind: "lightning".to_owned(),
-                    method: "keysend".to_owned(),
-                    suggested: None,
-                },
-                destinations: vec![LiveValueDestination {
-                    kind: Some("node".to_owned()),
-                    name: Some("Station".to_owned()),
-                    address: Some("03station".to_owned()),
-                    split: Some("100".to_owned()),
-                    custom_key: None,
-                    custom_value: None,
-                    fee: None,
-                }],
-            },
-        },
     }
 }
 
@@ -59,6 +38,12 @@ fn dropfile(title: &str) -> String {
         "value_routes_source": "musicindex-api"
     })
     .to_string()
+}
+
+fn dropfile_with_routes(title: &str, routes: Value) -> String {
+    let mut value: Value = serde_json::from_str(&dropfile(title)).expect("valid dropfile json");
+    value["value_routes"] = routes;
+    value.to_string()
 }
 
 fn write(path: &Path, content: impl AsRef<[u8]>) -> Result<()> {
@@ -88,7 +73,7 @@ fn one_payload(payloads: Vec<musicindex_live_publisher::LiveValuePayload>) -> Re
 }
 
 #[test]
-fn watcher_create_modify_remove_emits_track_then_fallback() -> Result<()> {
+fn watcher_create_modify_remove_emits_track_then_dead_block() -> Result<()> {
     let temp = TempDir::new()?;
     let path = temp.path().join("nowplaying.json");
     let mut watcher = DropWatcher::new(target(), Duration::from_millis(75));
@@ -110,12 +95,14 @@ fn watcher_create_modify_remove_emits_track_then_fallback() -> Result<()> {
     assert_eq!(second["blockGuid"], first_block);
 
     fs::remove_file(&path)?;
-    let fallback =
+    let dead_block =
         one_payload(watcher.process_event(remove(&path), start + Duration::from_millis(200))?)?;
-    assert_eq!(fallback["title"], "Station");
-    assert_eq!(fallback["eventGuid"], "event-guid");
-    assert_eq!(fallback["value"]["destinations"][0]["split"], "100");
-    assert_ne!(fallback["blockGuid"], first_block);
+    assert_eq!(dead_block["title"], "No V4V track playing");
+    assert_eq!(dead_block["eventGuid"], "event-guid");
+    assert_eq!(dead_block["value"]["destinations"][0]["split"], "100");
+    assert!(dead_block.get("feedGuid").is_none());
+    assert!(dead_block.get("itemGuid").is_none());
+    assert_ne!(dead_block["blockGuid"], first_block);
 
     write(&path, dropfile("New Track"))?;
     let third =
@@ -126,7 +113,51 @@ fn watcher_create_modify_remove_emits_track_then_fallback() -> Result<()> {
 }
 
 #[test]
-fn watcher_malformed_file_is_skipped_without_fallback() -> Result<()> {
+fn watcher_two_dead_blocks_have_different_block_guids() -> Result<()> {
+    let temp = TempDir::new()?;
+    let path_a = temp.path().join("a.json");
+    let path_b = temp.path().join("b.json");
+    let mut watcher = DropWatcher::new(target(), Duration::from_millis(0));
+
+    write(&path_a, dropfile("Track A"))?;
+    watcher.process_event(upsert(&path_a), Instant::now())?;
+    write(&path_b, dropfile("Track B"))?;
+    watcher.process_event(upsert(&path_b), Instant::now())?;
+
+    let dead_a = one_payload(watcher.process_event(remove(&path_a), Instant::now())?)?;
+    let dead_b = one_payload(watcher.process_event(remove(&path_b), Instant::now())?)?;
+
+    assert_eq!(dead_a["title"], "No V4V track playing");
+    assert_eq!(dead_b["title"], "No V4V track playing");
+    assert_ne!(dead_a["blockGuid"], dead_b["blockGuid"]);
+    Ok(())
+}
+
+#[test]
+fn watcher_empty_value_routes_publishes_dead_block() -> Result<()> {
+    let temp = TempDir::new()?;
+    let path = temp.path().join("nowplaying.json");
+    let mut watcher = DropWatcher::new(target(), Duration::from_millis(0));
+
+    write(&path, dropfile_with_routes("Silence", json!([])))?;
+    let payload = one_payload(watcher.process_event(upsert(&path), Instant::now())?)?;
+
+    assert_eq!(payload["title"], "No V4V track playing");
+    assert_eq!(
+        payload["value"]["destinations"].as_array().map(Vec::len),
+        Some(1)
+    );
+    assert_eq!(
+        payload["value"]["destinations"][0]["address"],
+        "no-v4v-track@example.invalid"
+    );
+    assert!(payload.get("feedGuid").is_none());
+    assert!(payload.get("itemGuid").is_none());
+    Ok(())
+}
+
+#[test]
+fn watcher_malformed_file_is_skipped_without_dead_block() -> Result<()> {
     let temp = TempDir::new()?;
     let path = temp.path().join("nowplaying.json");
     let mut watcher = DropWatcher::new(target(), Duration::from_millis(75));
@@ -139,7 +170,7 @@ fn watcher_malformed_file_is_skipped_without_fallback() -> Result<()> {
 }
 
 #[test]
-fn watcher_unknown_schema_is_skipped_without_fallback() -> Result<()> {
+fn watcher_unknown_schema_is_skipped_without_dead_block() -> Result<()> {
     let temp = TempDir::new()?;
     let path = temp.path().join("nowplaying.json");
     let mut watcher = DropWatcher::new(target(), Duration::from_millis(75));
@@ -187,14 +218,17 @@ fn watcher_initial_state_with_existing_file_publishes_track() -> Result<()> {
 }
 
 #[test]
-fn watcher_initial_state_empty_directory_publishes_fallback() -> Result<()> {
+fn watcher_initial_state_empty_directory_publishes_dead_block() -> Result<()> {
     let temp = TempDir::new()?;
     let mut watcher = DropWatcher::new(target(), Duration::from_millis(75));
 
     let payload = one_payload(watcher.initial_payloads(temp.path())?)?;
 
-    assert_eq!(payload["title"], "Station");
-    assert_eq!(payload["value"]["destinations"][0]["name"], "Station");
+    assert_eq!(payload["title"], "No V4V track playing");
+    assert_eq!(
+        payload["value"]["destinations"][0]["name"],
+        "No V4V payment route"
+    );
     Ok(())
 }
 

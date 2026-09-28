@@ -5,26 +5,11 @@ MusicIndex live publisher was installed.
 Quick Mixxx setup:
   setup-mixxx-musicindex
 
-Optional station fallback payments:
-  install -d -m 0700 ~/.config/musicindex-live-publisher
-  cp /usr/share/doc/musicindex-live-publisher/examples/mixxx-fallback-value-block.toml \
-    ~/.config/musicindex-live-publisher/mixxx-fallback.toml
-  $EDITOR ~/.config/musicindex-live-publisher/mixxx-fallback.toml
-  setup-mixxx-musicindex \
-    --fallback-value-block ~/.config/musicindex-live-publisher/mixxx-fallback.toml
-
-Example fallback value block:
-  /usr/share/doc/musicindex-live-publisher/examples/mixxx-fallback-value-block.toml
-
-Single Lightning node recipient shortcut:
-  setup-mixxx-musicindex --fallback-address "$MUSICINDEX_FALLBACK_ADDRESS"
-
-Lightning Address recipient shortcut:
-  setup-mixxx-musicindex --fallback-type lnaddress --value-method lnaddress \
-    --fallback-address station@example.com
-
 Temporary test setup for the current login session:
   setup-mixxx-musicindex --temporary
+
+The publisher uses a fixed dead block while idle or playing non-V4V audio
+(ADR 0005). No configuration changes it.
 
 The setup command provisions a live item, writes the one-time broadcaster token,
 generates musicindex-live-publisher@mixxx.service and mixxx-now-playing.service,

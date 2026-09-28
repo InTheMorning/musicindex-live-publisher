@@ -5,8 +5,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use musicindex_live_publisher::{
-    DropEvent, DropEventKind, DropWatcher, FallbackConfig, LiveValue, LiveValueDestination,
-    LiveValueModel, LiveValuePayload, PublishSchedule, WatchTarget,
+    DropEvent, DropEventKind, DropWatcher, LiveValuePayload, PublishSchedule, WatchTarget,
 };
 use serde_json::json;
 use tempfile::TempDir;
@@ -17,26 +16,6 @@ fn target(name: &str, event_guid: &str) -> WatchTarget {
     WatchTarget {
         name: name.to_owned(),
         event_guid: event_guid.to_owned(),
-        fallback: FallbackConfig {
-            title: "Station".to_owned(),
-            image: None,
-            value: LiveValue {
-                model: LiveValueModel {
-                    kind: "lightning".to_owned(),
-                    method: "keysend".to_owned(),
-                    suggested: None,
-                },
-                destinations: vec![LiveValueDestination {
-                    kind: Some("node".to_owned()),
-                    name: Some("Station".to_owned()),
-                    address: Some("03station".to_owned()),
-                    split: Some("100".to_owned()),
-                    custom_key: None,
-                    custom_value: None,
-                    fee: None,
-                }],
-            },
-        },
     }
 }
 
@@ -163,7 +142,7 @@ fn schedule_delayed_payload_is_withheld_until_its_deadline() -> Result<()> {
 }
 
 #[test]
-fn schedule_removal_fallback_is_delayed_like_the_track() -> Result<()> {
+fn schedule_removal_dead_block_is_delayed_like_the_track() -> Result<()> {
     let temp = TempDir::new()?;
     let path = temp.path().join("default.json");
     let mut watcher = DropWatcher::new(target("default", "event-default"), Duration::ZERO);
@@ -186,7 +165,7 @@ fn schedule_removal_fallback_is_delayed_like_the_track() -> Result<()> {
             .is_empty()
     );
     let due = schedule.take_due(removed_at + DELAY);
-    assert_eq!(titles(&due), vec!["Station"]);
+    assert_eq!(titles(&due), vec!["No V4V track playing"]);
     Ok(())
 }
 

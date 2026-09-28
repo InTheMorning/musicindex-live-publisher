@@ -92,21 +92,30 @@ pub fn payload_from_dropfile(
     }
 }
 
-/// Builds a fallback live value payload from a configured station value block.
+/// Fixed title for the dead block.
 ///
-/// The fallback payload uses the same music block shape as track payloads. The
-/// caller supplies title, optional image, and GUIDs because configuration and
-/// block identity are owned by later tasks.
-pub fn fallback_payload(
-    title: &str,
-    image: Option<&str>,
-    event_guid: &str,
-    block_guid: &str,
-    value: &LiveValue,
-) -> LiveValuePayload {
+/// ADR 0005 states this value as a constant. No configuration can change it.
+const DEAD_BLOCK_TITLE: &str = "No V4V track playing";
+
+/// Fixed payment-destination name for the dead block.
+const DEAD_BLOCK_RECIPIENT_NAME: &str = "No V4V payment route";
+
+/// Fixed lnaddress for the dead block.
+///
+/// A payment to this address fails, so the dead block pays nobody.
+const DEAD_BLOCK_ADDRESS: &str = "no-v4v-track@example.invalid";
+
+/// Builds the dead block: the fixed live value payload for "no payable block
+/// plays here now" (ADR 0005).
+///
+/// The dead block is a constant. No configuration can change its title, its
+/// model, or its destination. It carries no `feedGuid` and no `itemGuid`,
+/// because no producer supplied a track. The caller supplies `event_guid` for
+/// the target and a fresh `block_guid` for each publish.
+pub fn dead_payload(event_guid: &str, block_guid: &str) -> LiveValuePayload {
     LiveValuePayload {
-        title: title.to_owned(),
-        image: image.map(str::to_owned),
+        title: DEAD_BLOCK_TITLE.to_owned(),
+        image: None,
         description: String::new(),
         kind: "music".to_owned(),
         start_time: 0,
@@ -115,7 +124,22 @@ pub fn fallback_payload(
         block_guid: block_guid.to_owned(),
         feed_guid: None,
         item_guid: None,
-        value: value.clone(),
+        value: LiveValue {
+            model: LiveValueModel {
+                kind: "lightning".to_owned(),
+                method: "lnaddress".to_owned(),
+                suggested: None,
+            },
+            destinations: vec![LiveValueDestination {
+                kind: Some("lnaddress".to_owned()),
+                name: Some(DEAD_BLOCK_RECIPIENT_NAME.to_owned()),
+                address: Some(DEAD_BLOCK_ADDRESS.to_owned()),
+                split: Some("100".to_owned()),
+                custom_key: None,
+                custom_value: None,
+                fee: None,
+            }],
+        },
     }
 }
 
@@ -165,18 +189,6 @@ mod tests {
             address: Some("03ab".to_owned()),
             custom_key: None,
             custom_value: None,
-        }
-    }
-
-    fn fallback_destination(split: &str) -> LiveValueDestination {
-        LiveValueDestination {
-            kind: Some("node".to_owned()),
-            name: Some("Station".to_owned()),
-            address: Some("03ab".to_owned()),
-            split: Some(split.to_owned()),
-            custom_key: None,
-            custom_value: None,
-            fee: None,
         }
     }
 
@@ -300,31 +312,48 @@ mod tests {
     }
 
     #[test]
-    fn livevalue_fallback_payload_preserves_configured_value_block() -> Result<()> {
-        let payload = fallback_payload(
-            "Station",
-            None,
-            "event-guid",
-            "block-guid",
-            &LiveValue {
-                model: LiveValueModel {
-                    kind: "custom-model".to_owned(),
-                    method: "custom-method".to_owned(),
-                    suggested: Some("0.0000100000".to_owned()),
-                },
-                destinations: vec![fallback_destination("100")],
-            },
-        );
-        let value = serde_json::to_value(payload)?;
+    fn livevalue_dead_payload_has_the_fixed_dead_block_values() -> Result<()> {
+        let payload = dead_payload("event-guid", "block-guid");
+        let value = serde_json::to_value(&payload)?;
 
-        assert_eq!(value["title"], "Station");
+        assert_eq!(value["title"], "No V4V track playing");
         assert!(value.get("image").is_none());
         assert!(value.get("duration").is_none());
-        assert_eq!(value["value"]["model"]["type"], "custom-model");
-        assert_eq!(value["value"]["model"]["method"], "custom-method");
-        assert_eq!(value["value"]["model"]["suggested"], "0.0000100000");
-        assert_eq!(value["value"]["destinations"][0]["type"], "node");
+        assert!(value.get("feedGuid").is_none());
+        assert!(value.get("itemGuid").is_none());
+        assert_eq!(value["value"]["model"]["type"], "lightning");
+        assert_eq!(value["value"]["model"]["method"], "lnaddress");
+        assert_eq!(
+            value["value"]["destinations"].as_array().map(Vec::len),
+            Some(1)
+        );
+        assert_eq!(value["value"]["destinations"][0]["type"], "lnaddress");
+        assert_eq!(
+            value["value"]["destinations"][0]["name"],
+            "No V4V payment route"
+        );
+        assert_eq!(
+            value["value"]["destinations"][0]["address"],
+            "no-v4v-track@example.invalid"
+        );
         assert_eq!(value["value"]["destinations"][0]["split"], "100");
+        assert!(!value["value"]["destinations"][0]["split"].is_number());
+        Ok(())
+    }
+
+    #[test]
+    fn livevalue_two_dead_payloads_only_differ_by_block_guid() -> Result<()> {
+        let first = serde_json::to_value(dead_payload("event-guid", "block-guid-1"))?;
+        let second = serde_json::to_value(dead_payload("event-guid", "block-guid-2"))?;
+
+        assert_ne!(first["blockGuid"], second["blockGuid"]);
+
+        let mut first_without_block = first;
+        let mut second_without_block = second;
+        first_without_block["blockGuid"] = Value::Null;
+        second_without_block["blockGuid"] = Value::Null;
+
+        assert_eq!(first_without_block, second_without_block);
         Ok(())
     }
 }
