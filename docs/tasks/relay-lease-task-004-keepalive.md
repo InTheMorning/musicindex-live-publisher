@@ -62,9 +62,12 @@ publishes its last payload again.
   channel as the payloads. Replace `mpsc::Sender<LiveValuePayload>` with a
   sender of an enum with `Publish(LiveValuePayload)` and
   `Producer(ProducerState)`.
-- The order in the channel is: the dead block through `PublishSchedule`, then
-  `Producer(Missing)`. `Producer(Missing)` is sent at once. Do not hold it for
-  the stream delay.
+- When the producer goes missing, the main loop sends `Producer(Missing)` to a
+  worker only after `PublishSchedule` releases the dead block for that
+  transition, and only if the producer is still missing at that time. The
+  stream delay can be longer than the lease, so an earlier stop could let the
+  lease expire before the dead block goes out.
+- `Producer(Running)` is sent at once.
 - No token in a log line, an error message or a `Debug` output.
 
 ## Implementation Steps
@@ -87,6 +90,10 @@ publishes its last payload again.
    - A publish response with an interval of 1 second gives a keepalive
      request, with the bearer token and an empty body.
    - `Producer(Missing)` stops the keepalive requests.
+   - With a stream delay longer than the keepalive interval, keepalive
+     requests continue until the dead block is published, and stop after it.
+   - If the producer returns before the delayed dead block is released, the
+     keepalive does not stop.
    - A keepalive `409` gives a new publish of the last payload with the same
      `blockGuid`.
    - A keepalive `403` sets the fatal state, so `check_health` fails.
@@ -149,7 +156,7 @@ Constraints:
 - Status mapping: 200 renewed; 409 republish the last accepted payload with the same blockGuid; 401/403/404 fatal; 429, 5xx and network errors retry with the present backoff; any other status fatal.
 - A new payload goes before a keepalive. A publish resets the keepalive time.
 - Replace the payload channel with an enum: Publish(LiveValuePayload) and Producer(ProducerState). Add RelayPublisher::set_producer.
-- Send Producer(Missing) at once. The dead block goes through PublishSchedule.
+- Send Producer(Missing) only after PublishSchedule releases the dead block for that transition, and only if the producer is still missing. Send Producer(Running) at once.
 - No token in a log line, an error or a Debug output.
 
 Do not touch:
@@ -159,7 +166,7 @@ Do not touch:
 - ../musicindex-live-relay/**
 
 Acceptance criteria:
-- StubServer tests: no interval gives no keepalive; an interval of 1 second gives a keepalive with the bearer token and an empty body; Producer(Missing) stops keepalives; a 409 republishes the last payload with the same blockGuid; a 403 makes check_health fail; a 503 retries.
+- StubServer tests: no interval gives no keepalive; an interval of 1 second gives a keepalive with the bearer token and an empty body; Producer(Missing) stops keepalives; with a stream delay the keepalive continues until the dead block is published; a producer that returns before the dead block is released keeps the keepalive; a 409 republishes the last payload with the same blockGuid; a 403 makes check_health fail; a 503 retries.
 - No test calls a public relay.
 - The relay row in docs/architecture/broadcast-chain-boundaries.md names the keepalive route and relay ADR 0002.
 

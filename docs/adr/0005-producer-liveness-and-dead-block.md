@@ -1,17 +1,21 @@
 # ADR 0005: Producer Liveness, The Dead Block And The Relay Lease
 
-Status: Proposed
+Status: Accepted
 Date: 2026-09-27
 
-This ADR becomes Accepted when the operator accepts it. Only §Publisher
-Behavior depends on the relay. The keepalive rules in that section wait for
-`musicindex-live-relay` ADR 0002, which defines the keepalive route and the
-interval.
+Accepted 2026-09-27 by the operator. Only §Publisher Behavior depends on the
+relay. The keepalive rules in that section use `musicindex-live-relay` ADR
+0002, which defines the keepalive route and the interval.
 
 Amended 2026-09-27: the acceptance no longer waits for the relay ADR or the
 Mixxx duration check. The Mixxx check gives evidence for a future MIDI ADR,
 not for a rule here. The startup rule now publishes one block for each target.
 No decision changed.
+
+Amended 2026-09-27 at acceptance: the keepalive stops only after the dead block
+for a missing producer goes out. A stream delay longer than the lease can then
+not let the lease expire first. The MIDI text cites ADR 0006, and §Verification
+cites the result of the Mixxx duration check. No decision was reversed.
 
 ## Context
 
@@ -115,8 +119,11 @@ dead block.
   reaches listeners with the audio.
 - A keepalive does not go through `PublishSchedule`. It carries no content.
 - When the producer lock becomes free, the publisher publishes the dead block
-  one time and then stops the keepalive. The relay ends the lease after one
-  lease duration.
+  one time. The keepalive stops only after `PublishSchedule` releases that
+  dead block, and only if the producer is still missing. The relay ends the
+  lease one lease duration later. The stream delay can be up to 300 seconds,
+  which is longer than the lease. If the keepalive stopped at once, the lease
+  could expire before the dead block goes out.
 - At startup, the publisher publishes one block for each target. It is the
   track block when the producer lock is held and a drop file for that target
   is present. In all other conditions, it is the dead block. This replaces a
@@ -130,10 +137,10 @@ The relay owns the keepalive route, the interval and the lease duration. This
 service does not choose them. This design does not need a relay stop message,
 because the dead block gives the immediate clear.
 
-### Payment Timing Until MIDI
+### Payment Timing Without The MIDI Connector
 
-This rule is situational. A MIDI link to Mixxx that gives the deck play state
-supersedes it.
+This rule is situational. ADR 0006 limits it to the mode in which the MIDI
+connector is not available. It is deleted if ADR 0006 removes that mode.
 
 - The expiry timer never uses an RSS duration or the `TLEN` tag. Both are
   written by parties outside the audio stream. v4vmm can write `TLEN`.
@@ -166,11 +173,11 @@ Mechanical. Each invariant gets a unit test in the crate that owns it:
   by the test.
 - The producer: the lock, the duration source and the maximum.
 
-Manual evidence for the future MIDI ADR. An operator loads an MP3 with no VBR header into a
-Mixxx deck. The operator compares `[ChannelN],duration` with a decoded sample
-count, for example from `ffprobe -count_packets`. The result shows if the
-Mixxx deck value comes from the decoder. A test cannot do this check, because
-it needs a running Mixxx. The MIDI ADR uses the result.
+The Mixxx duration check is done. On 2026-09-27, for a 200.04-second VBR MP3
+with no VBR header, the Mixxx deck showed 200.02 s and lofty showed 617.81 s.
+So the stream header value can be wrong by a factor of three, and the maximum
+is necessary. The evidence is in `docs/architecture/mixxx-interfaces.md`,
+§Track Duration.
 
 ## Changes At Acceptance
 
@@ -194,7 +201,7 @@ as the code that makes it wrong. The task packets in
 - A talk break block. v4vmm must publish it while `mixxx-now-playing` owns the
   drop directory. That needs its own decision.
 - A station split. v4vmm owns it.
-- The MIDI link to Mixxx. It needs its own ADR.
+- The MIDI link to Mixxx. ADR 0006 owns it.
 - An RSS feed for a private stream.
 
 ## Alternatives Considered

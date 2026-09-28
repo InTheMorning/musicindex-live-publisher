@@ -304,7 +304,7 @@ Negative and risks:
 
 - ADR 0001: the non-goal "Detecting pause or exact audio output state" no
   longer applies. Add a dated amendment that cites this ADR.
-- ADR 0005: §Payment Timing Until MIDI stays in force as the history-only
+- ADR 0005: §Payment Timing Without The MIDI Connector stays in force as the history-only
   mode. Add a dated amendment that cites this ADR.
 - `docs/architecture/mixxx-interfaces.md`: add the results of §Verification
   Before Acceptance.

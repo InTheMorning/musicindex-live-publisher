@@ -1,7 +1,6 @@
 # Relay Lease Task 002: The Dead Block
 
-Status: Ready - 2026-09-27. It needs ADR 0005 to be Accepted. It does not need
-the relay or task 001.
+Status: Implemented - 2026-09-27 (`0282b75`).
 
 Every criterion is mechanical. This packet has no visual criteria, because it
 adds no user interface.

@@ -87,14 +87,15 @@ Tasks 001 and 002 can go in either order. Steps 2 to 4 do not need the relay.
 
 ## Risk Areas
 
-- **A dropped first file after the producer starts.** The probe runs each
-  second. A file event can arrive before the probe sees the lock. Task 003
-  probes before each event batch and scans the directory when the producer
-  becomes present.
+- **A stale file when the producer starts.** The producer takes its lock
+  before it removes a stale drop file. Task 003 probes before each event
+  batch, and it does not scan the directory when the producer becomes present.
+  The producer writes its present track again after it starts, so no first
+  file is lost.
 - **The order of the dead block and the keepalive stop.** The dead block waits
-  in `PublishSchedule` for the stream delay. The keepalive stops at once. The
-  dead block publish renews the lease one time, so the order is safe while the
-  stream delay is shorter than the lease.
+  in `PublishSchedule` for the stream delay, which can be up to 300 seconds.
+  The lease is 90 seconds by default. So the keepalive stops only after the
+  schedule releases the dead block (ADR 0005 §Publisher Behavior).
 - **A worker that is busy with backoff.** A keepalive must not delay a new
   payload. Task 004 gives a payload priority.
 - **`--once` mode.** The producer writes a file and exits without a lock. The

@@ -1,7 +1,6 @@
 # Relay Lease Task 001: Producer Lock And Expiry Maximum
 
-Status: Ready - 2026-09-27. It needs ADR 0005 to be Accepted. It does not need
-the relay.
+Status: Implemented - 2026-09-27 (`32d2ce5`).
 
 Every criterion is mechanical. This packet has no visual criteria, because it
 adds no user interface.
