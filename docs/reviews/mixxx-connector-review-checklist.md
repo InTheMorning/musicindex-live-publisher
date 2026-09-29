@@ -74,4 +74,6 @@ Record the result of each check in `docs/plans/mixxx-midi-connector.md`
 
 ## Review Result
 
-Status: Open.
+Status: Open - 2026-09-29. Tasks 001 to 004 are merged, and each packet
+records its review. Manual checks 1 to 4 did not run. The package gates and
+manual check 5 moved to `docs/plans/packaging-pass.md`.

@@ -1,6 +1,7 @@
 # Mixxx Connector Task 004: Packaging And Setup
 
-Status: Implemented - 2026-09-29. Two gates are open. See §Review Result.
+Status: Implemented - 2026-09-29. The open gates moved to
+`docs/plans/packaging-pass.md`. See §Review Result.
 
 The mechanical criteria and the visual criteria are in separate lists. The
 visual criteria need a reboot and a running Mixxx.
@@ -204,3 +205,6 @@ Reviewed 2026-09-29. The review changed no code.
   `--no-connector`. ADR 0006 says that the script stops when the card is
   missing. The review accepts this.
 - The visual criteria need a reboot and a running Mixxx. They stay open.
+
+Changed 2026-09-29: the operator deferred the packaging work. The `bsdtar -tf`
+criterion and the visual criteria moved to `docs/plans/packaging-pass.md`.

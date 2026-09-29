@@ -3,6 +3,11 @@
 Date: 2026-09-28. This plan states no rule. ADR 0006 owns the rules here. ADR
 0005 owns the history-only mode.
 
+Changed 2026-09-29: tasks 001 to 004 are merged. The operator deferred the
+package build and the package install to `docs/plans/packaging-pass.md`.
+Manual checks 1 to 4 use the development setup below. Manual check 5 moves to
+the packaging pass.
+
 ## Goal
 
 `mixxx-now-playing` knows when the deck of the present track stops. When this
@@ -119,11 +124,45 @@ Tasks 001 and 002 can go in either order. Each task is one commit.
   arguments. A test uses `tempfile` directories and a symbolic link.
 - Each task runs the full gate in `AGENTS.md`.
 
+## Development Setup For The Manual Checks
+
+The manual checks do not need the package. They need these items:
+
+- The V4V card. `cat /proc/asound/cards` shows card 31 with the ID `V4V`. If
+  the card is missing, follow the configuration runbook, section "MIDI
+  Connector".
+- The mapping in the Mixxx user directory:
+
+  ```bash
+  cp mixxx/MusicIndex-V4V-Connector.midi.xml mixxx/MusicIndex-V4V-Connector.js ~/.mixxx/controllers/
+  ```
+
+- In Mixxx Preferences, Controllers, `VirMIDI 31-0` uses the mapping
+  "MusicIndex V4V Connector" and is enabled. No other mapping uses that port.
+  Mixxx finds MIDI devices only at startup, so start Mixxx after the copy.
+- The producer from the working tree, in the foreground, with a scratch
+  drop directory. It uses its own drop directory, so it does not share a
+  lock with an installed producer:
+
+  ```bash
+  cargo build --release --workspace
+  mkdir -p <scratch>/drop
+  target/release/mixxx-now-playing --format json --target default \
+    --id3-file <scratch>/drop/default.json --txt-file <scratch>/now-playing.txt
+  ```
+
+- A second terminal that shows the drop file, for example
+  `watch -n 0.5 cat <scratch>/drop/default.json`.
+
+The producer writes its log to stderr. Put the log in a file if it is too
+long to read in the terminal.
+
 ## Manual Checks
 
 These checks need a running Mixxx with the mapping on `VirMIDI 31-0`. They
 are visual. The review records each result. A check that cannot run is an
-open gate, not a pass.
+open gate, not a pass. Checks 1 to 4 use the development setup. Check 5 needs
+the installed package, and `docs/plans/packaging-pass.md` owns it.
 
 1. Play a V4V track. Stop its deck. The drop file goes away at once. Start the
    deck again. The drop file comes back.
@@ -134,8 +173,8 @@ open gate, not a pass.
 4. Disable the connector mapping in Mixxx. After 3 seconds, the producer logs
    the history-only mode. Enable it again. The producer logs the connector
    mode.
-5. The installed producer unit opens `/dev/snd/midiC31D0`. The unit log shows
-   the connector mode.
+5. Deferred to `docs/plans/packaging-pass.md`. The installed producer unit
+   opens `/dev/snd/midiC31D0`. The unit log shows the connector mode.
 
 ## Rollback
 

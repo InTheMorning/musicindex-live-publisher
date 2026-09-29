@@ -56,6 +56,8 @@ the next priority. Confirm that logging works before the show.
   of work with `musicindex-live-relay` ADR 0002
 - [Mixxx MIDI connector phase plan](plans/mixxx-midi-connector.md) — the
   mapping, the connector in the producer and the package setup for ADR 0006
+- [Packaging pass plan](plans/packaging-pass.md) — deferred. The intended
+  package behavior, the open packaging gates and the open decisions
 
 ## Tasks
 
