@@ -1,10 +1,10 @@
 # ADR 0006: Mixxx MIDI Connector
 
-Status: Proposed
+Status: Accepted
 Date: 2026-09-27
 
-This ADR becomes Accepted when the operator accepts it and the checks in
-§Verification Before Acceptance pass.
+Accepted 2026-09-28 by the operator. The four checks in §Verification Before
+Acceptance are done.
 
 Amended 2026-09-28: the producer links a history row to the loudest deck that
 the mapping reports, not to a deck with the same duration. Check 1 showed that

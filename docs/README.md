@@ -37,7 +37,7 @@ the next priority. Confirm that logging works before the show.
   fallback, the relay keepalive, and a limit on the expiry timer without the
   MIDI connector
 - [ADR 0006: Mixxx MIDI connector](adr/0006-mixxx-midi-connector.md) —
-  Proposed. A kernel virtual MIDI port gives the producer the deck play state,
+  Accepted. A kernel virtual MIDI port gives the producer the deck play state,
   so a stop or a pause ends the payment at once
 
 ## Plans
