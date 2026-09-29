@@ -6,6 +6,12 @@ Date: 2026-09-27
 This ADR becomes Accepted when the operator accepts it and the checks in
 §Verification Before Acceptance pass.
 
+Amended 2026-09-28: the producer links a history row to the loudest deck that
+the mapping reports, not to a deck with the same duration. Check 1 showed that
+the Mixxx library keeps the stream header duration of a new track, so a
+duration link fails for exactly the tracks whose header is wrong. The ADR was
+Proposed, so no accepted decision was reversed.
+
 ## Context
 
 `mixxx-now-playing` reads the Mixxx history database. The history cannot show
@@ -33,7 +39,20 @@ is in `docs/architecture/mixxx-interfaces.md`.
 - The Mixxx deck duration comes from the decoder, and it is correct. The
   history row for a new track appears about 4.5 seconds after AutoDJ starts
   it.
+- The Mixxx library keeps the stream header duration of a new track. Tested
+  on 2026-09-28: a 200.04-second MP3 with no VBR header had
+  `library.duration = 617.807` in its history row, after the load and after
+  the eject, while the deck showed 200.020 s. A track that Mixxx loaded in an
+  earlier session had the same value in the library and on the deck.
+- Mixxx writes a history row when its "loudest deck" changes
+  (`src/mixer/playerinfo.cpp:136-193`). A mapping can read each control that
+  this rule uses.
 - A hardware controller and the connector operate at the same time.
+- An unplugged controller whose mapping sends feedback stops MIDI output for
+  all controllers, also the connector. Tested on 2026-09-28: the heartbeat
+  stopped, and Mixxx logged send errors for the connector port. When the
+  operator disabled the dead controller in Preferences, the output came back
+  with no Mixxx restart. The messages sent during the outage were lost.
 
 ## Decision
 
@@ -138,6 +157,7 @@ From Mixxx to a consumer. N is the deck number, 1 to 4:
 | CC | Value | Meaning |
 |---|---|---|
 | 1 | Protocol version, now 1 | Heartbeat, sent each second |
+| 2 | 0 to 4 | The loudest deck that plays, or 0 for none. See §The Loudest Deck. |
 | 10 + N | 0 or 127 | Deck N `play` |
 | 20 + N | 0 or 127 | Deck N `track_loaded` |
 | 30 + N | Bits 7 to 13 | Deck N `duration` in whole seconds, high part |
@@ -146,6 +166,32 @@ From Mixxx to a consumer. N is the deck number, 1 to 4:
 The mapping sends the `play` and `track_loaded` messages when the control
 changes, and the duration parts when `duration` changes. It sends the complete
 state of all four decks when it starts and when a consumer asks.
+
+### The Loudest Deck
+
+The mapping computes the same rule as `PlayerInfo::updateCurrentPlayingDeck`
+in Mixxx 2.5.6 (`src/mixer/playerinfo.cpp:136-193`). It sends CC 2 when the
+result changes, and in the complete state.
+
+- A deck counts only when `play` is not 0, `pregain` is more than 0.25 and
+  `volume` is not 0.
+- The crossfader gain comes from `[Master],crossfader` with the value x, from
+  -1 to 1. `PlayerInfo` uses the additive curve with the transform 1.0
+  (`src/engine/enginexfader.cpp:16-58`). So the left gain is `1 - x` when x
+  is more than 0, else 1. The right gain is `1 + x` when x is less than 0,
+  else 1. A gain is never less than 0.
+- The deck `orientation` selects the gain: 0 is left, 1 is center with the
+  gain 1, and 2 is right.
+- The deck value is `volume` multiplied by that gain. The deck with the
+  highest value that is more than 0 is the loudest deck. For equal values, the
+  lower deck number is the loudest deck, because Mixxx accepts only a strictly
+  higher value.
+- The mapping computes the rule again each 250 ms and when one of these
+  controls changes.
+
+`PlayerInfo` computes its rule each 2 seconds. So the mapping reports a change
+up to 2 seconds before Mixxx writes the history row. When the row appears, the
+reported deck is already the deck of that row.
 
 From a consumer to Mixxx:
 
@@ -165,10 +211,10 @@ The history row still gives the track identity. The deck state gives the
 timing.
 
 - **The link:** when a history row gives a new track, the producer links it to
-  the deck that plays and has the same duration. It compares the Mixxx library
-  duration of the track, rounded to whole seconds, with the deck duration. If
-  no deck or more than one deck matches, the producer writes no drop file for
-  that track.
+  the loudest deck that the mapping reported last. If that report is 0, or if
+  that deck does not play, the producer writes no drop file for that track.
+  The producer does not compare durations. The library duration can be the
+  wrong header value.
 - **The duration:** in connector mode, `duration_secs` in the drop file comes
   from the linked deck. The deck value comes from the decoder. The lofty value
   comes from the stream headers and can be very wrong.
@@ -203,8 +249,11 @@ mode.
 
 ### Operator Rules
 
-- Do not leave a Mixxx controller enabled whose device can disappear while
-  Mixxx sends to it. Disable a controller that is not connected.
+- Disable a controller in Mixxx before you unplug it, if its mapping sends
+  feedback such as LED output. If such a controller was unplugged, disable it
+  in Preferences. The connector output then comes back with no restart.
+- Do not leave a controller enabled whose device is not connected, if its
+  mapping sends feedback.
 - Enable only one Mixxx controller with the connector mapping.
 
 ## Invariants
@@ -213,7 +262,8 @@ mode.
 - The protocol uses only 3-byte control change messages on channel 16.
 - The producer never keeps a drop file while its linked deck does not play,
   when the connector is available.
-- The producer never links a track to a deck without a duration match.
+- The producer links a history row only to the loudest deck that the mapping
+  reported. It never links a row to a deck that does not play.
 - In connector mode, `duration_secs` comes from the linked deck, never from
   the stream headers.
 - Without a heartbeat, the producer uses the ADR 0005 expiry. It never assumes
@@ -223,15 +273,19 @@ mode.
 
 Manual, on a computer with Mixxx, because each check needs a running Mixxx:
 
-1. **The link key.** Load three tracks. For each, compare the Mixxx library
-   `duration` column with the deck `duration` control. They must agree within
-   1 second. If they do not, the link rule in this ADR changes before
-   acceptance.
-2. **A controller with feedback.** Enable a controller whose mapping sends
-   LED output. Unplug it while the connector runs. Record if connector
-   messages still arrive. The result goes into the operator rules.
-3. **`engine.beginTimer`.** Confirm that a 1-second timer in the mapping sends
-   the heartbeat for 10 minutes with no gap longer than 2 seconds.
+1. **The link key.** Done on 2026-09-28, and it failed for a new track with a
+   wrong header. That result changed the link rule. See §Context.
+2. **A controller with feedback.** Done on 2026-09-28. The unplug stopped the
+   connector output, and disabling the dead controller restored it. See
+   §Context and §Operator Rules.
+3. **`engine.beginTimer`.** Passed on 2026-09-28. The heartbeat ran for more
+   than 10 minutes with no gap longer than 2 seconds. The one longer gap, 9.5
+   seconds, was a Mixxx restart, and the new mapping sent the complete state
+   after it.
+4. **The loudest deck.** Passed on 2026-09-28. The test had seven history
+   rows. Six came from AutoDJ and one from a manual change with the crossfader.
+   Each row appeared 1.0 to 6.8 seconds after the mapping reported the deck of
+   that track.
 
 ## Verification After Implementation
 
@@ -242,8 +296,11 @@ Mechanical:
 - A unit test for each producer rule in §How `mixxx-now-playing` Uses The Deck
   State, with a sequence of deck events and history rows.
 - A unit test for each condition in §When The Connector Is Not Available.
-- A unit test that the producer never writes a drop file for a track with no
-  duration match.
+- A unit test that the producer writes no drop file when the reported loudest
+  deck is 0 or does not play.
+- A test of the mapping rule for the loudest deck, with a JavaScript runtime
+  outside Mixxx. It covers the crossfader at -1, 0 and 1, each orientation,
+  `pregain` at 0.25, `volume` at 0, and equal values.
 - A unit test that the drop file in connector mode has the deck duration, for
   a track whose header duration is different.
 
@@ -266,6 +323,18 @@ start.
 Rejected. Tested: one failed SysEx send makes the next sends fail. Short
 messages cannot fail halfway, and 14 bits of whole seconds hold a duration up
 to 4.5 hours.
+
+### Link By Duration
+
+Rejected. Tested on 2026-09-28: the Mixxx library keeps the stream header
+duration of a new track. A track with a wrong header then matches no deck and
+pays nobody. Two decks with the same length also match no single deck.
+
+### Link To The Deck That Started Last
+
+Rejected. A DJ can start a deck with the volume down to cue it, while a
+different deck becomes the loudest. The last deck to start is then not the
+deck of the history row.
 
 ### Switch The Payee When The New Deck Starts
 
@@ -294,8 +363,9 @@ Negative and risks:
   on `VirMIDI 31-0` in Mixxx. On a computer that already uses `snd-virmidi`,
   the operator must also merge the options. A missing card makes the producer
   fall back to the expiry.
-- The duration link can fail for two decks with the same track length. The
-  producer then writes no drop file, and the track pays nobody.
+- The mapping copies a Mixxx rule. A Mixxx release can change that rule, and
+  the copy must then change too. Check 4 detects a difference for the Mixxx
+  version in use.
 - The payee still changes about 4.5 seconds after the new deck starts.
 - A mapping bug can stop the heartbeat. The producer then falls back to the
   expiry, which is safe.

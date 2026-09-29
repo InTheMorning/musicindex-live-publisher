@@ -56,7 +56,8 @@ Each fact has an evidence class:
 | PortMidi records an ALSA error in the global flag `pm_hosterror`. Mixxx never reads or clears it with `Pm_GetHostErrorText`. The write path fails while the flag is set. | Source: PortMidi `pm_common/portmidi.c:49` and `:508-664`, `pmlinuxalsa.c:79-87` and `:524-532`. Mixxx: no call in `src/`. |
 | A controller whose port disappeared stopped the output of a different controller. | Tested: after the virtual probe stopped, sends to a virtual MIDI card failed with `Host error`, then with `Invalid MIDI message Data`. After the dead controller was disabled and Mixxx restarted, the errors stopped. |
 | Unplugging a controller whose mapping sends nothing back caused no send error. | Tested: a USB control surface, 0 errors |
-| Unplugging a controller whose mapping sends feedback, such as LEDs, stops the output of other controllers. | Not verified. Probable, from the global flag. |
+| Unplugging a controller whose mapping sends feedback stops the output of all controllers. Disabling the dead controller in Preferences restores the output with no restart. The messages sent during the outage are lost. | Tested on 2026-09-28: a mapping that sent to a USB control surface each 250 ms. After the unplug, the connector heartbeat stopped, and Mixxx logged 109 send errors for the connector port. |
+| A mapping timer from `engine.beginTimer` with 1000 ms runs with no gap longer than 2 seconds. | Tested on 2026-09-28, more than 10 minutes |
 
 ### The Kernel Virtual MIDI Port
 
@@ -151,6 +152,8 @@ Tested with two AutoDJ track changes:
 | When Mixxx loads a track, it replaces the duration from the file metadata with the duration from the decoder. | Source: `src/track/trackmetadata.cpp:16-70`, `src/track/trackrecord.cpp:205` |
 | For a 200.04-second VBR MP3 with no VBR header, the Mixxx deck showed 200.02 s. lofty showed 617.81 s, and so did `ffprobe`. | Tested |
 | For the same audio with a Xing header, Mixxx and lofty both showed 200.05 s. | Tested |
+| The library does not store the decoder duration of a new track at once. A new 200.04-second MP3 with no VBR header kept `library.duration = 617.807`, the header estimate, after the load, in its history row, and after the eject. The deck showed 200.020 s. | Tested on 2026-09-28 |
+| A track that Mixxx loaded in an earlier session had the same duration in the library and on the deck, to the millisecond. | Tested on 2026-09-28, three tracks |
 | No code in `src/` reads the ID3 `TLEN` frame. | Source |
 
 ## Other Interfaces
@@ -165,10 +168,7 @@ Tested with two AutoDJ track changes:
 
 ## Open Questions
 
-- Does an unplugged controller with feedback, such as LEDs, stop the output of
-  other controllers?
 - Two mappings that set the same control: does the last write win?
-- Which source gives the connector the identity of the track on each deck?
 
 ## References
 
