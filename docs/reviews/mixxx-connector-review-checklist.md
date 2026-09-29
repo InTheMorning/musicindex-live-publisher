@@ -72,8 +72,22 @@ Contracts and scope:
 Record the result of each check in `docs/plans/mixxx-midi-connector.md`
 §Manual Checks here. A check that did not run is an open gate.
 
+Results on 2026-09-29, with the development setup and Mixxx 2.5.6:
+
+1. Pass. Each stop removed the drop file at once, and each play wrote it
+   again at once.
+2. Pass. The title changed at the AutoDJ crossfade. The deck showed 3:57, and
+   `duration_secs` was 237.
+3. Pass. After a producer restart, the log showed `history row existed before
+   the connector mode; no link`. No drop file appeared until the next track.
+4. Pass. When the mapping was disabled, the log showed `history-only mode`
+   with `reason=NoHeartbeat`, and the drop file stayed. When the mapping was
+   enabled again, the log showed `connector mode`, and the drop file went
+   away until the next track.
+5. Deferred to `docs/plans/packaging-pass.md`.
+
 ## Review Result
 
-Status: Open - 2026-09-29. Tasks 001 to 004 are merged, and each packet
-records its review. Manual checks 1 to 4 did not run. The package gates and
-manual check 5 moved to `docs/plans/packaging-pass.md`.
+Status: Pass for the connector - 2026-09-29. Tasks 001 to 004 are merged,
+and each packet records its review. Manual checks 1 to 4 passed. The package
+gates and manual check 5 moved to `docs/plans/packaging-pass.md`.
