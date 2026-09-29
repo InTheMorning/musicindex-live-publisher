@@ -1,6 +1,7 @@
 # Mixxx Connector Task 001: The Mapping
 
-Status: Proposed - 2026-09-28.
+Status: Implemented - 2026-09-28. The review wrote the mapping again. See
+§Review Change.
 
 The acceptance criteria are mechanical. The visual criteria are in a separate
 list.
@@ -185,3 +186,21 @@ At the end, report:
 3. behavior changed
 4. deviations from task
 5. unresolved concerns
+
+## Review Change
+
+Changed 2026-09-28 in the review. The first mapping had three defects that
+the tests did not find:
+
+- The XML did not use the Mixxx mapping format. Mixxx would not load the
+  script or the input.
+- The connection callbacks read `(deck, control, value)`. Mixxx calls a
+  callback with `(value, group, key)`.
+- `shutdown` did not keep the connections, and it called `engine.disconnect`,
+  which Mixxx does not have.
+
+The stub `makeConnection` did nothing, so no test sent a control change. The
+new stub keeps each connection and calls it as Mixxx does. The crossfader
+tests now use two decks that play, so a wrong gain changes the result. Each
+rule in the mapping was broken on purpose, and a test failed each time. The
+gain clamp at 0 has no test, because the crossfader cannot go outside -1 to 1.
