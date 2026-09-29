@@ -1,4 +1,5 @@
 pub mod classify;
+pub mod connector;
 pub mod expiry;
 pub mod history;
 pub mod lock;

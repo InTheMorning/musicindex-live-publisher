@@ -1,6 +1,7 @@
 # Mixxx Connector Task 002: The Connector Core
 
-Status: Proposed - 2026-09-28.
+Status: Implemented - 2026-09-28. The review corrected three defects. See
+§Review Change.
 
 Every criterion is mechanical. This packet has no visual criteria, because it
 adds no user interface and opens no real device in a test.
@@ -181,3 +182,29 @@ At the end, report:
 3. behavior changed
 4. deviations from task
 5. unresolved concerns
+
+## Review Change
+
+Changed 2026-09-28 in the review:
+
+- A duration change was reported only when the low 7 bits changed. A new
+  track of 328 seconds after a track of 200 seconds has the same low part, so
+  the link would not end. The state now compares the full duration. A test
+  covers this case.
+- The reader opened the device for reading only. The write handle for
+  `STATE_REQUEST` came from that file, so no request could reach Mixxx. The
+  reader now opens the device for reading and writing.
+- The reader sent a wake-up only at an open or a close. `pump` now sends a
+  wake-up after each read that gives a control change.
+
+The review also changed the API for task 003:
+
+- `DeckChange` holds a deck number and a `DeckChangeKind`: `Play`,
+  `TrackLoaded` or `Duration`.
+- `duration_secs(deck)` gives `None` until the mapping sends a duration.
+- `clear()` also clears the heartbeat. After a new open, the mode is the
+  connector mode only after the first heartbeat.
+- `spawn_reader` takes a `DeviceLocation` and returns a `Result`. It no longer
+  stops the process when the thread cannot start.
+
+Each rule was broken on purpose, and a test failed each time.
