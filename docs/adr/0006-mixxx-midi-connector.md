@@ -12,6 +12,12 @@ the Mixxx library keeps the stream header duration of a new track, so a
 duration link fails for exactly the tracks whose header is wrong. The ADR was
 Proposed, so no accepted decision was reversed.
 
+Amended 2026-09-28 in `docs/plans/mixxx-midi-connector.md`: §Entering And
+Leaving The Connector Mode adds rules that this ADR did not state. They add to
+the decision and reverse none. The runbook change moves from acceptance to the
+packaging task, because the setup that it describes does not exist before that
+task.
+
 ## Context
 
 `mixxx-now-playing` reads the Mixxx history database. The history cannot show
@@ -247,6 +253,25 @@ The producer logs the change of mode with `tracing::warn!`. When heartbeats
 arrive again, it asks for the complete state and returns to the connector
 mode.
 
+### Entering And Leaving The Connector Mode
+
+- At startup, the producer acts on no history row until it knows the mode.
+  The mode is known at the first heartbeat, after 3 seconds with no heartbeat,
+  or when the raw device cannot be opened.
+- When the producer enters the connector mode, it links no history row that it
+  read before the entry. It removes the drop file. The next history row links.
+  So the present track pays nobody until the next track. A link to the present
+  loudest deck is not safe: a replayed track has no history row, so that link
+  could pay the artist of the previous row.
+- When the producer leaves the connector mode, the ADR 0005 expiry of the
+  present track applies. That expiry starts at the time of the history row,
+  not at the change of mode. If it already ended, the producer removes the
+  drop file at once.
+- When the producer leaves the connector mode, it does not write a drop file
+  again that the connector mode removed.
+- A MusicIndex API result changes the drop file only while the file is
+  present. It never writes a file again that a stop removed.
+
 ### Operator Rules
 
 - Disable a controller in Mixxx before you unplug it, if its mapping sends
@@ -379,7 +404,9 @@ Negative and risks:
 - `docs/architecture/mixxx-interfaces.md`: add the results of §Verification
   Before Acceptance.
 - `docs/runbooks/musicindex-live-publisher-configuration.md`: add the operator
-  setup for the V4V card and the Mixxx controller.
+  setup for the V4V card and the Mixxx controller. The packaging task
+  `docs/tasks/mixxx-connector-task-004-packaging-and-setup.md` owns this
+  change.
 
 ## Non-Goals
 

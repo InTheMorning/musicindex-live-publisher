@@ -54,6 +54,8 @@ the next priority. Confirm that logging works before the show.
 - [Relay lease keepalive phase plan](plans/relay-lease-keepalive.md) — the
   producer lock, the dead block and the keepalive for ADR 0005, and the order
   of work with `musicindex-live-relay` ADR 0002
+- [Mixxx MIDI connector phase plan](plans/mixxx-midi-connector.md) — the
+  mapping, the connector in the producer and the package setup for ADR 0006
 
 ## Tasks
 
@@ -125,6 +127,14 @@ tasks 001 and 002.
 - [003 — Producer liveness in the publisher](tasks/relay-lease-task-003-producer-liveness.md)
 - [004 — The keepalive](tasks/relay-lease-task-004-keepalive.md)
 
+Mixxx connector packets. ADR 0006 governs them. Tasks 001 and 002 can go in
+either order. Task 003 needs task 002. Task 004 needs tasks 001 and 003.
+
+- [001 — The mapping](tasks/mixxx-connector-task-001-mapping.md)
+- [002 — The connector core](tasks/mixxx-connector-task-002-connector-core.md)
+- [003 — The link rules and the poll loop](tasks/mixxx-connector-task-003-link-and-poll-loop.md)
+- [004 — Packaging and setup](tasks/mixxx-connector-task-004-packaging-and-setup.md)
+
 ## Reviews
 
 - [Rust now-playing review checklist](reviews/rust-now-playing-review-checklist.md)
@@ -132,6 +142,7 @@ tasks 001 and 002.
 - [Publisher control CLI review checklist](reviews/publisher-control-cli-review-checklist.md)
 - [Publisher control CLI implementation review](reviews/publisher-control-cli-implementation-review.md)
 - [Relay lease review checklist](reviews/relay-lease-review-checklist.md)
+- [Mixxx connector review checklist](reviews/mixxx-connector-review-checklist.md)
 
 ## Runbooks
 
