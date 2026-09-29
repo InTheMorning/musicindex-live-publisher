@@ -3,6 +3,10 @@
 Status: Accepted
 Date: 2026-09-03
 
+Amended 2026-09-28: ADR 0006 supersedes the non-goal "Detecting pause or exact
+audio output state" when the MIDI connector is available. Without the
+connector, the producer still cannot detect a pause.
+
 ## Context
 
 The original `scripts/mixxx-now-playing.sh` kept a now-playing text file current
@@ -63,7 +67,8 @@ The binary uses:
 ## Non-Goals
 
 - Replacing `scripts/mixxx-now-playing.sh` immediately.
-- Detecting pause or exact audio output state.
+- Detecting pause or exact audio output state. ADR 0006 supersedes this
+  non-goal when the MIDI connector is available.
 - Editing tags, the Mixxx database, or MusicIndex data.
 - Supporting Mixxx schemas beyond the documented 2.5.6 layout.
 - Reimplementing v4vmm.

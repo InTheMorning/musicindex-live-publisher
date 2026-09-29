@@ -15,6 +15,10 @@ Mixxx duration check. The Mixxx check gives evidence for a future MIDI ADR,
 not for a rule here. The startup rule now publishes one block for each target.
 No decision changed.
 
+Amended 2026-09-28: ADR 0006 is accepted. §Payment Timing Without The MIDI
+Connector stays in force as the history-only mode of ADR 0006. No decision
+changed.
+
 Amended 2026-09-27 at acceptance: the keepalive stops only after the dead block
 for a missing producer goes out. A stream delay longer than the lease can then
 not let the lease expire first. The MIDI text cites ADR 0006, and §Verification
