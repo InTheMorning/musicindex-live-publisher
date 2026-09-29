@@ -26,6 +26,10 @@ publisher config, generates user systemd units, and starts the Mixxx pipeline.
 The publisher uses a fixed dead block while idle or playing non-V4V audio
 (ADR 0005). No option in this script changes it.
 
+The script checks the V4V MIDI card before it writes a file (ADR 0006). If
+the card is missing, the script stops. MUSICINDEX_ASOUND_DIR replaces
+/proc/asound for this check.
+
 Modes:
   --permanent          Store config/token under ~/.config and enable services.
   --temporary          Store config/token under XDG_RUNTIME_DIR and start
@@ -103,6 +107,50 @@ reject_newline() {
 }
 
 reject_newline endpoint "$endpoint"
+
+# ADR 0006 §Card Setup: the producer reads the V4V MIDI card. Check the card
+# before this script writes a file. MUSICINDEX_ASOUND_DIR replaces /proc/asound
+# for a test without a real card.
+asound_dir=${MUSICINDEX_ASOUND_DIR:-/proc/asound}
+connector_card=V4V
+connector_card_number=31
+configuration_runbook=/usr/share/doc/musicindex-live-publisher/musicindex-live-publisher-configuration.md
+
+check_connector_card() {
+  local link=$asound_dir/$connector_card
+  local card
+  local number
+
+  if [[ ! -e "$link" && ! -L "$link" ]]; then
+    printf '%s: the %s MIDI card is missing: %s does not exist.\n' \
+      "$program" "$connector_card" "$link" >&2
+    printf '%s: Reboot after the package install. The card exists only after a reboot.\n' \
+      "$program" >&2
+    printf '%s: If this computer already uses snd-virmidi, merge the options first.\n' \
+      "$program" >&2
+    printf '%s: See section "MIDI Connector" in %s.\n' \
+      "$program" "$configuration_runbook" >&2
+    exit 1
+  fi
+
+  card=$(readlink "$link") \
+    || die "$link is not a link to a card. See section \"MIDI Connector\" in $configuration_runbook."
+  card=${card##*/}
+  number=${card#card}
+  [[ "$card" == card* && "$number" =~ ^[0-9]+$ ]] \
+    || die "$link points to $card, not to a card. See section \"MIDI Connector\" in $configuration_runbook."
+
+  if [[ "$number" == "$connector_card_number" ]]; then
+    printf 'MIDI connector card: %s is card %s. Mixxx port: VirMIDI %s-0\n' \
+      "$connector_card" "$number" "$number"
+  else
+    warn "the $connector_card MIDI card is card $number, not card $connector_card_number"
+    warn "the Mixxx port is VirMIDI $number-0. Enable the connector mapping on that port."
+    warn "see section \"MIDI Connector\" in $configuration_runbook"
+  fi
+}
+
+check_connector_card
 
 resolve_command() {
   local command_name=$1
@@ -313,7 +361,9 @@ PrivateTmp=true
 RuntimeDirectory=musicindex-live-publisher/$instance/nowplaying
 RuntimeDirectoryMode=0700
 RuntimeDirectoryPreserve=yes
-PrivateDevices=true
+# ADR 0006: the producer opens the raw MIDI device of the V4V card in /dev/snd.
+# A user service has only the device access of its user.
+PrivateDevices=false
 ProtectKernelTunables=true
 ProtectKernelModules=true
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX

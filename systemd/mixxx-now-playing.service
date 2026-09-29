@@ -26,7 +26,9 @@ PrivateTmp=true
 RuntimeDirectory=musicindex-live-publisher/mixxx/nowplaying
 RuntimeDirectoryMode=0700
 RuntimeDirectoryPreserve=yes
-PrivateDevices=true
+# ADR 0006: the producer opens the raw MIDI device of the V4V card in /dev/snd.
+# A user service has only the device access of its user.
+PrivateDevices=false
 ProtectKernelTunables=true
 ProtectKernelModules=true
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX

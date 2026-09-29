@@ -391,6 +391,126 @@ Options:
 - `--strip-hyphens`: strip hyphens in the plain text now-playing line. Default.
 - `--no-strip-hyphens`: preserve hyphens in the text output.
 - `--verbose`: print resolved paths and API status.
+- `--connector-card <id>`: card ID of the MIDI connector card. Default: `V4V`.
+  See [MIDI Connector](#midi-connector).
+- `--no-connector`: do not use the MIDI connector. The producer uses the
+  history-only mode of ADR 0005 with `--expiry-max`.
+
+## MIDI Connector
+
+ADR 0006 owns the rules in this section. This section restates them. If this
+section and ADR 0006 are different, ADR 0006 applies.
+
+The MIDI connector gives the producer the deck state of Mixxx. When the linked
+deck stops, the producer removes the drop file at once. Without the connector,
+the producer uses the expiry of ADR 0005.
+
+### Card Setup
+
+The package installs two files. They make the V4V card at boot:
+
+```text
+# /usr/lib/modules-load.d/musicindex-v4v-midi.conf
+snd-virmidi
+
+# /usr/lib/modprobe.d/musicindex-v4v-midi.conf
+options snd-virmidi enable=1 index=31 id=V4V midi_devs=1
+```
+
+The package install does not load the kernel module. The V4V card exists
+after the next reboot. After the reboot, do this check:
+
+```bash
+cat /proc/asound/cards
+```
+
+The output shows card 31 with the ID `V4V`.
+
+`setup-mixxx-musicindex` checks the card before it writes a file:
+
+- If `/proc/asound/V4V` does not exist, the script stops. Reboot after the
+  package install, and then run the script again.
+- If the card is card 31, the script prints the port name `VirMIDI 31-0`.
+- If the card has a different number N, the script prints a warning with the
+  port name `VirMIDI N-0` and continues. Use that port name in Mixxx.
+
+### Merge The Options
+
+Do these steps only if the computer already uses `snd-virmidi` for other
+cards. The module has one set of options for all its cards. Two
+`options snd-virmidi` lines conflict.
+
+1. Write `/etc/modprobe.d/musicindex-v4v-midi.conf`. A file in `/etc` with
+   the same name replaces the package file.
+2. Put one line with all cards in that file. For two other cards, the line
+   is:
+
+   ```text
+   options snd-virmidi enable=1,1,1 index=-1,-1,31 id=Synth1,Synth2,V4V midi_devs=1,1,1
+   ```
+
+3. Remove the other `options snd-virmidi` line from the computer.
+4. Reboot.
+
+Only the V4V card gets a fixed number. The value `-1` gives a card the lowest
+free number. Do not give another card a fixed low number. A USB card can take
+that number first at boot, and then the kernel cannot make the virtual card.
+
+An ID from the option keeps only letters and digits. So the IDs of the other
+cards can change. Change each script that opens their raw devices by the old
+ID. The port names in Mixxx do not change, because they use the card number.
+
+### Mixxx Controller Setup
+
+The package installs the mapping files in `/usr/share/mixxx/controllers/`.
+Mixxx finds MIDI devices only at startup. So start Mixxx after the reboot.
+
+1. In Mixxx, open Preferences, then Controllers.
+2. Select the controller `VirMIDI 31-0`.
+3. Select the mapping "MusicIndex V4V Connector".
+4. Enable the controller.
+5. Click OK.
+
+If the setup script gave a different port name, use that port name in step 2.
+
+### Operator Rules
+
+- Disable a controller in Mixxx before you unplug it, if its mapping sends
+  feedback such as LED output.
+- If such a controller was unplugged, disable it in Preferences. The
+  connector output then comes back with no restart.
+- Do not leave a controller enabled whose device is not connected, if its
+  mapping sends feedback.
+- Enable only one Mixxx controller with the connector mapping.
+- Do not connect a different source to the connector port, in ALSA or in JACK.
+
+### Producer Options
+
+- `--connector-card <id>`: the card ID of the connector card. Default: `V4V`.
+  The producer finds the card number from `/proc/asound/<id>`.
+- `--no-connector`: the producer does not open the MIDI device. It uses the
+  history-only mode of ADR 0005.
+
+### Producer Mode In The Log
+
+Show the producer log:
+
+```bash
+journalctl --user -u mixxx-now-playing
+```
+
+The producer writes these lines at the default log level `info`:
+
+- `connector mode`, at level `INFO`: the producer receives heartbeats from
+  the mapping.
+- `history-only mode`, at level `WARN`: the producer uses the expiry of
+  ADR 0005. The `reason` field gives the cause:
+  - `NoDevice`: the producer cannot open the raw MIDI device.
+  - `NoHeartbeat`: no heartbeat arrived in the last 3 seconds.
+  - `UnknownVersion`: the heartbeat gives a protocol version that the
+    producer does not know.
+
+Set `RUST_LOG` in the unit environment to change the log level.
 
 ## Drop File Contract
 

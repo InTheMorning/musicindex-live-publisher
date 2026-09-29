@@ -91,6 +91,16 @@ package() {
   install -Dm0644 systemd/mixxx-now-playing.service \
     "$pkgdir/usr/lib/systemd/user/mixxx-now-playing.service"
 
+  # ADR 0006 §Card Setup: these files make the V4V card at the next boot.
+  install -Dm0644 packaging/midi/musicindex-v4v-midi.modules-load.conf \
+    "$pkgdir/usr/lib/modules-load.d/musicindex-v4v-midi.conf"
+  install -Dm0644 packaging/midi/musicindex-v4v-midi.modprobe.conf \
+    "$pkgdir/usr/lib/modprobe.d/musicindex-v4v-midi.conf"
+
+  install -Dm0644 mixxx/MusicIndex-V4V-Connector.midi.xml \
+    mixxx/MusicIndex-V4V-Connector.js \
+    -t "$pkgdir/usr/share/mixxx/controllers/"
+
   install -Dm0644 packaging/arch/musicindex-live-publisher.example.toml \
     "$pkgdir/usr/share/doc/musicindex-live-publisher/examples/config.toml"
   install -Dm0644 packaging/arch/v4vmm.example.toml \

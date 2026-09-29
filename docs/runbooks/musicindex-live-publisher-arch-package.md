@@ -24,6 +24,17 @@ The package also installs the systemd user units and example configuration.
 - Installed template user unit:
   `/usr/lib/systemd/user/musicindex-live-publisher@.service`
 - Installed setup helper: `/usr/bin/setup-mixxx-musicindex`
+- Installed MIDI card files (ADR 0006):
+  `/usr/lib/modules-load.d/musicindex-v4v-midi.conf` and
+  `/usr/lib/modprobe.d/musicindex-v4v-midi.conf`
+- Installed Mixxx mapping files (ADR 0006):
+  `/usr/share/mixxx/controllers/MusicIndex-V4V-Connector.midi.xml` and
+  `/usr/share/mixxx/controllers/MusicIndex-V4V-Connector.js`
+
+The package does not load the kernel module. The V4V card exists after the
+next reboot. The setup helper stops if the card is missing. See
+[MIDI Connector](musicindex-live-publisher-configuration.md#midi-connector)
+for the card setup and the Mixxx controller setup.
 
 The package builds the working tree on disk. If the tree is dirty, the generated
 package version ends in `.local`. Commit local edits first when you need a

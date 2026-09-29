@@ -1,6 +1,6 @@
 # Mixxx Connector Task 004: Packaging And Setup
 
-Status: Proposed - 2026-09-28.
+Status: Implemented - 2026-09-29. Two gates are open. See §Review Result.
 
 The mechanical criteria and the visual criteria are in separate lists. The
 visual criteria need a reboot and a running Mixxx.
@@ -188,3 +188,19 @@ At the end, report:
 3. behavior changed
 4. deviations from task
 5. unresolved concerns
+
+## Review Result
+
+Reviewed 2026-09-29. The review changed no code.
+
+- The card check ran with a scratch `HOME` and a test `MUSICINDEX_ASOUND_DIR`.
+  An empty directory stopped the script before it wrote a file. A link to
+  `card31` printed `VirMIDI 31-0`. A link to `card5` printed a warning with
+  `VirMIDI 5-0`.
+- `makepkg` could not run in the sandbox of the agent. A run of `package()`
+  alone installed the four files at the correct paths. The `bsdtar -tf`
+  criterion stays open until the operator builds the package.
+- The setup script stops without the card also for an operator who wants
+  `--no-connector`. ADR 0006 says that the script stops when the card is
+  missing. The review accepts this.
+- The visual criteria need a reboot and a running Mixxx. They stay open.

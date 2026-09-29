@@ -15,6 +15,16 @@ The setup command provisions a live item, writes the one-time broadcaster token,
 generates musicindex-live-publisher@mixxx.service and mixxx-now-playing.service,
 then starts the user services.
 
+MIDI connector (ADR 0006):
+  The package installs the V4V MIDI card files. The V4V card exists after the
+  next reboot. This install does not load the kernel module.
+  If this computer already uses snd-virmidi, merge the options before you
+  reboot. The configuration runbook, section "MIDI Connector", gives the steps.
+
+  After the reboot, start Mixxx. In Mixxx, open Preferences, Controllers,
+  VirMIDI 31-0. Select the mapping "MusicIndex V4V Connector" and enable the
+  controller.
+
 Only run one mixxx-now-playing service. Future non-Mixxx producers can use
 separate musicindex-live-publisher@<instance>.service instances.
 
