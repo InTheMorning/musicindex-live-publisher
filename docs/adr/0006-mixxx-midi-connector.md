@@ -24,6 +24,15 @@ that the producer read. At startup the producer reads the latest row only
 after the entry, and that row can come from an earlier Mixxx session. The
 rule does not change.
 
+Amended 2026-09-29 by the operator: this amendment changes one decision.
+Before it, a row that existed before the entry into the connector mode never
+linked. Now the producer links such a row again after an outage, when the
+same track still plays on the same deck (§Relink After An Outage). The deck
+sample count identifies the track, so the protocol becomes version 2. It adds
+the sample count and an end marker for the complete state. The manual check
+of 2026-09-29 showed the cost of the old rule: after a short outage, the
+artist of the present track was paid nothing until the next track.
+
 ## Context
 
 `mixxx-now-playing` reads the Mixxx history database. The history cannot show
@@ -168,16 +177,32 @@ From Mixxx to a consumer. N is the deck number, 1 to 4:
 
 | CC | Value | Meaning |
 |---|---|---|
-| 1 | Protocol version, now 1 | Heartbeat, sent each second |
+| 1 | Protocol version, now 2 | Heartbeat, sent each second |
 | 2 | 0 to 4 | The loudest deck that plays, or 0 for none. See §The Loudest Deck. |
+| 3 | 1 | The end of the complete state |
 | 10 + N | 0 or 127 | Deck N `play` |
 | 20 + N | 0 or 127 | Deck N `track_loaded` |
 | 30 + N | Bits 7 to 13 | Deck N `duration` in whole seconds, high part |
 | 40 + N | Bits 0 to 6 | Deck N `duration` in whole seconds, low part. The value applies when this part arrives. |
+| 50 + N | Bits 28 to 34 | Deck N `track_samples`, part 1 |
+| 60 + N | Bits 21 to 27 | Deck N `track_samples`, part 2 |
+| 70 + N | Bits 14 to 20 | Deck N `track_samples`, part 3 |
+| 80 + N | Bits 7 to 13 | Deck N `track_samples`, part 4 |
+| 90 + N | Bits 0 to 6 | Deck N `track_samples`, part 5. The value applies when this part arrives. |
+
+`track_samples` is the length of the loaded track in engine samples, which is
+the frame count multiplied by 2 (`src/engine/enginebuffer.cpp:547`, Mixxx
+2.5.6). The mapping sends it rounded down to a whole number. It sends 0 for a
+value that is not valid or not more than 0. Mixxx sets an invalid value at the
+start of a load and at an eject (`enginebuffer.cpp:521` and `:616`). The value
+0 means "unknown", and it never identifies a track.
 
 The mapping sends the `play` and `track_loaded` messages when the control
-changes, and the duration parts when `duration` changes. It sends the complete
-state of all four decks when it starts and when a consumer asks.
+changes, the duration parts when `duration` changes, and the sample parts when
+`track_samples` changes. It sends the complete state of all four decks when it
+starts and when a consumer asks. For each deck, the complete state holds
+`play`, `track_loaded`, the two duration parts and the five sample parts.
+Then it holds CC 2, and then CC 3 as the last message.
 
 ### The Loudest Deck
 
@@ -235,8 +260,9 @@ timing.
   0005).
 - **A resume:** when the linked deck `play` becomes 127 again, the producer
   writes the drop file again.
-- **A new load:** when the linked deck `track_loaded` or `duration` changes,
-  the link ends, and the producer removes the drop file.
+- **A new load:** when the linked deck `track_loaded`, `duration` or
+  `track_samples` changes, the link ends, and the producer removes the drop
+  file.
 - **The switch time:** the payee changes when the history row appears. That
   is the Mixxx "loudest deck" rule. The stream metadata that Mixxx sends to
   Icecast uses the same rule (`src/engine/sidechain/shoutconnection.cpp:772`,
@@ -270,6 +296,7 @@ mode.
   So the present track pays nobody until the next track. A link to the present
   loudest deck is not safe: a replayed track has no history row, so that link
   could pay the artist of the previous row.
+- A row that existed before the entry links only by §Relink After An Outage.
 - When the producer leaves the connector mode, the ADR 0005 expiry of the
   present track applies. That expiry starts at the time of the history row,
   not at the change of mode. If it already ended, the producer removes the
@@ -278,6 +305,36 @@ mode.
   again that the connector mode removed.
 - A MusicIndex API result changes the drop file only while the file is
   present. It never writes a file again that a stop removed.
+
+### Relink After An Outage
+
+When the producer leaves the connector mode, it keeps the deck and the
+sample count of the link. When it enters the connector mode again, it asks
+for the complete state. At the end marker (CC 3) of the first complete state
+after the entry, it links the row again when all these conditions are true:
+
+1. The row was linked in the connector mode before the outage.
+2. No new history row arrived during the outage.
+3. The deck of that link is the loudest deck.
+4. That deck plays.
+5. That deck has the same `track_samples` as before the outage, and the
+   value is not 0.
+
+Then the producer writes the drop file, with `duration_secs` from the deck.
+If a condition is false, or if no end marker arrives before the next change
+of mode, the row does not link. The present track then pays nobody until the
+next track.
+
+At startup, the producer has no link from before. So the first row at startup
+never links.
+
+A relink also applies after the ADR 0005 expiry ended during the outage. The
+expiry is a limit for the time with no deck state. The complete state shows
+that the same track still plays.
+
+The remaining risk is a different track with the same sample count on the
+same deck. For two different tracks, an equal count to one sample is very
+improbable. A replay of the same track pays the correct artist.
 
 ### Operator Rules
 
@@ -300,6 +357,9 @@ mode.
   the stream headers.
 - Without a heartbeat, the producer uses the ADR 0005 expiry. It never assumes
   that a deck plays.
+- A row that existed before the entry into the connector mode links only when
+  its deck, its play state and its sample count agree with the link from
+  before the outage.
 
 ## Verification Before Acceptance
 
@@ -335,6 +395,10 @@ Mechanical:
   `pregain` at 0.25, `volume` at 0, and equal values.
 - A unit test that the drop file in connector mode has the deck duration, for
   a track whose header duration is different.
+- A unit test for each condition in §Relink After An Outage, one test for an
+  end marker that does not arrive, and one test for startup.
+- A mapping test for the sample parts of 0, of an invalid value, and of a
+  value above 2^32.
 
 ## Alternatives Considered
 
@@ -373,6 +437,17 @@ deck of the history row.
 Deferred. The producer does not know the track identity until the history row
 appears. A switch at the deck start would need the identity from a different
 source.
+
+### Relink By The Whole-Second Duration
+
+Rejected 2026-09-29. Many tracks have the same length in whole seconds. The
+sample count separates them. It needs a protocol version, and the producer
+has no users, so the new version costs nothing.
+
+### No Relink After An Outage
+
+Replaced 2026-09-29. This was the rule before the amendment. It paid nothing
+for the rest of the track after an outage of a few seconds.
 
 ### A Different Track Identity Source
 

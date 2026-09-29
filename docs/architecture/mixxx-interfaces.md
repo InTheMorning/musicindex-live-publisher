@@ -155,6 +155,7 @@ Tested with two AutoDJ track changes:
 | The library does not store the decoder duration of a new track at once. A new 200.04-second MP3 with no VBR header kept `library.duration = 617.807`, the header estimate, after the load, in its history row, and after the eject. The deck showed 200.020 s. | Tested on 2026-09-28 |
 | A track that Mixxx loaded in an earlier session had the same duration in the library and on the deck, to the millisecond. | Tested on 2026-09-28, three tracks |
 | No code in `src/` reads the ID3 `TLEN` frame. | Source |
+| The deck control `track_samples` is the track length in engine samples: the frame count multiplied by 2. Mixxx sets it when a track loads. At the start of a load and at an eject, it sets an invalid end position. | Source: `src/engine/enginebuffer.cpp:521`, `:547` and `:616`, `src/audio/frame.h:45-47` |
 
 ## Other Interfaces
 

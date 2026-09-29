@@ -188,6 +188,8 @@ card stays until the next reboot.
 - `docs/tasks/mixxx-connector-task-002-connector-core.md`
 - `docs/tasks/mixxx-connector-task-003-link-and-poll-loop.md`
 - `docs/tasks/mixxx-connector-task-004-packaging-and-setup.md`
+- `docs/tasks/mixxx-connector-task-005-relink-after-outage.md`, added
+  2026-09-29 with the ADR 0006 amendment for the relink
 - `docs/reviews/mixxx-connector-review-checklist.md`
 
 ## Later Decisions

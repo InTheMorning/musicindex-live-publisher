@@ -131,11 +131,13 @@ tasks 001 and 002.
 
 Mixxx connector packets. ADR 0006 governs them. Tasks 001 and 002 can go in
 either order. Task 003 needs task 002. Task 004 needs tasks 001 and 003.
+Task 005 needs tasks 001 to 003.
 
 - [001 — The mapping](tasks/mixxx-connector-task-001-mapping.md)
 - [002 — The connector core](tasks/mixxx-connector-task-002-connector-core.md)
 - [003 — The link rules and the poll loop](tasks/mixxx-connector-task-003-link-and-poll-loop.md)
 - [004 — Packaging and setup](tasks/mixxx-connector-task-004-packaging-and-setup.md)
+- [005 — Relink after an outage](tasks/mixxx-connector-task-005-relink-after-outage.md)
 
 ## Reviews
 
