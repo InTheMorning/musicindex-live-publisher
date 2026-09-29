@@ -18,6 +18,12 @@ the decision and reverse none. The runbook change moves from acceptance to the
 packaging task, because the setup that it describes does not exist before that
 task.
 
+Amended 2026-09-29 in the review of connector task 003: §Entering And Leaving
+The Connector Mode names the row that existed before the entry, not the row
+that the producer read. At startup the producer reads the latest row only
+after the entry, and that row can come from an earlier Mixxx session. The
+rule does not change.
+
 ## Context
 
 `mixxx-now-playing` reads the Mixxx history database. The history cannot show
@@ -258,8 +264,9 @@ mode.
 - At startup, the producer acts on no history row until it knows the mode.
   The mode is known at the first heartbeat, after 3 seconds with no heartbeat,
   or when the raw device cannot be opened.
-- When the producer enters the connector mode, it links no history row that it
-  read before the entry. It removes the drop file. The next history row links.
+- When the producer enters the connector mode, it links no history row that
+  existed before the entry. At startup, that is the first row that the
+  producer reads. It removes the drop file. The next history row links.
   So the present track pays nobody until the next track. A link to the present
   loudest deck is not safe: a replayed track has no history row, so that link
   could pay the artist of the previous row.

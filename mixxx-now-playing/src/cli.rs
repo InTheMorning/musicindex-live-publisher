@@ -33,6 +33,8 @@ pub(crate) struct Cli {
     pub(crate) api_timeout: Duration,
     pub(crate) strip_hyphens: bool,
     pub(crate) verbose: bool,
+    pub(crate) connector_card: String,
+    pub(crate) no_connector: bool,
 }
 
 impl Default for Cli {
@@ -53,6 +55,8 @@ impl Default for Cli {
             api_timeout: Duration::from_secs(5),
             strip_hyphens: true,
             verbose: false,
+            connector_card: "V4V".to_owned(),
+            no_connector: false,
         }
     }
 }
@@ -96,6 +100,10 @@ impl Cli {
                 Some("--strip-hyphens") => cli.strip_hyphens = true,
                 Some("--no-strip-hyphens") => cli.strip_hyphens = false,
                 Some("--verbose") => cli.verbose = true,
+                Some("--connector-card") => {
+                    cli.connector_card = next_string(&mut args, "--connector-card")?;
+                }
+                Some("--no-connector") => cli.no_connector = true,
                 Some(flag) if flag.starts_with("--") => return Err(anyhow!("unknown flag {flag}")),
                 Some(value) => return Err(anyhow!("unexpected argument {value}")),
                 None => {
@@ -211,5 +219,36 @@ mod tests {
             message.contains("--expiry-max"),
             "error message {message:?} does not name --expiry-max"
         );
+    }
+
+    #[test]
+    fn connector_defaults_to_the_v4v_card() -> Result<()> {
+        let cli = Cli::parse(["mixxx-now-playing"])?;
+
+        assert_eq!(cli.connector_card, "V4V");
+        assert!(!cli.no_connector);
+        Ok(())
+    }
+
+    #[test]
+    fn connector_card_sets_the_card_id() -> Result<()> {
+        let cli = Cli::parse(["mixxx-now-playing", "--connector-card", "Other"])?;
+
+        assert_eq!(cli.connector_card, "Other");
+        Ok(())
+    }
+
+    #[test]
+    fn connector_card_requires_a_value() {
+        assert!(Cli::parse(["mixxx-now-playing", "--connector-card"]).is_err());
+        assert!(Cli::parse(["mixxx-now-playing", "--connector-card", ""]).is_err());
+    }
+
+    #[test]
+    fn no_connector_turns_the_connector_off() -> Result<()> {
+        let cli = Cli::parse(["mixxx-now-playing", "--no-connector"])?;
+
+        assert!(cli.no_connector);
+        Ok(())
     }
 }

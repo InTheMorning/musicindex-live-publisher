@@ -1,6 +1,6 @@
 # Mixxx Connector Task 003: The Link Rules And The Poll Loop
 
-Status: Proposed - 2026-09-28.
+Status: Implemented - 2026-09-29. See §Review Result.
 
 The acceptance criteria are mechanical. The live checks are in
 `docs/plans/mixxx-midi-connector.md` §Manual Checks, and the review records
@@ -239,3 +239,19 @@ At the end, report:
 3. behavior changed
 4. deviations from task
 5. unresolved concerns
+
+## Review Result
+
+Reviewed 2026-09-29. The implementation holds each rule in §Constraints. The
+review changed no code.
+
+The implementation has two deviations. The review accepts both:
+
+- At startup, the first row after the entry into the connector mode does not
+  link. That row existed before the entry. ADR 0006 now says this.
+- `tests/lifecycle.rs` passes `--no-connector`. On a computer with a V4V card,
+  the test result would otherwise depend on Mixxx.
+
+Each payment rule was broken on purpose, and a test failed each time. The
+manual checks in `docs/plans/mixxx-midi-connector.md` did not run. That gate
+is open.

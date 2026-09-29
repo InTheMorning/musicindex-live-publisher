@@ -3,6 +3,9 @@ mod config;
 
 use anyhow::{Context, Result, anyhow};
 use mixxx_now_playing::classify::is_v4v_track;
+use mixxx_now_playing::connector::{
+    Action, Coordinator, DeviceEvent, DeviceLocation, Row, STATE_REQUEST, spawn_reader,
+};
 use mixxx_now_playing::expiry::Expiry;
 use mixxx_now_playing::history::{HistoryWatcher, TrackRow};
 use mixxx_now_playing::lock::ProducerLock;
@@ -18,7 +21,8 @@ use mixxx_now_playing::sink::{OutputFile, Presence, remove_file_if_exists};
 use mixxx_now_playing::tags::read_tags;
 use signal_hook::consts::signal::{SIGINT, SIGTERM};
 use signal_hook::iterator::Signals;
-use std::fs;
+use std::fs::{self, File};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process;
 use std::sync::Arc;
@@ -26,9 +30,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
+use tracing_subscriber::EnvFilter;
 
 fn main() -> Result<()> {
     let cli = cli::Cli::parse(std::env::args_os())?;
+    init_tracing()?;
     let config = config::ResolvedConfig::resolve(&cli)?;
 
     if cli.verbose {
@@ -45,10 +51,26 @@ fn main() -> Result<()> {
     Ok(())
 }
 
+/// Starts the log subscriber. It writes to stderr and reads `RUST_LOG`.
+///
+/// # Errors
+///
+/// Returns an error when a subscriber is already set.
+fn init_tracing() -> Result<()> {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+        )
+        .with_writer(std::io::stderr)
+        .try_init()
+        .map_err(|error| anyhow!("initialize tracing subscriber: {error}"))
+}
+
 fn run(cli: &cli::Cli, config: &config::ResolvedConfig) -> Result<()> {
     if cli.once {
-        let mut runtime = Runtime::new(cli, config)?;
-        runtime.process_latest(Instant::now())?;
+        // `--once` never starts the connector.
+        let mut runtime = Runtime::new(cli, config, false)?;
+        runtime.process_pass(Instant::now())?;
         runtime.wait_for_once_route_resolution()?;
         return Ok(());
     }
@@ -60,18 +82,22 @@ fn run(cli: &cli::Cli, config: &config::ResolvedConfig) -> Result<()> {
     let _lock = ProducerLock::acquire(&drop_dir)
         .with_context(|| format!("acquire producer lock in {}", drop_dir.display()))?;
 
-    let mut runtime = Runtime::new(cli, config)?;
+    let mut runtime = Runtime::new(cli, config, !cli.no_connector)?;
 
     let _cleanup = MetadataCleanup::new(config.id3_file.clone());
-    let (terminated, wakeup) = install_signal_flags()?;
+    let (terminated, wakeup, wake_sender) = install_signal_flags()?;
+    let connector_events = runtime.start_connector(&wake_sender);
+    drop(wake_sender);
     let poll_interval = Duration::from_secs_f64(cli.poll_secs);
     let mut liveness = MixxxLiveness::new(LIVENESS_CHECK_INTERVAL);
     loop {
-        let now = Instant::now();
-        if terminated.load(Ordering::Relaxed) || !liveness.is_running(now) {
+        if terminated.load(Ordering::Relaxed) || !liveness.is_running(Instant::now()) {
             break;
         }
-        runtime.process_latest(now)?;
+        if let Some(events) = connector_events.as_ref() {
+            runtime.drain_connector_events(events);
+        }
+        runtime.process_pass(Instant::now())?;
         sleep_interruptibly(poll_interval, &wakeup);
     }
 
@@ -118,37 +144,28 @@ fn render_metadata_content(
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct RuntimeState {
     current: Option<CurrentTrack>,
-    expiry: Expiry,
     pending_route_lookup: bool,
-}
-
-impl Default for RuntimeState {
-    fn default() -> Self {
-        Self {
-            current: None,
-            expiry: Expiry::none(),
-            pending_route_lookup: false,
-        }
-    }
 }
 
 impl RuntimeState {
     fn clear(&mut self) {
         self.current = None;
-        self.expiry = Expiry::none();
         self.pending_route_lookup = false;
     }
 }
 
+/// The rendered source of the present track. A resume writes the drop file
+/// again from it.
 #[derive(Debug)]
 struct CurrentTrack {
     hist_id: i64,
     artist: String,
     title: String,
     tags: mixxx_now_playing::tags::TrackTags,
+    routes_source: ValueRoutesSource,
 }
 
 #[derive(Debug)]
@@ -160,10 +177,12 @@ struct Runtime<'a> {
     metadata: OutputFile,
     state: RuntimeState,
     resolver: ValueRouteResolver,
+    coordinator: Coordinator,
+    connector_writer: Option<File>,
 }
 
 impl<'a> Runtime<'a> {
-    fn new(cli: &'a cli::Cli, config: &'a config::ResolvedConfig) -> Result<Self> {
+    fn new(cli: &'a cli::Cli, config: &'a config::ResolvedConfig, connector: bool) -> Result<Self> {
         ensure_output_parent(&config.txt_file)?;
         ensure_output_parent(&config.id3_file)?;
         let mut now_playing = OutputFile::new(&config.txt_file);
@@ -186,13 +205,68 @@ impl<'a> Runtime<'a> {
             metadata,
             state: RuntimeState::default(),
             resolver,
+            coordinator: Coordinator::new(connector, Instant::now()),
+            connector_writer: None,
         })
     }
 
-    fn process_latest(&mut self, now: Instant) -> Result<()> {
-        self.expire_current_metadata(now)?;
+    /// Starts the connector reader when the connector is on.
+    ///
+    /// The reader gets a clone of the wake-up sender, so a MIDI message ends
+    /// the sleep of the poll loop at once. A reader that cannot start gives
+    /// the history-only mode.
+    fn start_connector(&mut self, wake: &mpsc::Sender<()>) -> Option<mpsc::Receiver<DeviceEvent>> {
+        if !self.coordinator.connector_enabled() {
+            return None;
+        }
+        let (sender, receiver) = mpsc::channel();
+        let location = DeviceLocation::system(self.cli.connector_card.clone());
+        match spawn_reader(location, sender, wake.clone()) {
+            Ok(_handle) => Some(receiver),
+            Err(error) => {
+                tracing::warn!(error = %format!("{error:#}"), "connector reader did not start");
+                self.coordinator.device_unavailable();
+                None
+            }
+        }
+    }
+
+    /// Gives each waiting connector event to the `Coordinator`.
+    fn drain_connector_events(&mut self, events: &mpsc::Receiver<DeviceEvent>) {
+        while let Ok(event) = events.try_recv() {
+            match event {
+                DeviceEvent::DeviceOpened(writer) => {
+                    tracing::debug!(card = %self.cli.connector_card, "connector device opened");
+                    self.connector_writer = Some(writer);
+                    self.coordinator.device_opened();
+                }
+                DeviceEvent::ControlChange { cc, time } => {
+                    self.coordinator.control_change(cc, time);
+                }
+                DeviceEvent::DeviceClosed => {
+                    tracing::debug!(card = %self.cli.connector_card, "connector device closed");
+                    self.connector_writer = None;
+                    self.coordinator.device_closed();
+                }
+                DeviceEvent::DeviceUnavailable(error) => {
+                    tracing::debug!(card = %self.cli.connector_card, %error, "connector device unavailable");
+                    self.connector_writer = None;
+                    self.coordinator.device_unavailable();
+                }
+            }
+        }
+    }
+
+    /// Does one pass after the connector events: the mode change, the deck
+    /// changes and the expiry, then the API results, then the history poll.
+    fn process_pass(&mut self, now: Instant) -> Result<()> {
+        let actions = self.coordinator.update(now);
+        self.perform(&actions)?;
         self.apply_completed_value_routes()?;
 
+        if !self.coordinator.history_allowed() {
+            return Ok(());
+        }
         let Some(row) = self.watcher.poll()? else {
             return Ok(());
         };
@@ -200,14 +274,59 @@ impl<'a> Runtime<'a> {
         self.process_track(&row, now)
     }
 
+    fn perform(&mut self, actions: &[Action]) -> Result<()> {
+        for action in actions {
+            match *action {
+                Action::SendStateRequest => self.send_state_request(),
+                Action::RemoveFile => self.metadata.set(Presence::Absent)?,
+                Action::WriteFile { duration } => self.write_current(duration)?,
+            }
+        }
+        Ok(())
+    }
+
+    fn send_state_request(&mut self) {
+        let Some(writer) = self.connector_writer.as_mut() else {
+            tracing::warn!("no connector device for the state request");
+            return;
+        };
+        if let Err(error) = writer.write_all(&STATE_REQUEST) {
+            tracing::warn!(%error, "state request failed");
+        }
+    }
+
+    /// Writes the drop file for the present track, with `duration` as
+    /// `duration_secs`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the render or the file write fails.
+    fn write_current(&mut self, duration: Option<Duration>) -> Result<()> {
+        let Some(current) = self.state.current.as_ref() else {
+            return Ok(());
+        };
+        let tags = mixxx_now_playing::tags::TrackTags {
+            duration,
+            ..current.tags.clone()
+        };
+        let content = render_metadata_content(
+            self.cli,
+            &current.artist,
+            &current.title,
+            &tags,
+            current.routes_source,
+        )?;
+        self.metadata.set(Presence::Present(content))
+    }
+
     fn process_track(&mut self, row: &TrackRow, now: Instant) -> Result<()> {
         let line = render_now_playing_line(&row.artist, &row.title, self.cli.strip_hyphens);
         self.now_playing.set(Presence::Present(line))?;
 
         if !is_v4v_track(&row.path, &self.config.v4v_root) {
-            self.metadata.set(Presence::Absent)?;
             self.state.clear();
-            return Ok(());
+            let actions = self.coordinator.row(Row::Other);
+            return self.perform(&actions);
         }
 
         let tags = match read_tags(&row.path) {
@@ -219,20 +338,14 @@ impl<'a> Runtime<'a> {
                         row.path.display()
                     );
                 }
-                self.metadata.set(Presence::Absent)?;
                 self.state.clear();
-                return Ok(());
+                let actions = self.coordinator.row(Row::Other);
+                return self.perform(&actions);
             }
         };
-        let content = render_metadata_content(
-            self.cli,
-            &row.artist,
-            &row.title,
-            &tags,
-            ValueRoutesSource::EmbeddedId3,
-        )?;
-        self.metadata.set(Presence::Present(content))?;
-        self.state.expiry = match self.cli.expiry {
+        // The expiry keeps its source in both modes. The `Coordinator`
+        // enforces it only in the history-only mode.
+        let expiry = match self.cli.expiry {
             cli::ExpiryMode::Duration => Expiry::duration(
                 now,
                 tags.duration,
@@ -241,26 +354,25 @@ impl<'a> Runtime<'a> {
             ),
             cli::ExpiryMode::None => Expiry::none(),
         };
+        let header_duration = tags.duration;
         self.state.current = Some(CurrentTrack {
             hist_id: row.hist_id,
             artist: row.artist.clone(),
             title: row.title.clone(),
             tags,
+            routes_source: ValueRoutesSource::EmbeddedId3,
         });
+        let actions = self.coordinator.row(Row::V4v {
+            header_duration,
+            expiry,
+        });
+        self.perform(&actions)?;
         if let Some(current) = self.state.current.as_ref() {
             match self.resolver.request(row.hist_id, &current.tags) {
                 RouteRequestStatus::Spawned => self.state.pending_route_lookup = true,
                 RouteRequestStatus::Cached(result) => self.apply_value_route_result(result)?,
                 RouteRequestStatus::Disabled | RouteRequestStatus::NoLookupKey => {}
             }
-        }
-        Ok(())
-    }
-
-    fn expire_current_metadata(&mut self, now: Instant) -> Result<()> {
-        if self.state.expiry.expired_at(now) {
-            self.metadata.set(Presence::Absent)?;
-            self.state.clear();
         }
         Ok(())
     }
@@ -305,17 +417,14 @@ impl<'a> Runtime<'a> {
             return Ok(());
         }
 
-        let updated_tags = apply_resolution_to_tags(&current.tags, &result.resolution);
-        let content = render_metadata_content(
-            self.cli,
-            &current.artist,
-            &current.title,
-            &updated_tags,
-            result.resolution.source,
-        )?;
-        self.metadata.set(Presence::Present(content))?;
-        current.tags = updated_tags;
-        Ok(())
+        // Keep the result, so a resume writes it. The `Coordinator` allows
+        // the write only while the drop file is present.
+        current.tags = apply_resolution_to_tags(&current.tags, &result.resolution);
+        current.routes_source = result.resolution.source;
+        match self.coordinator.api_result() {
+            Some(action) => self.perform(&[action]),
+            None => Ok(()),
+        }
     }
 }
 
@@ -332,30 +441,33 @@ fn ensure_output_parent(path: &Path) -> Result<()> {
 
 /// Installs shutdown handling and returns the flag plus a wake-up channel.
 ///
+/// The returned sender lets another thread end the sleep of the poll loop.
+///
 /// Two mechanisms with distinct jobs. `flag::register` records that a signal
 /// arrived, from an async-signal-safe handler. The forwarding thread exists
 /// purely so the poll loop's sleep can be cut short: `thread::sleep` restarts
 /// itself after `EINTR`, so a signal alone does not shorten it, and sleeping in
 /// short slices to compensate meant tens of pointless wake-ups a second.
-fn install_signal_flags() -> Result<(Arc<AtomicBool>, mpsc::Receiver<()>)> {
+fn install_signal_flags() -> Result<(Arc<AtomicBool>, mpsc::Receiver<()>, mpsc::Sender<()>)> {
     let terminated = Arc::new(AtomicBool::new(false));
     signal_hook::flag::register(SIGTERM, Arc::clone(&terminated))?;
     signal_hook::flag::register(SIGINT, Arc::clone(&terminated))?;
 
     let (sender, receiver) = mpsc::channel();
+    let signal_sender = sender.clone();
     let mut signals = Signals::new([SIGTERM, SIGINT]).context("watch shutdown signals")?;
     thread::Builder::new()
         .name("shutdown-signal".to_owned())
         .spawn(move || {
             for _signal in signals.forever() {
-                if sender.send(()).is_err() {
+                if signal_sender.send(()).is_err() {
                     break;
                 }
             }
         })
         .context("spawn shutdown signal thread")?;
 
-    Ok((terminated, receiver))
+    Ok((terminated, receiver, sender))
 }
 
 /// How long a liveness result stays good before /proc is scanned again.

@@ -170,6 +170,7 @@ fn lifecycle_sigterm_removes_metadata_before_exit() -> Result<()> {
         .arg(&v4v_root)
         .arg("--poll-secs")
         .arg("0.05")
+        .arg("--no-connector")
         .spawn()?;
 
     wait_until(Duration::from_secs(5), || metadata_file.exists())?;
