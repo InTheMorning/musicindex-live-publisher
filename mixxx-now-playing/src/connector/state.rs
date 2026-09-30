@@ -3,14 +3,15 @@
 //!
 //! `ConnectorState` applies the control changes from the Mixxx mapping. It
 //! reports a deck change only when a value changes, because Mixxx sends
-//! `play = 0` more than one time at a stop.
+//! `play = 0` more than one time at a stop. It also reports the end marker of
+//! the complete state.
 
 use std::time::{Duration, Instant};
 
 use super::midi::ControlChange;
 
 /// The protocol version that this producer knows.
-pub const PROTOCOL_VERSION: u8 = 1;
+pub const PROTOCOL_VERSION: u8 = 2;
 
 /// The longest time with no heartbeat before the producer uses the
 /// history-only mode.
@@ -25,10 +26,26 @@ const CHANNEL: u8 = 15;
 
 const CC_HEARTBEAT: u8 = 1;
 const CC_LOUDEST: u8 = 2;
+const CC_STATE_END: u8 = 3;
 const CC_PLAY: u8 = 10;
 const CC_TRACK_LOADED: u8 = 20;
 const CC_DURATION_HIGH: u8 = 30;
 const CC_DURATION_LOW: u8 = 40;
+const CC_SAMPLES_1: u8 = 50;
+const CC_SAMPLES_2: u8 = 60;
+const CC_SAMPLES_3: u8 = 70;
+const CC_SAMPLES_4: u8 = 80;
+const CC_SAMPLES_5: u8 = 90;
+
+/// An event from the connector mapping.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConnectorEvent {
+    /// A deck value changed.
+    Deck(DeckChange),
+    /// The last message of the complete state (CC 3 with the value 1)
+    /// arrived.
+    StateEnd,
+}
 
 /// A changed value of one deck.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -48,6 +65,8 @@ pub enum DeckChangeKind {
     TrackLoaded(bool),
     /// The deck `duration` control, in whole seconds.
     Duration(u16),
+    /// The deck `track_samples` control. The value 0 means unknown.
+    Samples(u64),
 }
 
 /// The mode of the producer.
@@ -77,6 +96,8 @@ struct DeckState {
     track_loaded: Option<bool>,
     duration_high: u8,
     duration_secs: Option<u16>,
+    samples_parts: [u8; 4],
+    samples: Option<u64>,
 }
 
 /// The deck state and the heartbeat from the connector mapping.
@@ -95,9 +116,10 @@ impl ConnectorState {
 
     /// Applies one control change that arrived at `now`.
     ///
-    /// Gives a `DeckChange` only when a deck value differs from its last
-    /// value. A message on a different channel changes nothing.
-    pub fn apply(&mut self, cc: ControlChange, now: Instant) -> Option<DeckChange> {
+    /// Gives `ConnectorEvent::Deck` only when a deck value differs from its
+    /// last value. Gives `ConnectorEvent::StateEnd` for CC 3 with the value
+    /// 1. A message on a different channel changes nothing.
+    pub fn apply(&mut self, cc: ControlChange, now: Instant) -> Option<ConnectorEvent> {
         if cc.channel != CHANNEL {
             return None;
         }
@@ -112,7 +134,10 @@ impl ConnectorState {
                 }
                 None
             }
-            controller => self.apply_deck(controller, cc.value),
+            CC_STATE_END => (cc.value == 1).then_some(ConnectorEvent::StateEnd),
+            controller => self
+                .apply_deck(controller, cc.value)
+                .map(ConnectorEvent::Deck),
         }
     }
 
@@ -152,6 +177,24 @@ impl ConnectorState {
                 }
                 state.duration_secs = Some(secs);
                 DeckChangeKind::Duration(secs)
+            }
+            CC_SAMPLES_1 | CC_SAMPLES_2 | CC_SAMPLES_3 | CC_SAMPLES_4 => {
+                let index = usize::from((base - CC_SAMPLES_1) / 10);
+                state.samples_parts[index] = value & 0x7F;
+                return None;
+            }
+            // The count applies when its last part arrives.
+            CC_SAMPLES_5 => {
+                let samples = state
+                    .samples_parts
+                    .iter()
+                    .chain(std::iter::once(&(value & 0x7F)))
+                    .fold(0_u64, |total, part| (total << 7) | u64::from(*part));
+                if state.samples == Some(samples) {
+                    return None;
+                }
+                state.samples = Some(samples);
+                DeckChangeKind::Samples(samples)
             }
             _ => return None,
         };
@@ -209,6 +252,12 @@ impl ConnectorState {
         self.deck(deck).and_then(|d| d.duration_secs)
     }
 
+    /// Gives the deck `track_samples` count, or `None` when the mapping did
+    /// not send it. The value 0 means unknown.
+    pub fn samples(&self, deck: u8) -> Option<u64> {
+        self.deck(deck).and_then(|d| d.samples)
+    }
+
     fn deck(&self, deck: u8) -> Option<&DeckState> {
         deck.checked_sub(1)
             .and_then(|index| self.decks.get(usize::from(index)))
@@ -227,8 +276,27 @@ mod tests {
         }
     }
 
-    fn change(deck: u8, kind: DeckChangeKind) -> Option<DeckChange> {
-        Some(DeckChange { deck, kind })
+    fn change(deck: u8, kind: DeckChangeKind) -> Option<ConnectorEvent> {
+        Some(ConnectorEvent::Deck(DeckChange { deck, kind }))
+    }
+
+    /// Sends the five sample parts of `samples` for `deck`. Gives the result
+    /// of the last part.
+    fn apply_samples(
+        state: &mut ConnectorState,
+        deck: u8,
+        samples: u64,
+        now: Instant,
+    ) -> Option<ConnectorEvent> {
+        let parts: Vec<u8> = (0..5)
+            .rev()
+            .map(|shift| u8::try_from((samples >> (7 * shift)) & 0x7F).expect("7-bit part"))
+            .collect();
+        for (index, part) in parts.iter().take(4).enumerate() {
+            let controller = 50 + 10 * u8::try_from(index).expect("part index") + deck;
+            assert_eq!(state.apply(cc(controller, *part), now), None);
+        }
+        state.apply(cc(90 + deck, parts[4]), now)
     }
 
     #[test]
@@ -381,10 +449,87 @@ mod tests {
     }
 
     #[test]
-    fn mode_with_an_unknown_version_is_unknown_version() {
+    fn samples_apply_only_at_part_5() {
+        let mut state = ConnectorState::new();
+        let now = Instant::now();
+        for controller in [52, 62, 72, 82] {
+            assert_eq!(state.apply(cc(controller, 1), now), None);
+            assert_eq!(state.samples(2), None);
+        }
+        // Parts 1 to 5 are all 1: 2^28 + 2^21 + 2^14 + 2^7 + 1.
+        assert_eq!(
+            state.apply(cc(92, 1), now),
+            change(2, DeckChangeKind::Samples(270_549_121))
+        );
+        assert_eq!(state.samples(2), Some(270_549_121));
+    }
+
+    #[test]
+    fn the_same_samples_again_is_no_change() {
+        let mut state = ConnectorState::new();
+        let now = Instant::now();
+        assert_eq!(
+            apply_samples(&mut state, 1, 26_460_000, now),
+            change(1, DeckChangeKind::Samples(26_460_000))
+        );
+        assert_eq!(apply_samples(&mut state, 1, 26_460_000, now), None);
+        assert_eq!(
+            apply_samples(&mut state, 1, 26_460_002, now),
+            change(1, DeckChangeKind::Samples(26_460_002))
+        );
+    }
+
+    #[test]
+    fn samples_above_2_to_the_32_are_correct() {
+        let mut state = ConnectorState::new();
+        let now = Instant::now();
+        let samples = (1_u64 << 32) + 5;
+        assert_eq!(
+            apply_samples(&mut state, 4, samples, now),
+            change(4, DeckChangeKind::Samples(samples))
+        );
+        assert_eq!(state.samples(4), Some(samples));
+        let highest = (1_u64 << 35) - 1;
+        assert_eq!(
+            apply_samples(&mut state, 4, highest, now),
+            change(4, DeckChangeKind::Samples(highest))
+        );
+    }
+
+    #[test]
+    fn samples_of_one_deck_do_not_change_another_deck() {
+        let mut state = ConnectorState::new();
+        let now = Instant::now();
+        apply_samples(&mut state, 1, 1000, now);
+        apply_samples(&mut state, 3, 2000, now);
+        assert_eq!(state.samples(1), Some(1000));
+        assert_eq!(state.samples(2), None);
+        assert_eq!(state.samples(3), Some(2000));
+    }
+
+    #[test]
+    fn state_end_is_cc_3_with_the_value_1() {
+        let mut state = ConnectorState::new();
+        let now = Instant::now();
+        assert_eq!(state.apply(cc(3, 1), now), Some(ConnectorEvent::StateEnd));
+        assert_eq!(state.apply(cc(3, 1), now), Some(ConnectorEvent::StateEnd));
+        assert_eq!(state.apply(cc(3, 0), now), None);
+        assert_eq!(state.apply(cc(3, 2), now), None);
+    }
+
+    #[test]
+    fn heartbeat_version_2_is_the_connector_mode() {
         let mut state = ConnectorState::new();
         let now = Instant::now();
         state.apply(cc(1, 2), now);
+        assert_eq!(state.mode(now, true), Mode::Connector);
+    }
+
+    #[test]
+    fn mode_with_an_unknown_version_is_unknown_version() {
+        let mut state = ConnectorState::new();
+        let now = Instant::now();
+        state.apply(cc(1, 1), now);
         assert_eq!(
             state.mode(now, true),
             Mode::HistoryOnly(HistoryOnlyReason::UnknownVersion)
@@ -399,12 +544,14 @@ mod tests {
         state.apply(cc(11, 127), now);
         state.apply(cc(31, 1), now);
         state.apply(cc(41, 72), now);
+        apply_samples(&mut state, 1, 1000, now);
         state.apply(cc(2, 1), now);
 
         state.clear();
 
         assert!(!state.play(1));
         assert_eq!(state.duration_secs(1), None);
+        assert_eq!(state.samples(1), None);
         assert_eq!(state.loudest_deck(), 0);
         assert_eq!(
             state.mode(now, true),

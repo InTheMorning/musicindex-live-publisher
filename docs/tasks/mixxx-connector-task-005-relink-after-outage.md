@@ -1,6 +1,7 @@
 # Mixxx Connector Task 005: Relink After An Outage
 
-Status: Proposed - 2026-09-29.
+Status: Implemented - 2026-09-29. The visual check is open. See §Review
+Result.
 
 The acceptance criteria are mechanical. The visual check is in a separate
 list.
@@ -203,3 +204,25 @@ At the end, report:
 4. deviations from task
 5. unresolved concerns
 6. the mutation list with results
+
+## Review Result
+
+Reviewed 2026-09-29. The review changed no code. Each rule was broken on
+purpose, and a test failed each time.
+
+The review accepts three deviations:
+
+- The expiry uses an `expired` flag, and a relink clears it. Before this
+  change, an expiry set the row to "never expires". A second outage after a
+  relink then kept the drop file until the next history row. ADR 0006 says
+  that the file goes at once when the expiry already ended.
+- A sample count that the mapping never sent is the same as 0. It never
+  relinks.
+- The test helpers changed for protocol version 2.
+
+When the mapping is enabled again, it sends its own complete state before its
+first heartbeat. The producer is then still in the history-only mode, so that
+end marker does not count. The relink test waits for the reply to the state
+request of the producer.
+
+The visual check needs Mixxx. It is open.

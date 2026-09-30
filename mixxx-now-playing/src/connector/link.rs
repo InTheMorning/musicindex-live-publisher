@@ -1,6 +1,6 @@
 //! The link rules of the connector mode (ADR 0006 §How `mixxx-now-playing`
-//! Uses The Deck State, §When The Connector Is Not Available and §Entering And
-//! Leaving The Connector Mode).
+//! Uses The Deck State, §When The Connector Is Not Available, §Entering And
+//! Leaving The Connector Mode and §Relink After An Outage).
 //!
 //! `Coordinator` makes each decision about the drop file. It reads no clock,
 //! no file and no device. The caller gives it the connector events, the
@@ -10,7 +10,9 @@
 use std::time::{Duration, Instant};
 
 use super::midi::ControlChange;
-use super::state::{ConnectorState, DECKS, DeckChange, DeckChangeKind, HistoryOnlyReason, Mode};
+use super::state::{
+    ConnectorEvent, ConnectorState, DECKS, DeckChange, DeckChangeKind, HistoryOnlyReason, Mode,
+};
 use crate::expiry::Expiry;
 
 /// The longest time at startup before the producer knows the mode with no
@@ -55,10 +57,22 @@ enum KnownMode {
     HistoryOnly,
 }
 
+/// The deck of a link and its sample count at the time of the link.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Link {
+    deck: u8,
+    samples: Option<u64>,
+}
+
 #[derive(Debug, Clone, Copy)]
 struct CurrentRow {
     expiry: Expiry,
-    link: Option<u8>,
+    /// True when the expiry ended and the file was removed for it.
+    expired: bool,
+    link: Option<Link>,
+    /// The link from before an outage of the connector. The first state end
+    /// after the next entry tests it (ADR 0006 §Relink After An Outage).
+    relink: Option<Link>,
     file_duration: Option<Duration>,
 }
 
@@ -72,7 +86,7 @@ pub struct Coordinator {
     heartbeat_seen: bool,
     unavailable_seen: bool,
     mode: KnownMode,
-    pending: Vec<DeckChange>,
+    pending: Vec<ConnectorEvent>,
     row: Option<CurrentRow>,
     present: bool,
     skip_next_row: bool,
@@ -131,10 +145,10 @@ impl Coordinator {
 
     /// Applies one control change that arrived at `time`.
     ///
-    /// A deck change waits for the next `update`.
+    /// A deck change or a state end waits for the next `update`.
     pub fn control_change(&mut self, cc: ControlChange, time: Instant) {
-        if let Some(change) = self.state.apply(cc, time) {
-            self.pending.push(change);
+        if let Some(event) = self.state.apply(cc, time) {
+            self.pending.push(event);
         }
         // Only a heartbeat can give a mode other than `NoHeartbeat` at the
         // time of the message.
@@ -189,11 +203,11 @@ impl Coordinator {
             KnownMode::Connector => {
                 let loudest = self.state.loudest_deck();
                 if (1..=DECKS).contains(&loudest) && self.state.play(loudest) {
-                    let duration = self
-                        .state
-                        .duration_secs(loudest)
-                        .map(|secs| Duration::from_secs(u64::from(secs)));
-                    (Some(loudest), duration)
+                    let link = Link {
+                        deck: loudest,
+                        samples: self.state.samples(loudest),
+                    };
+                    (Some(link), self.deck_duration(loudest))
                 } else {
                     tracing::info!(loudest, "no playing loudest deck; history row has no link");
                     (None, None)
@@ -203,9 +217,12 @@ impl Coordinator {
         };
 
         let write = self.mode == KnownMode::HistoryOnly || link.is_some();
+        // A new row has no relink candidate.
         self.row = Some(CurrentRow {
             expiry,
+            expired: false,
             link,
+            relink: None,
             file_duration,
         });
         self.present = write;
@@ -248,7 +265,11 @@ impl Coordinator {
                 // before the entry, so it must not link.
                 self.skip_next_row = self.mode == KnownMode::Unknown;
                 self.mode = KnownMode::Connector;
-                self.row = None;
+                // Keep the row and its relink candidate. The first state end
+                // after this entry tests the candidate.
+                if let Some(row) = self.row.as_mut() {
+                    row.link = None;
+                }
                 self.present = false;
                 self.pending.clear();
                 actions.push(Action::SendStateRequest);
@@ -258,9 +279,11 @@ impl Coordinator {
                 tracing::warn!(reason = ?reason, "history-only mode");
                 self.mode = KnownMode::HistoryOnly;
                 // No write here. The expiry of the row applies from the time
-                // of the row, in `apply_expiry`.
+                // of the row, in `apply_expiry`. Only a linked row keeps a
+                // relink candidate. A candidate from an earlier outage that
+                // did not relink goes away.
                 if let Some(row) = self.row.as_mut() {
-                    row.link = None;
+                    row.relink = row.link.take();
                 }
                 self.pending.clear();
             }
@@ -269,37 +292,105 @@ impl Coordinator {
     }
 
     fn apply_deck_changes(&mut self, actions: &mut Vec<Action>) {
-        let changes = std::mem::take(&mut self.pending);
+        let events = std::mem::take(&mut self.pending);
         if self.mode != KnownMode::Connector {
             return;
         }
-        for change in changes {
-            let Some(row) = self.row.as_mut() else {
-                return;
-            };
-            if row.link != Some(change.deck) {
-                continue;
-            }
-            match change.kind {
-                DeckChangeKind::Play(false) => {
-                    self.present = false;
-                    actions.push(Action::RemoveFile);
-                }
-                DeckChangeKind::Play(true) => {
-                    if !self.present {
-                        self.present = true;
-                        actions.push(Action::WriteFile {
-                            duration: row.file_duration,
-                        });
-                    }
-                }
-                DeckChangeKind::TrackLoaded(_) | DeckChangeKind::Duration(_) => {
-                    row.link = None;
-                    self.present = false;
-                    actions.push(Action::RemoveFile);
-                }
+        for event in events {
+            match event {
+                ConnectorEvent::Deck(change) => self.apply_deck_change(change, actions),
+                ConnectorEvent::StateEnd => self.apply_state_end(actions),
             }
         }
+    }
+
+    fn apply_deck_change(&mut self, change: DeckChange, actions: &mut Vec<Action>) {
+        let Some(row) = self.row.as_mut() else {
+            return;
+        };
+        if row.link.map(|link| link.deck) != Some(change.deck) {
+            return;
+        }
+        match change.kind {
+            DeckChangeKind::Play(false) => {
+                self.present = false;
+                actions.push(Action::RemoveFile);
+            }
+            DeckChangeKind::Play(true) => {
+                if !self.present {
+                    self.present = true;
+                    actions.push(Action::WriteFile {
+                        duration: row.file_duration,
+                    });
+                }
+            }
+            DeckChangeKind::TrackLoaded(_)
+            | DeckChangeKind::Duration(_)
+            | DeckChangeKind::Samples(_) => {
+                row.link = None;
+                self.present = false;
+                actions.push(Action::RemoveFile);
+            }
+        }
+    }
+
+    /// Tests the relink candidate at the first state end after an entry into
+    /// the connector mode (ADR 0006 §Relink After An Outage). The candidate
+    /// goes away after this test.
+    fn apply_state_end(&mut self, actions: &mut Vec<Action>) {
+        let Some(candidate) = self.row.as_mut().and_then(|row| row.relink.take()) else {
+            return;
+        };
+        if let Some(reason) = self.relink_refusal(candidate) {
+            tracing::info!(
+                deck = candidate.deck,
+                loudest = self.state.loudest_deck(),
+                reason,
+                "history row does not link again"
+            );
+            return;
+        }
+
+        let duration = self.deck_duration(candidate.deck);
+        let Some(row) = self.row.as_mut() else {
+            return;
+        };
+        row.link = Some(candidate);
+        row.file_duration = duration;
+        // The ADR 0005 expiry applies again at the next outage. If it already
+        // ended, that outage removes the file at once.
+        row.expired = false;
+        self.present = true;
+        tracing::info!(
+            deck = candidate.deck,
+            relink = true,
+            "history row linked again after an outage"
+        );
+        actions.push(Action::WriteFile { duration });
+    }
+
+    /// Gives the cause that stops the candidate link, or `None`
+    /// when each condition of ADR 0006 §Relink After An Outage is true.
+    fn relink_refusal(&self, candidate: Link) -> Option<&'static str> {
+        let deck = candidate.deck;
+        let samples = self.state.samples(deck);
+        if self.state.loudest_deck() != deck {
+            Some("the deck is not the loudest deck")
+        } else if !self.state.play(deck) {
+            Some("the deck does not play")
+        } else if samples != candidate.samples {
+            Some("the deck sample count changed")
+        } else if samples.unwrap_or(0) == 0 {
+            Some("the deck sample count is unknown")
+        } else {
+            None
+        }
+    }
+
+    fn deck_duration(&self, deck: u8) -> Option<Duration> {
+        self.state
+            .duration_secs(deck)
+            .map(|secs| Duration::from_secs(u64::from(secs)))
     }
 
     fn apply_expiry(&mut self, now: Instant, actions: &mut Vec<Action>) {
@@ -309,8 +400,8 @@ impl Coordinator {
         let Some(row) = self.row.as_mut() else {
             return;
         };
-        if row.expiry.expired_at(now) {
-            row.expiry = Expiry::none();
+        if !row.expired && row.expiry.expired_at(now) {
+            row.expired = true;
             self.present = false;
             actions.push(Action::RemoveFile);
         }
@@ -319,10 +410,13 @@ impl Coordinator {
 
 #[cfg(test)]
 mod tests {
+    use super::super::state::PROTOCOL_VERSION;
     use super::*;
 
     const CHANNEL_16: u8 = 15;
     const MAX: Duration = Duration::from_secs(600);
+    /// The deck 2 sample count in the tests. It is above 2^32.
+    const SAMPLES: u64 = (1 << 32) + 5;
 
     fn cc(controller: u8, value: u8) -> ControlChange {
         ControlChange {
@@ -337,7 +431,7 @@ mod tests {
     }
 
     fn heartbeat(coordinator: &mut Coordinator, time: Instant) {
-        coordinator.control_change(cc(1, 1), time);
+        coordinator.control_change(cc(1, PROTOCOL_VERSION), time);
     }
 
     fn set_loudest(coordinator: &mut Coordinator, deck: u8, time: Instant) {
@@ -353,6 +447,18 @@ mod tests {
         let low = u8::try_from(secs & 0x7F).expect("duration low part");
         coordinator.control_change(cc(30 + deck, high), time);
         coordinator.control_change(cc(40 + deck, low), time);
+    }
+
+    fn set_samples(coordinator: &mut Coordinator, deck: u8, samples: u64, time: Instant) {
+        for (index, base) in [50, 60, 70, 80, 90].into_iter().enumerate() {
+            let shift = 7 * (4 - index);
+            let part = u8::try_from((samples >> shift) & 0x7F).expect("7-bit part");
+            coordinator.control_change(cc(base + deck, part), time);
+        }
+    }
+
+    fn state_end(coordinator: &mut Coordinator, time: Instant) {
+        coordinator.control_change(cc(3, 1), time);
     }
 
     fn v4v_row(time: Instant, header_secs: u64) -> Row {
@@ -395,10 +501,12 @@ mod tests {
         coordinator
     }
 
-    /// A connector coordinator with deck 2 loudest, playing, 200 seconds.
+    /// A connector coordinator with deck 2 loudest, playing, 200 seconds and
+    /// `SAMPLES`.
     fn deck_2_plays(start: Instant) -> Coordinator {
         let mut coordinator = connector(start);
         set_duration(&mut coordinator, 2, 200, start);
+        set_samples(&mut coordinator, 2, SAMPLES, start);
         set_play(&mut coordinator, 2, true, start);
         set_loudest(&mut coordinator, 2, start);
         assert_eq!(coordinator.update(start), vec![]);
@@ -578,6 +686,7 @@ mod tests {
         set_play(&mut coordinator, 1, false, start);
         coordinator.control_change(cc(21, 127), start);
         set_duration(&mut coordinator, 1, 300, start);
+        set_samples(&mut coordinator, 1, 1000, start);
         assert_eq!(coordinator.update(start), vec![]);
         assert!(coordinator.file_present());
     }
@@ -761,5 +870,369 @@ mod tests {
         let mut coordinator = history_only(start);
         assert_eq!(coordinator.row(v4v_row(start, 187)), vec![write(187)]);
         assert_eq!(coordinator.row(Row::Other), vec![Action::RemoveFile]);
+    }
+
+    #[test]
+    fn samples_change_on_the_linked_deck_ends_the_link() {
+        let start = Instant::now();
+        let mut coordinator = deck_2_plays(start);
+        coordinator.row(v4v_row(start, 200));
+
+        set_samples(&mut coordinator, 2, SAMPLES + 2, start);
+        assert_eq!(coordinator.update(start), vec![Action::RemoveFile]);
+        assert!(!coordinator.file_present());
+
+        set_play(&mut coordinator, 2, false, start);
+        set_play(&mut coordinator, 2, true, start);
+        assert_eq!(coordinator.update(start), vec![]);
+        assert_eq!(coordinator.api_result(), None);
+    }
+
+    /// Deck 2 plays and is linked to a row with the header duration
+    /// `header_secs`. The last heartbeat is at `start`.
+    fn linked_deck_2(start: Instant, header_secs: u64) -> Coordinator {
+        let mut coordinator = deck_2_plays(start);
+        assert_eq!(
+            coordinator.row(v4v_row(start, header_secs)),
+            vec![write(200)]
+        );
+        coordinator
+    }
+
+    /// The heartbeat stopped after `start`. The mode changes at 3.5 seconds.
+    fn outage(coordinator: &mut Coordinator, start: Instant) {
+        let actions = coordinator.update(at(start, 3500));
+        assert!(!has_write(&actions), "{actions:?}");
+    }
+
+    /// The heartbeat comes back at `time`. The producer enters the connector
+    /// mode, removes the file and asks for the complete state.
+    fn heartbeat_returns(coordinator: &mut Coordinator, time: Instant) {
+        heartbeat(coordinator, time);
+        assert_eq!(
+            coordinator.update(time),
+            vec![Action::SendStateRequest, Action::RemoveFile]
+        );
+        assert!(!coordinator.file_present());
+        assert_eq!(coordinator.api_result(), None);
+    }
+
+    /// The complete state after the request: deck 2 has 200 seconds and
+    /// `samples`, `play` for deck 2 is `play`, and `loudest` is the loudest
+    /// deck. The state end follows.
+    fn complete_state(
+        coordinator: &mut Coordinator,
+        loudest: u8,
+        play: bool,
+        samples: u64,
+        time: Instant,
+    ) -> Vec<Action> {
+        set_play(coordinator, 2, play, time);
+        coordinator.control_change(cc(22, 127), time);
+        set_duration(coordinator, 2, 200, time);
+        set_samples(coordinator, 2, samples, time);
+        set_loudest(coordinator, loudest, time);
+        state_end(coordinator, time);
+        coordinator.update(time)
+    }
+
+    #[test]
+    fn relink_after_an_outage_writes_with_the_deck_duration() {
+        let start = Instant::now();
+        let mut coordinator = linked_deck_2(start, 617);
+        outage(&mut coordinator, start);
+        heartbeat_returns(&mut coordinator, at(start, 5000));
+
+        assert_eq!(
+            complete_state(&mut coordinator, 2, true, SAMPLES, at(start, 5100)),
+            vec![write(200)]
+        );
+        assert!(coordinator.file_present());
+        assert_eq!(coordinator.api_result(), Some(write(200)));
+
+        // The link works again: a stop removes the file.
+        set_play(&mut coordinator, 2, false, at(start, 5200));
+        assert_eq!(
+            coordinator.update(at(start, 5200)),
+            vec![Action::RemoveFile]
+        );
+    }
+
+    #[test]
+    fn relink_after_a_device_close_writes() {
+        let start = Instant::now();
+        let mut coordinator = linked_deck_2(start, 617);
+        coordinator.device_closed();
+        assert!(!has_write(&coordinator.update(at(start, 100))));
+
+        coordinator.device_opened();
+        heartbeat_returns(&mut coordinator, at(start, 2000));
+        assert_eq!(
+            complete_state(&mut coordinator, 2, true, SAMPLES, at(start, 2100)),
+            vec![write(200)]
+        );
+    }
+
+    #[test]
+    fn no_relink_when_a_different_deck_is_loudest() {
+        let start = Instant::now();
+        let mut coordinator = linked_deck_2(start, 200);
+        outage(&mut coordinator, start);
+        heartbeat_returns(&mut coordinator, at(start, 5000));
+        assert_eq!(
+            complete_state(&mut coordinator, 1, true, SAMPLES, at(start, 5100)),
+            vec![]
+        );
+        assert!(!coordinator.file_present());
+    }
+
+    #[test]
+    fn no_relink_when_the_deck_does_not_play() {
+        let start = Instant::now();
+        let mut coordinator = linked_deck_2(start, 200);
+        outage(&mut coordinator, start);
+        heartbeat_returns(&mut coordinator, at(start, 5000));
+        assert_eq!(
+            complete_state(&mut coordinator, 2, false, SAMPLES, at(start, 5100)),
+            vec![]
+        );
+
+        // The candidate went away. A start after the state end does not
+        // write.
+        set_play(&mut coordinator, 2, true, at(start, 5200));
+        assert_eq!(coordinator.update(at(start, 5200)), vec![]);
+        assert!(!coordinator.file_present());
+    }
+
+    #[test]
+    fn no_relink_when_the_sample_count_differs() {
+        let start = Instant::now();
+        let mut coordinator = linked_deck_2(start, 200);
+        outage(&mut coordinator, start);
+        heartbeat_returns(&mut coordinator, at(start, 5000));
+        assert_eq!(
+            complete_state(&mut coordinator, 2, true, SAMPLES + 2, at(start, 5100)),
+            vec![]
+        );
+        assert!(!coordinator.file_present());
+    }
+
+    #[test]
+    fn no_relink_when_the_sample_count_is_0() {
+        let start = Instant::now();
+        let mut coordinator = connector(start);
+        set_duration(&mut coordinator, 2, 200, start);
+        set_samples(&mut coordinator, 2, 0, start);
+        set_play(&mut coordinator, 2, true, start);
+        set_loudest(&mut coordinator, 2, start);
+        coordinator.update(start);
+        assert_eq!(coordinator.row(v4v_row(start, 200)), vec![write(200)]);
+
+        outage(&mut coordinator, start);
+        heartbeat_returns(&mut coordinator, at(start, 5000));
+        assert_eq!(
+            complete_state(&mut coordinator, 2, true, 0, at(start, 5100)),
+            vec![]
+        );
+        assert!(!coordinator.file_present());
+    }
+
+    #[test]
+    fn no_relink_when_the_sample_count_is_unknown() {
+        let start = Instant::now();
+        let mut coordinator = connector(start);
+        set_duration(&mut coordinator, 2, 200, start);
+        set_play(&mut coordinator, 2, true, start);
+        set_loudest(&mut coordinator, 2, start);
+        coordinator.update(start);
+        assert_eq!(coordinator.row(v4v_row(start, 200)), vec![write(200)]);
+
+        outage(&mut coordinator, start);
+        heartbeat_returns(&mut coordinator, at(start, 5000));
+        // The mapping sends no sample parts.
+        set_loudest(&mut coordinator, 2, at(start, 5100));
+        state_end(&mut coordinator, at(start, 5100));
+        assert_eq!(coordinator.update(at(start, 5100)), vec![]);
+    }
+
+    #[test]
+    fn no_relink_after_a_new_history_row_during_the_outage() {
+        let start = Instant::now();
+        let mut coordinator = linked_deck_2(start, 200);
+        outage(&mut coordinator, start);
+        // The history-only mode writes the new row with its header duration.
+        assert_eq!(
+            coordinator.row(v4v_row(at(start, 4000), 187)),
+            vec![write(187)]
+        );
+
+        heartbeat_returns(&mut coordinator, at(start, 5000));
+        assert_eq!(
+            complete_state(&mut coordinator, 2, true, SAMPLES, at(start, 5100)),
+            vec![]
+        );
+        assert!(!coordinator.file_present());
+    }
+
+    #[test]
+    fn no_relink_for_a_row_that_had_no_link_before_the_outage() {
+        let start = Instant::now();
+        let mut coordinator = deck_2_plays(start);
+        // The loudest deck is 0, so the row has no link.
+        set_loudest(&mut coordinator, 0, start);
+        coordinator.update(start);
+        assert_eq!(
+            coordinator.row(v4v_row(start, 200)),
+            vec![Action::RemoveFile]
+        );
+
+        outage(&mut coordinator, start);
+        heartbeat_returns(&mut coordinator, at(start, 5000));
+        assert_eq!(
+            complete_state(&mut coordinator, 2, true, SAMPLES, at(start, 5100)),
+            vec![]
+        );
+        assert!(!coordinator.file_present());
+    }
+
+    #[test]
+    fn no_relink_for_a_history_only_row() {
+        let start = Instant::now();
+        let mut coordinator = history_only(start);
+        assert_eq!(coordinator.row(v4v_row(start, 200)), vec![write(200)]);
+
+        coordinator.device_opened();
+        heartbeat_returns(&mut coordinator, at(start, 1000));
+        assert_eq!(
+            complete_state(&mut coordinator, 2, true, SAMPLES, at(start, 1100)),
+            vec![]
+        );
+        assert!(!coordinator.file_present());
+    }
+
+    #[test]
+    fn no_relink_without_a_state_end_before_the_next_mode_change() {
+        let start = Instant::now();
+        let mut coordinator = linked_deck_2(start, 200);
+        outage(&mut coordinator, start);
+        heartbeat_returns(&mut coordinator, at(start, 5000));
+
+        // The complete state arrives without its end marker.
+        set_samples(&mut coordinator, 2, SAMPLES, at(start, 5100));
+        set_loudest(&mut coordinator, 2, at(start, 5100));
+        assert_eq!(coordinator.update(at(start, 5100)), vec![]);
+
+        // A second outage, then a complete state with its end marker.
+        assert!(!has_write(&coordinator.update(at(start, 8500))));
+        heartbeat_returns(&mut coordinator, at(start, 10_000));
+        assert_eq!(
+            complete_state(&mut coordinator, 2, true, SAMPLES, at(start, 10_100)),
+            vec![]
+        );
+        assert!(!coordinator.file_present());
+    }
+
+    #[test]
+    fn deck_change_before_the_state_end_does_not_relink() {
+        let start = Instant::now();
+        let mut coordinator = linked_deck_2(start, 200);
+        outage(&mut coordinator, start);
+        heartbeat_returns(&mut coordinator, at(start, 5000));
+
+        set_play(&mut coordinator, 2, false, at(start, 5050));
+        set_play(&mut coordinator, 2, true, at(start, 5060));
+        set_loudest(&mut coordinator, 0, at(start, 5060));
+        set_loudest(&mut coordinator, 2, at(start, 5070));
+        assert_eq!(coordinator.update(at(start, 5070)), vec![]);
+        assert!(!coordinator.file_present());
+
+        // Only the state end links the row again.
+        state_end(&mut coordinator, at(start, 5100));
+        assert_eq!(coordinator.update(at(start, 5100)), vec![write(200)]);
+    }
+
+    #[test]
+    fn only_the_first_state_end_after_the_entry_tests_the_candidate() {
+        let start = Instant::now();
+        let mut coordinator = linked_deck_2(start, 200);
+        outage(&mut coordinator, start);
+        heartbeat_returns(&mut coordinator, at(start, 5000));
+        assert_eq!(
+            complete_state(&mut coordinator, 1, true, SAMPLES, at(start, 5100)),
+            vec![]
+        );
+        assert_eq!(
+            complete_state(&mut coordinator, 2, true, SAMPLES, at(start, 5200)),
+            vec![]
+        );
+        assert!(!coordinator.file_present());
+    }
+
+    #[test]
+    fn startup_entry_never_relinks() {
+        let start = Instant::now();
+        let mut coordinator = Coordinator::new(true, start);
+        coordinator.device_opened();
+        heartbeat(&mut coordinator, start);
+        assert_eq!(
+            coordinator.update(start),
+            vec![Action::SendStateRequest, Action::RemoveFile]
+        );
+        assert_eq!(
+            complete_state(&mut coordinator, 2, true, SAMPLES, at(start, 100)),
+            vec![]
+        );
+
+        // The first row after startup existed before the entry.
+        assert_eq!(
+            coordinator.row(v4v_row(at(start, 200), 200)),
+            vec![Action::RemoveFile]
+        );
+        assert_eq!(
+            complete_state(&mut coordinator, 2, true, SAMPLES, at(start, 300)),
+            vec![]
+        );
+        assert!(!coordinator.file_present());
+    }
+
+    #[test]
+    fn relink_after_the_expiry_ended_during_the_outage_writes() {
+        let start = Instant::now();
+        let mut coordinator = linked_deck_2(start, 10);
+        outage(&mut coordinator, start);
+        assert_eq!(
+            coordinator.update(at(start, 10_000)),
+            vec![Action::RemoveFile]
+        );
+
+        heartbeat_returns(&mut coordinator, at(start, 12_000));
+        assert_eq!(
+            complete_state(&mut coordinator, 2, true, SAMPLES, at(start, 12_100)),
+            vec![write(200)]
+        );
+        assert!(coordinator.file_present());
+    }
+
+    #[test]
+    fn a_second_outage_after_a_relink_past_the_expiry_removes_at_once() {
+        let start = Instant::now();
+        let mut coordinator = linked_deck_2(start, 10);
+        outage(&mut coordinator, start);
+        assert_eq!(
+            coordinator.update(at(start, 10_000)),
+            vec![Action::RemoveFile]
+        );
+        heartbeat_returns(&mut coordinator, at(start, 12_000));
+        assert_eq!(
+            complete_state(&mut coordinator, 2, true, SAMPLES, at(start, 12_100)),
+            vec![write(200)]
+        );
+
+        // No heartbeat after 12 seconds. The expiry ended at 10 seconds.
+        assert_eq!(
+            coordinator.update(at(start, 15_500)),
+            vec![Action::RemoveFile]
+        );
+        assert!(!coordinator.file_present());
     }
 }

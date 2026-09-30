@@ -131,12 +131,48 @@ test("durationParts", () => {
     }
 });
 
+test("sampleParts", () => {
+    const { V4V } = load();
+    const cases = [
+        [0, [0, 0, 0, 0, 0]],
+        [-1, [0, 0, 0, 0, 0]],
+        [NaN, [0, 0, 0, 0, 0]],
+        [Infinity, [0, 0, 0, 0, 0]],
+        [0.9, [0, 0, 0, 0, 0]],
+        [1, [0, 0, 0, 0, 1]],
+        [127, [0, 0, 0, 0, 127]],
+        [128, [0, 0, 0, 1, 0]],
+        [128.7, [0, 0, 0, 1, 0]],
+        // 2^32 + 5: bit 32 is bit 4 of part 1. A 32-bit operator loses it.
+        [2 ** 32 + 5, [16, 0, 0, 0, 5]],
+        [2 ** 35 - 1, [127, 127, 127, 127, 127]],
+        [2 ** 35 + 1, [127, 127, 127, 127, 127]],
+    ];
+    for (const [samples, parts] of cases) {
+        assert.deepEqual(Array.from(V4V.sampleParts(samples)), parts, `samples ${samples}`);
+    }
+});
+
+test("sampleParts rebuilds the count for values above 2^32", () => {
+    const { V4V } = load();
+    for (const samples of [2 ** 32 + 5, 26460000, 2 ** 34 + 2 ** 21 + 3]) {
+        const parts = V4V.sampleParts(samples);
+        const rebuilt = parts.reduce((total, part) => total * 128 + part, 0);
+        assert.equal(rebuilt, samples);
+    }
+});
+
+function samplesMessages(n, parts) {
+    return [50, 60, 70, 80, 90].map((base, i) => [0xBF, base + n, parts[i]]);
+}
+
 function expectedCompleteState(loudest) {
     const messages = [];
     for (let n = 1; n <= 4; n++) {
-        messages.push([0xBF, 10 + n, 0], [0xBF, 20 + n, 0], [0xBF, 30 + n, 0], [0xBF, 40 + n, 0]);
+        messages.push([0xBF, 10 + n, 0], [0xBF, 20 + n, 0], [0xBF, 30 + n, 0], [0xBF, 40 + n, 0],
+            ...samplesMessages(n, [0, 0, 0, 0, 0]));
     }
-    messages.push([0xBF, 2, loudest]);
+    messages.push([0xBF, 2, loudest], [0xBF, 3, 1]);
     return messages;
 }
 
@@ -154,18 +190,48 @@ test("the complete state carries the deck values", () => {
     m.set("[Channel3]", "duration", 200.02);
     m.set("[Channel3]", "volume", 1);
     m.set("[Channel3]", "pregain", 1);
+    m.set("[Channel3]", "track_samples", 2 ** 32 + 5);
     m.V4V.init();
-    const deck3 = m.sent.filter(([, cc]) => [13, 23, 33, 43].includes(cc));
-    assert.deepEqual(deck3, [[0xBF, 13, 127], [0xBF, 23, 127], [0xBF, 33, 1], [0xBF, 43, 72]]);
-    assert.deepEqual(m.sent.at(-1), [0xBF, 2, 3]);
+    const deck3 = m.sent.filter(([, cc]) => cc % 10 === 3 && cc >= 10);
+    assert.deepEqual(deck3, [[0xBF, 13, 127], [0xBF, 23, 127], [0xBF, 33, 1], [0xBF, 43, 72],
+        ...samplesMessages(3, [16, 0, 0, 0, 5])]);
+    assert.deepEqual(m.sent.slice(-2), [[0xBF, 2, 3], [0xBF, 3, 1]]);
 });
 
-test("the heartbeat timer sends CC 1 with version 1", () => {
+test("the complete state has the deck order, then CC 2, then CC 3 = 1", () => {
+    const m = load();
+    for (let n = 1; n <= 4; n++) {
+        m.set(`[Channel${n}]`, "track_samples", n * 1000);
+    }
+    m.V4V.init();
+    const expected = [];
+    for (let n = 1; n <= 4; n++) {
+        expected.push([0xBF, 10 + n, 0], [0xBF, 20 + n, 0], [0xBF, 30 + n, 0], [0xBF, 40 + n, 0],
+            ...samplesMessages(n, Array.from(m.V4V.sampleParts(n * 1000))));
+    }
+    expected.push([0xBF, 2, 0], [0xBF, 3, 1]);
+    assert.deepEqual(m.sent, expected);
+    assert.deepEqual(m.sent.at(-1), [0xBF, 3, 1]);
+});
+
+test("the heartbeat timer sends CC 1 with version 2", () => {
     const m = load();
     m.V4V.init();
     m.clear();
     [...m.timers.values()].find((t) => t.ms === 1000).callback();
-    assert.deepEqual(m.sent, [[0xBF, 1, 1]]);
+    assert.deepEqual(m.sent, [[0xBF, 1, 2]]);
+});
+
+test("a track_samples change sends the five parts in order", () => {
+    const m = load();
+    m.V4V.init();
+    m.clear();
+    m.set("[Channel2]", "track_samples", 2 ** 32 + 5);
+    assert.deepEqual(m.sent, samplesMessages(2, [16, 0, 0, 0, 5]));
+    m.clear();
+    // Mixxx sets an invalid value at the start of a load and at an eject.
+    m.set("[Channel2]", "track_samples", -1);
+    assert.deepEqual(m.sent, samplesMessages(2, [0, 0, 0, 0, 0]));
 });
 
 test("request 1 sends the complete state, request 0 sends nothing", () => {
@@ -217,7 +283,7 @@ test("the loudest deck is sent on a change only", () => {
 test("shutdown stops the timers and disconnects each connection", () => {
     const m = load();
     m.V4V.init();
-    assert.equal(m.connections.length, 4 * 6 + 1);
+    assert.equal(m.connections.length, 4 * 7 + 1);
     m.V4V.shutdown();
     assert.equal(m.timers.size, 0);
     assert.ok(m.connections.every((c) => !c.connected));

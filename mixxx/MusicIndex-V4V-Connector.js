@@ -5,15 +5,20 @@
 var V4VConnector = {};
 
 V4VConnector.STATUS = 0xBF;
-V4VConnector.PROTOCOL_VERSION = 1;
+V4VConnector.PROTOCOL_VERSION = 2;
 V4VConnector.CC_HEARTBEAT = 1;
 V4VConnector.CC_LOUDEST = 2;
+V4VConnector.CC_STATE_END = 3;
 V4VConnector.CC_PLAY = 10;
 V4VConnector.CC_TRACK_LOADED = 20;
 V4VConnector.CC_DURATION_HIGH = 30;
 V4VConnector.CC_DURATION_LOW = 40;
+// The five sample parts, from bits 28 to 34 down to bits 0 to 6.
+V4VConnector.CC_SAMPLES = [50, 60, 70, 80, 90];
 V4VConnector.DECKS = 4;
 V4VConnector.MAX_DURATION = 16383;
+// 2^35 - 1, the highest value that five 7-bit parts can hold.
+V4VConnector.MAX_SAMPLES = 34359738367;
 V4VConnector.HEARTBEAT_MS = 1000;
 V4VConnector.LOUDEST_MS = 250;
 // The "play" callback also computes the loudest deck.
@@ -73,6 +78,23 @@ V4VConnector.durationParts = function(seconds) {
     return [(whole >> 7) & 0x7F, whole & 0x7F];
 };
 
+// Gives five 7-bit parts of a sample count, from bits 28 to 34 down to bits 0
+// to 6. The count is rounded down. A value that is not a finite number more
+// than 0 gives five zeros. A value above 2^35 - 1 gives five parts of 127.
+// The JavaScript bit operators use 32 bits, so this function uses division.
+V4VConnector.sampleParts = function(samples) {
+    var whole = Math.floor(samples);
+    if (!isFinite(whole) || !(whole > 0)) {
+        whole = 0;
+    }
+    whole = Math.min(whole, V4VConnector.MAX_SAMPLES);
+    var parts = [];
+    for (var shift = 4; shift >= 0; shift--) {
+        parts.push(Math.floor(whole / Math.pow(128, shift)) % 128);
+    }
+    return parts;
+};
+
 V4VConnector.readDecks = function() {
     var decks = [];
     for (var deck = 1; deck <= V4VConnector.DECKS; deck++) {
@@ -121,14 +143,26 @@ V4VConnector.sendDuration = function(deck, seconds) {
     V4VConnector.send(V4VConnector.CC_DURATION_LOW + deck, parts[1]);
 };
 
+// The five parts go in order. The consumer applies the count when the last
+// part arrives.
+V4VConnector.sendSamples = function(deck, samples) {
+    var parts = V4VConnector.sampleParts(samples);
+    for (var i = 0; i < parts.length; i++) {
+        V4VConnector.send(V4VConnector.CC_SAMPLES[i] + deck, parts[i]);
+    }
+};
+
+// CC 3 with the value 1 is the last message of the complete state.
 V4VConnector.sendCompleteState = function() {
     for (var deck = 1; deck <= V4VConnector.DECKS; deck++) {
         var group = V4VConnector.group(deck);
         V4VConnector.sendPlay(deck, engine.getValue(group, "play"));
         V4VConnector.sendTrackLoaded(deck, engine.getValue(group, "track_loaded"));
         V4VConnector.sendDuration(deck, engine.getValue(group, "duration"));
+        V4VConnector.sendSamples(deck, engine.getValue(group, "track_samples"));
     }
     V4VConnector.sendLoudest(V4VConnector.computeLoudest());
+    V4VConnector.send(V4VConnector.CC_STATE_END, 1);
 };
 
 V4VConnector.connect = function(group, key, callback) {
@@ -147,6 +181,9 @@ V4VConnector.connectDeck = function(deck) {
     });
     V4VConnector.connect(group, "duration", function(value) {
         V4VConnector.sendDuration(deck, value);
+    });
+    V4VConnector.connect(group, "track_samples", function(value) {
+        V4VConnector.sendSamples(deck, value);
     });
     for (var i = 0; i < V4VConnector.LOUDEST_CONTROLS.length; i++) {
         V4VConnector.connect(group, V4VConnector.LOUDEST_CONTROLS[i], V4VConnector.updateLoudest);

@@ -15,6 +15,6 @@ pub use device::{
 pub use link::{Action, Coordinator, Row, STARTUP_TIMEOUT};
 pub use midi::{ControlChange, MidiParser};
 pub use state::{
-    ConnectorState, DECKS, DeckChange, DeckChangeKind, HEARTBEAT_TIMEOUT, HistoryOnlyReason, Mode,
-    PROTOCOL_VERSION,
+    ConnectorEvent, ConnectorState, DECKS, DeckChange, DeckChangeKind, HEARTBEAT_TIMEOUT,
+    HistoryOnlyReason, Mode, PROTOCOL_VERSION,
 };
