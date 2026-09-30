@@ -25,13 +25,15 @@ the next priority. Confirm that logging works before the show.
 ## ADRs
 
 - [ADR 0001: Rust now-playing lifecycle](adr/0001-rust-now-playing-lifecycle.md)
+  — Implemented
 - [ADR 0002: Now-playing drop-file contract](adr/0002-nowplaying-drop-file-contract.md)
+  — Implemented
 - [ADR 0003: Show log contract](adr/0003-show-log-contract.md) — the
   accepted append-only log contract for future episode generation. Implementation
   and the producer timestamp source remain open
-- [ADR 0004: Publisher control CLI](adr/0004-publisher-control-cli.md) — the
-  target and JSON commands that let `v4vmm` control this repository without
-  writing its configuration file
+- [ADR 0004: Publisher control CLI](adr/0004-publisher-control-cli.md) —
+  Implemented. The target and JSON commands that let `v4vmm` control this
+  repository without writing its configuration file
 - [ADR 0005: Producer liveness, the dead block and the relay lease](adr/0005-producer-liveness-and-dead-block.md)
   — Implemented. The producer lock, the dead block that replaces the configured
   fallback, the relay keepalive, and a limit on the expiry timer without the

@@ -1,7 +1,15 @@
 # ADR 0001: Rust now-playing lifecycle
 
-Status: Accepted
+Status: Implemented
 Date: 2026-09-03
+
+Implemented 2026-09-04: `mixxx-now-playing/` implements this ADR. The audit
+review `docs/reviews/nowplaying-publisher-audit-review.md` of that date
+reviewed the implementation against the task packets in
+`docs/plans/rust-now-playing-utility-plan.md`. The status was corrected on
+2026-09-30.
+
+Accepted 2026-09-03.
 
 Amended 2026-09-28: ADR 0006 supersedes the non-goal "Detecting pause or exact
 audio output state" when the MIDI connector is available. Without the

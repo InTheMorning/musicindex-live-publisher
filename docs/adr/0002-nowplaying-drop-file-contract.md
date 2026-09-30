@@ -1,7 +1,14 @@
 # ADR 0002: Now-playing drop-file contract
 
-Status: Accepted
+Status: Implemented
 Date: 2026-09-04
+
+Implemented 2026-09-04: `mixxx-now-playing` writes this contract, and
+`musicindex-live-publisher` reads it (`src/dropfile.rs`). The audit review
+`docs/reviews/nowplaying-publisher-audit-review.md` of that date reviewed both
+crates. The status was corrected on 2026-09-30.
+
+Accepted 2026-09-04.
 
 Amended 2026-09-06: `v4vmm` accepted its ADR 0059 and became the control
 surface for this chain. Two statements below now have a known outcome. The
