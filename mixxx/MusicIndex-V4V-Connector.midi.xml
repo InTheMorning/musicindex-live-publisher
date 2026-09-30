@@ -3,7 +3,7 @@
     <info>
         <name>MusicIndex V4V Connector</name>
         <author>musicindex-live-publisher</author>
-        <description>Sends the deck state to mixxx-now-playing on MIDI channel 16. Enable it on the controller "VirMIDI 31-0". The protocol is in musicindex-live-publisher ADR 0006.</description>
+        <description>Sends the deck state to mixxx-now-playing on MIDI channel 16. Enable it on the controller "VirMIDI 31-0". The protocol is in musicindex-live-publisher ADR 0006 and ADR 0007.</description>
     </info>
     <controller id="MusicIndexV4VConnector">
         <scriptfiles>
@@ -15,6 +15,15 @@
                 <key>V4VConnector.request</key>
                 <status>0xBF</status>
                 <midino>0x01</midino>
+                <options>
+                    <script-binding/>
+                </options>
+            </control>
+            <control>
+                <group>[Master]</group>
+                <key>V4VConnector.command</key>
+                <status>0xBF</status>
+                <midino>0x04</midino>
                 <options>
                     <script-binding/>
                 </options>

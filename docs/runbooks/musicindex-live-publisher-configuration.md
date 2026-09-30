@@ -512,6 +512,46 @@ The producer writes these lines at the default log level `info`:
 
 Set `RUST_LOG` in the unit environment to change the log level.
 
+### Commands To Mixxx
+
+ADR 0007 owns the rules in this subsection. This subsection restates them. If
+this subsection and ADR 0007 are different, ADR 0007 applies.
+
+The producer binary sends a command to Mixxx through the connector card:
+
+```bash
+mixxx-now-playing command fade-now [--connector-card ID] [--timeout SECS]
+```
+
+- `fade-now` starts the AutoDJ transition to the next track immediately. It sets
+  `[AutoDJ],fade_now`. It is not `skip_next`.
+- `--connector-card <id>`: the card ID of the connector card. Default: `V4V`.
+- `--timeout <secs>`: the time limit for the full command. Default: 2
+  seconds.
+
+The command waits for a heartbeat of protocol version 3. Then it sends the
+command and waits for the answer of the mapping. The mapping does the command
+only when AutoDJ is enabled. The command does not use the producer lock and
+does not change a drop file. It can run while the producer runs.
+
+Exit codes:
+
+| Code | Meaning |
+|---|---|
+| 0 | The mapping did the command. It set the control. |
+| 2 | The command line is not correct. |
+| 3 | The mapping refused the command. For example, AutoDJ is disabled. |
+| 4 | The command was not sent. The raw device is not available, or no heartbeat of version 3 arrived before the timeout. |
+| 5 | The command was sent, but no answer arrived before the timeout. The result is not known. |
+
+Exit code 0 does not mean that the transition started. Mixxx can ignore
+`fade_now`, for example during a transition. The deck state shows the result.
+
+The command writes one line to stderr for each exit code other than 0.
+
+After exit code 5, do not send the command again before you examine the deck
+state. Mixxx can have done the command, and the answer can be lost.
+
 ## Drop File Contract
 
 The producer writes final `*.json` files by temp-file-plus-rename. The publisher

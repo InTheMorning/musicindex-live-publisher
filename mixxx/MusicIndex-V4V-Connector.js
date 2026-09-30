@@ -1,14 +1,20 @@
 // MusicIndex V4V Connector. This mapping sends the deck state to
-// mixxx-now-playing with the protocol in musicindex-live-publisher ADR 0006.
-// It sends only control change messages on MIDI channel 16.
+// mixxx-now-playing with the protocol in musicindex-live-publisher ADR 0006,
+// and it does the commands of ADR 0007. It sends only control change messages
+// on MIDI channel 16.
 
 var V4VConnector = {};
 
 V4VConnector.STATUS = 0xBF;
-V4VConnector.PROTOCOL_VERSION = 2;
+V4VConnector.PROTOCOL_VERSION = 3;
 V4VConnector.CC_HEARTBEAT = 1;
 V4VConnector.CC_LOUDEST = 2;
 V4VConnector.CC_STATE_END = 3;
+// ADR 0007: CC 4 from a consumer is a command. CC 4 to a consumer says that
+// the mapping did the command, and CC 5 says that it refused the command.
+V4VConnector.CC_COMMAND_DONE = 4;
+V4VConnector.CC_COMMAND_REFUSED = 5;
+V4VConnector.COMMAND_FADE_NOW = 1;
 V4VConnector.CC_PLAY = 10;
 V4VConnector.CC_TRACK_LOADED = 20;
 V4VConnector.CC_DURATION_HIGH = 30;
@@ -218,4 +224,18 @@ V4VConnector.request = function(channel, control, value) {
     if (value === 1) {
         V4VConnector.sendCompleteState();
     }
+};
+
+// A consumer sends CC 4 with a command code (ADR 0007). The mapping answers
+// CC 4 with the code when it set the control, and CC 5 with the code when it
+// refused the command. An unknown code sets no control.
+V4VConnector.command = function(channel, control, value) {
+    if (value === V4VConnector.COMMAND_FADE_NOW &&
+            engine.getValue("[AutoDJ]", "enabled") === 1) {
+        engine.setValue("[AutoDJ]", "fade_now", 1);
+        engine.setValue("[AutoDJ]", "fade_now", 0);
+        V4VConnector.send(V4VConnector.CC_COMMAND_DONE, value);
+        return;
+    }
+    V4VConnector.send(V4VConnector.CC_COMMAND_REFUSED, value);
 };

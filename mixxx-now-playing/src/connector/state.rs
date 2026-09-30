@@ -1,17 +1,17 @@
 //! Deck state and connector mode (ADR 0006 §Protocol and §When The Connector
-//! Is Not Available).
+//! Is Not Available, ADR 0007 §Protocol Version 3).
 //!
 //! `ConnectorState` applies the control changes from the Mixxx mapping. It
 //! reports a deck change only when a value changes, because Mixxx sends
 //! `play = 0` more than one time at a stop. It also reports the end marker of
-//! the complete state.
+//! the complete state. The command answers of ADR 0007 change no state.
 
 use std::time::{Duration, Instant};
 
 use super::midi::ControlChange;
 
 /// The protocol version that this producer knows.
-pub const PROTOCOL_VERSION: u8 = 2;
+pub const PROTOCOL_VERSION: u8 = 3;
 
 /// The longest time with no heartbeat before the producer uses the
 /// history-only mode.
@@ -22,11 +22,15 @@ pub const DECKS: u8 = 4;
 
 /// The MIDI channel of the protocol, channel 16, as the low nibble of the
 /// status byte.
-const CHANNEL: u8 = 15;
+pub(crate) const CHANNEL: u8 = 15;
 
 const CC_HEARTBEAT: u8 = 1;
 const CC_LOUDEST: u8 = 2;
 const CC_STATE_END: u8 = 3;
+/// ADR 0007: the mapping did the command.
+pub(crate) const CC_COMMAND_DONE: u8 = 4;
+/// ADR 0007: the mapping refused the command.
+pub(crate) const CC_COMMAND_REFUSED: u8 = 5;
 const CC_PLAY: u8 = 10;
 const CC_TRACK_LOADED: u8 = 20;
 const CC_DURATION_HIGH: u8 = 30;
@@ -117,8 +121,9 @@ impl ConnectorState {
     /// Applies one control change that arrived at `now`.
     ///
     /// Gives `ConnectorEvent::Deck` only when a deck value differs from its
-    /// last value. Gives `ConnectorEvent::StateEnd` for CC 3 with the value
-    /// 1. A message on a different channel changes nothing.
+    /// last value. Gives `ConnectorEvent::StateEnd` for CC 3 with the value 1.
+    /// A message on a different channel changes nothing. A command answer
+    /// (CC 4 or CC 5) changes nothing.
     pub fn apply(&mut self, cc: ControlChange, now: Instant) -> Option<ConnectorEvent> {
         if cc.channel != CHANNEL {
             return None;
@@ -135,6 +140,8 @@ impl ConnectorState {
                 None
             }
             CC_STATE_END => (cc.value == 1).then_some(ConnectorEvent::StateEnd),
+            // The command line reads the answers. The state ignores them.
+            CC_COMMAND_DONE | CC_COMMAND_REFUSED => None,
             controller => self
                 .apply_deck(controller, cc.value)
                 .map(ConnectorEvent::Deck),
@@ -518,11 +525,39 @@ mod tests {
     }
 
     #[test]
-    fn heartbeat_version_2_is_the_connector_mode() {
+    fn heartbeat_version_3_is_the_connector_mode() {
+        let mut state = ConnectorState::new();
+        let now = Instant::now();
+        state.apply(cc(1, 3), now);
+        assert_eq!(state.mode(now, true), Mode::Connector);
+    }
+
+    #[test]
+    fn heartbeat_version_2_is_unknown_version() {
         let mut state = ConnectorState::new();
         let now = Instant::now();
         state.apply(cc(1, 2), now);
-        assert_eq!(state.mode(now, true), Mode::Connector);
+        assert_eq!(
+            state.mode(now, true),
+            Mode::HistoryOnly(HistoryOnlyReason::UnknownVersion)
+        );
+    }
+
+    #[test]
+    fn command_answers_give_no_event_and_change_no_deck() {
+        let mut state = ConnectorState::new();
+        let now = Instant::now();
+        for value in [0, 1, 4, 9, 127] {
+            assert_eq!(state.apply(cc(4, value), now), None);
+            assert_eq!(state.apply(cc(5, value), now), None);
+        }
+        for deck in 1..=DECKS {
+            assert!(!state.play(deck));
+            assert!(!state.track_loaded(deck));
+            assert_eq!(state.duration_secs(deck), None);
+            assert_eq!(state.samples(deck), None);
+        }
+        assert_eq!(state.loudest_deck(), 0);
     }
 
     #[test]

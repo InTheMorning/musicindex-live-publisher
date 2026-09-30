@@ -168,7 +168,13 @@ pub fn spawn_reader(
         .context("spawn connector-midi thread")
 }
 
-fn open_device(location: &DeviceLocation) -> Result<(File, File)> {
+/// Finds the raw MIDI device of the card and opens it for reading and
+/// writing. Gives the read handle and a write handle.
+///
+/// # Errors
+///
+/// Returns an error when the card lookup, the open or the handle clone fails.
+pub fn open_device(location: &DeviceLocation) -> Result<(File, File)> {
     let path = resolve_raw_device(&location.proc_asound, &location.dev_snd, &location.card_id)?;
     let reader = OpenOptions::new()
         .read(true)

@@ -1,6 +1,7 @@
 # Mixxx Connector Task 006: Commands To Mixxx
 
-Status: Proposed - 2026-09-30.
+Status: Implemented - 2026-09-30. The visual checks are open. See §Review
+Result.
 
 The acceptance criteria are mechanical. The visual checks are in a separate
 list.
@@ -218,3 +219,21 @@ At the end, report:
 4. deviations from task
 5. unresolved concerns
 6. the mutation list with results
+
+## Review Result
+
+Reviewed 2026-09-30. The review changed no code. Each rule was broken on
+purpose, and a test failed each time. No test opens a device.
+
+The review accepts these deviations:
+
+- A failed write gives `Unknown` (exit code 5), not `NotSent`. A part of the
+  message can have reached Mixxx, so the command line cannot prove that the
+  command was not sent.
+- A reader that stops ends the wait at once. It gives `NotSent` before the
+  write and `Unknown` after it.
+- A `--timeout` that is too large for the clock gives exit code 2.
+- `device.rs` makes `open_device` public, so the command uses the same open
+  code as the producer.
+
+The visual checks need Mixxx. They are open.

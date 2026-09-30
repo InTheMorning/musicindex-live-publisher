@@ -1,4 +1,4 @@
-// Tests for the MusicIndex V4V Connector mapping script (ADR 0006). The script
+// Tests for the MusicIndex V4V Connector mapping script (ADR 0006 and ADR 0007). The script
 // runs in a node:vm context with a stub engine and a stub midi object.
 
 import { test } from "node:test";
@@ -17,9 +17,15 @@ function load() {
     const timers = new Map();
     let nextTimer = 1;
     const sent = [];
+    const setValues = [];
 
     const engine = {
         getValue: (group, key) => values.get(`${group},${key}`) ?? 0,
+        // Records each control that the script sets.
+        setValue: (group, key, value) => {
+            setValues.push([group, key, value]);
+            values.set(`${group},${key}`, value);
+        },
         makeConnection: (group, key, callback) => {
             const connection = {
                 group, key, callback, connected: true,
@@ -42,6 +48,7 @@ function load() {
     return {
         V4V: context.V4VConnector,
         sent,
+        setValues,
         timers,
         connections,
         // Sets a control and calls each connected callback, as Mixxx does.
@@ -214,12 +221,12 @@ test("the complete state has the deck order, then CC 2, then CC 3 = 1", () => {
     assert.deepEqual(m.sent.at(-1), [0xBF, 3, 1]);
 });
 
-test("the heartbeat timer sends CC 1 with version 2", () => {
+test("the heartbeat timer sends CC 1 with version 3", () => {
     const m = load();
     m.V4V.init();
     m.clear();
     [...m.timers.values()].find((t) => t.ms === 1000).callback();
-    assert.deepEqual(m.sent, [[0xBF, 1, 2]]);
+    assert.deepEqual(m.sent, [[0xBF, 1, 3]]);
 });
 
 test("a track_samples change sends the five parts in order", () => {
@@ -297,4 +304,45 @@ test("every message has the status 0xBF", () => {
     m.V4V.request(15, 1, 1, 0xBF, "[Master]");
     assert.ok(m.sent.length > 0);
     assert.ok(m.sent.every(([status, , value]) => status === 0xBF && value >= 0 && value <= 127));
+});
+
+test("command 1 with AutoDJ enabled sets fade_now to 1 then 0 and sends CC 4 = 1", () => {
+    const m = load();
+    m.V4V.init();
+    m.set("[AutoDJ]", "enabled", 1);
+    m.clear();
+    m.V4V.command(15, 4, 1, 0xBF, "[Master]");
+    assert.deepEqual(m.setValues, [["[AutoDJ]", "fade_now", 1], ["[AutoDJ]", "fade_now", 0]]);
+    assert.deepEqual(m.sent, [[0xBF, 4, 1]]);
+});
+
+test("command 1 with AutoDJ disabled sets no control and sends CC 5 = 1", () => {
+    const m = load();
+    m.V4V.init();
+    m.set("[AutoDJ]", "enabled", 0);
+    m.clear();
+    m.V4V.command(15, 4, 1, 0xBF, "[Master]");
+    assert.deepEqual(m.setValues, []);
+    assert.deepEqual(m.sent, [[0xBF, 5, 1]]);
+});
+
+test("an unknown command code sets no control and sends CC 5 with the code", () => {
+    const m = load();
+    m.V4V.init();
+    m.set("[AutoDJ]", "enabled", 1);
+    m.clear();
+    m.V4V.command(15, 4, 9, 0xBF, "[Master]");
+    assert.deepEqual(m.setValues, []);
+    assert.deepEqual(m.sent, [[0xBF, 5, 9]]);
+});
+
+test("the XML maps CC 4 on channel 16 to V4VConnector.command", () => {
+    const xml = readFileSync(
+        new URL("../MusicIndex-V4V-Connector.midi.xml", import.meta.url), "utf-8");
+    const controls = [...xml.matchAll(/<control>([\s\S]*?)<\/control>/g)].map((c) => c[1]);
+    const command = controls.find((c) => c.includes("<key>V4VConnector.command</key>"));
+    assert.ok(command, "no control for V4VConnector.command");
+    assert.match(command, /<status>0xBF<\/status>/);
+    assert.match(command, /<midino>0x04<\/midino>/);
+    assert.match(command, /<script-binding\/>/);
 });

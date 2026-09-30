@@ -61,6 +61,70 @@ impl Default for Cli {
     }
 }
 
+/// The usage line of the `command` subcommand (ADR 0007 §The Command Line).
+pub(crate) const COMMAND_USAGE: &str =
+    "usage: mixxx-now-playing command fade-now [--connector-card ID] [--timeout SECS]";
+
+/// A command to Mixxx.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CommandName {
+    /// AutoDJ fade now.
+    FadeNow,
+}
+
+/// The options of `mixxx-now-playing command`.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct CommandCli {
+    pub(crate) name: CommandName,
+    pub(crate) connector_card: String,
+    pub(crate) timeout: Duration,
+}
+
+impl CommandCli {
+    /// Parses the arguments that follow `command`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the command name is missing or unknown, when an
+    /// option is unknown or has no value, or when `--timeout` is not a
+    /// positive number of seconds.
+    pub(crate) fn parse<I, S>(args: I) -> Result<Self>
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<OsString>,
+    {
+        let mut args = args.into_iter().map(Into::into);
+        let name = match args.next() {
+            None => return Err(anyhow!("no command name")),
+            Some(name) => match name.to_str() {
+                Some("fade-now") => CommandName::FadeNow,
+                _ => {
+                    return Err(anyhow!("unknown command {}", name.to_string_lossy()));
+                }
+            },
+        };
+        let mut command = Self {
+            name,
+            connector_card: "V4V".to_owned(),
+            timeout: Duration::from_secs(2),
+        };
+        while let Some(arg) = args.next() {
+            match arg.to_str() {
+                Some("--connector-card") => {
+                    command.connector_card = next_string(&mut args, "--connector-card")?;
+                }
+                Some("--timeout") => {
+                    let secs = next_f64(&mut args, "--timeout")?;
+                    command.timeout = Duration::try_from_secs_f64(secs)
+                        .map_err(|source| anyhow!("parse --timeout value {secs:?}: {source}"))?;
+                }
+                _ => return Err(anyhow!("unexpected argument {}", arg.to_string_lossy())),
+            }
+        }
+        Ok(command)
+    }
+}
+
 impl Cli {
     pub(crate) fn parse<I, S>(args: I) -> Result<Self>
     where
@@ -242,6 +306,44 @@ mod tests {
     fn connector_card_requires_a_value() {
         assert!(Cli::parse(["mixxx-now-playing", "--connector-card"]).is_err());
         assert!(Cli::parse(["mixxx-now-playing", "--connector-card", ""]).is_err());
+    }
+
+    #[test]
+    fn command_defaults() -> Result<()> {
+        let command = CommandCli::parse(["fade-now"])?;
+
+        assert_eq!(command.name, CommandName::FadeNow);
+        assert_eq!(command.connector_card, "V4V");
+        assert_eq!(command.timeout, Duration::from_secs(2));
+        Ok(())
+    }
+
+    #[test]
+    fn command_options() -> Result<()> {
+        let command =
+            CommandCli::parse(["fade-now", "--timeout", "0.5", "--connector-card", "Other"])?;
+
+        assert_eq!(command.connector_card, "Other");
+        assert_eq!(command.timeout, Duration::from_millis(500));
+        Ok(())
+    }
+
+    #[test]
+    fn command_errors() {
+        let cases: [&[&str]; 9] = [
+            &[],
+            &["skip"],
+            &["--timeout", "1"],
+            &["fade-now", "--timeout"],
+            &["fade-now", "--timeout", "0"],
+            &["fade-now", "--timeout", "-1"],
+            &["fade-now", "--timeout", "abc"],
+            &["fade-now", "--timeout", "inf"],
+            &["fade-now", "extra"],
+        ];
+        for args in cases {
+            assert!(CommandCli::parse(args).is_err(), "{args:?} must fail");
+        }
     }
 
     #[test]

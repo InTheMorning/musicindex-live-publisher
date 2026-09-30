@@ -4,7 +4,8 @@ mod config;
 use anyhow::{Context, Result, anyhow};
 use mixxx_now_playing::classify::is_v4v_track;
 use mixxx_now_playing::connector::{
-    Action, Coordinator, DeviceEvent, DeviceLocation, Row, STATE_REQUEST, spawn_reader,
+    Action, Coordinator, DeviceEvent, DeviceLocation, FADE_NOW, Outcome, Row, STATE_REQUEST,
+    open_device, pump, send_command, spawn_reader,
 };
 use mixxx_now_playing::expiry::Expiry;
 use mixxx_now_playing::history::{HistoryWatcher, TrackRow};
@@ -21,6 +22,7 @@ use mixxx_now_playing::sink::{OutputFile, Presence, remove_file_if_exists};
 use mixxx_now_playing::tags::read_tags;
 use signal_hook::consts::signal::{SIGINT, SIGTERM};
 use signal_hook::iterator::Signals;
+use std::ffi::OsString;
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -33,7 +35,14 @@ use std::time::{Duration, Instant};
 use tracing_subscriber::EnvFilter;
 
 fn main() -> Result<()> {
-    let cli = cli::Cli::parse(std::env::args_os())?;
+    let args: Vec<OsString> = std::env::args_os().collect();
+    // ADR 0007: the command needs no producer options, no configuration and
+    // no log subscriber. Its exit code is its result.
+    if args.get(1).is_some_and(|arg| arg == "command") {
+        process::exit(command_main(&args[2..]));
+    }
+
+    let cli = cli::Cli::parse(args)?;
     init_tracing()?;
     let config = config::ResolvedConfig::resolve(&cli)?;
 
@@ -49,6 +58,80 @@ fn main() -> Result<()> {
     run(&cli, &config)?;
 
     Ok(())
+}
+
+/// The exit code for a command line that is not correct (ADR 0007).
+const EXIT_USAGE: i32 = 2;
+
+/// Runs `mixxx-now-playing command` and gives its exit code (ADR 0007 §The
+/// Command Line).
+///
+/// The command writes one line to stderr for each result other than success.
+/// It does not take the producer lock, and it does not change a drop file.
+fn command_main(args: &[OsString]) -> i32 {
+    let command = match cli::CommandCli::parse(args) {
+        Ok(command) => command,
+        Err(error) => {
+            eprintln!(
+                "mixxx-now-playing command: {error:#}. {}",
+                cli::COMMAND_USAGE
+            );
+            return EXIT_USAGE;
+        }
+    };
+    // The timeout is one limit for the full command, the device open too.
+    let Some(deadline) = Instant::now().checked_add(command.timeout) else {
+        eprintln!(
+            "mixxx-now-playing command: --timeout is too large. {}",
+            cli::COMMAND_USAGE
+        );
+        return EXIT_USAGE;
+    };
+    let code = match command.name {
+        cli::CommandName::FadeNow => FADE_NOW,
+    };
+    let outcome = match open_command_device(&command.connector_card) {
+        Ok((events, mut writer)) => send_command(&events, &mut writer, code, deadline),
+        Err(error) => {
+            eprintln!("mixxx-now-playing command: not sent: {error:#}");
+            return Outcome::NotSent.exit_code();
+        }
+    };
+    match outcome {
+        Outcome::Done => {}
+        Outcome::Refused => eprintln!("mixxx-now-playing command: the mapping refused the command"),
+        Outcome::NotSent => eprintln!(
+            "mixxx-now-playing command: not sent: no heartbeat of the connector mapping arrived"
+        ),
+        Outcome::Unknown => eprintln!(
+            "mixxx-now-playing command: no answer arrived. The command can have run. Check the deck state before you repeat it."
+        ),
+    }
+    outcome.exit_code()
+}
+
+/// Opens the raw MIDI device of the connector card for the command.
+///
+/// One thread reads the device with `pump`. It stays blocked in its read
+/// until the process exits, because the process exits at once after the
+/// result.
+///
+/// # Errors
+///
+/// Returns an error when the card lookup, the open or the thread start fails.
+fn open_command_device(card_id: &str) -> Result<(mpsc::Receiver<DeviceEvent>, File)> {
+    let (reader, writer) = open_device(&DeviceLocation::system(card_id))?;
+    let (sender, receiver) = mpsc::channel();
+    thread::Builder::new()
+        .name("connector-command".to_owned())
+        .spawn(move || {
+            // The command needs no wake-up. The receiver of `wake` is gone,
+            // and `pump` ignores that.
+            let (wake, _) = mpsc::channel();
+            let _ = pump(reader, &sender, &wake);
+        })
+        .context("spawn connector-command thread")?;
+    Ok((receiver, writer))
 }
 
 /// Starts the log subscriber. It writes to stderr and reads `RUST_LOG`.
