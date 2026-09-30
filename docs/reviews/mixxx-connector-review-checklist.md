@@ -84,6 +84,9 @@ Results on 2026-09-29, with the development setup and Mixxx 2.5.6:
    with `reason=NoHeartbeat`, and the drop file stayed. When the mapping was
    enabled again, the log showed `connector mode`, and the drop file went
    away until the next track.
+   Repeated 2026-09-30 after task 005, with protocol version 2: pass. The
+   drop file came back for the same track after the mapping was enabled
+   again.
 5. Deferred to `docs/plans/packaging-pass.md`.
 
 ## Review Result

@@ -1,7 +1,7 @@
 # Mixxx Connector Task 005: Relink After An Outage
 
-Status: Implemented - 2026-09-29. The visual check is open. See §Review
-Result.
+Status: Implemented - 2026-09-29. The visual check passed on 2026-09-30.
+See §Review Result.
 
 The acceptance criteria are mechanical. The visual check is in a separate
 list.
@@ -226,3 +226,7 @@ end marker does not count. The relink test waits for the reply to the state
 request of the producer.
 
 The visual check needs Mixxx. It is open.
+
+Changed 2026-09-30: the visual check passed. The operator repeated manual
+check 4 with the mapping of protocol version 2. The drop file came back for
+the same track after the mapping was enabled again.
