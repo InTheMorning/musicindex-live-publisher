@@ -25,7 +25,8 @@ Each fact has an evidence class:
 - A port that a program makes is found only if it exists when Mixxx starts. If
   the program restarts, the input to Mixxx stops until Mixxx restarts.
 - One MIDI device that disappears while Mixxx sends to it can stop MIDI output
-  for all controllers. PortMidi keeps its error state in one global flag.
+  for all controllers. The probable cause is the one ALSA sequencer handle that
+  all PortMidi output ports share. The cause is not confirmed.
 - A mapping script can monitor the deck play state. It cannot identify the
   track. The track identity must come from a different source.
 - The deck duration comes from the decoder, and it is correct. The duration
@@ -53,7 +54,8 @@ Each fact has an evidence class:
 | Input uses a subscription that Mixxx makes when it opens the device. | Source: `pmlinuxalsa.c:444` |
 | When a program port restarts, the input subscription is lost. Output still arrives if the program gets the same client number again. | Tested: the probe restarted with the same numbers, received from Mixxx, and could not send to Mixxx. |
 | A message that arrives at the Mixxx input port of a device goes to the mapping of that device, whatever program sent it. | Tested: messages from a different ALSA client, connected through a2j and JACK to the Mixxx input port of a virtual MIDI card, reached the mapping of that card. |
-| PortMidi records an ALSA error in the global flag `pm_hosterror`. Mixxx never reads or clears it with `Pm_GetHostErrorText`. The write path fails while the flag is set. | Source: PortMidi `pm_common/portmidi.c:49` and `:508-664`, `pmlinuxalsa.c:79-87` and `:524-532`. Mixxx: no call in `src/`. |
+| PortMidi records an ALSA error in the global flag `pm_hosterror`. Mixxx never reads it with `Pm_GetHostErrorText`, so its log shows only "Host error". The flag alone does not stop other output ports, because `Pm_Write` sets it to false at its start. | Source: PortMidi `pm_common/portmidi.c:49`, `:504-520` and `:664`, `pmlinuxalsa.c:79-87`. Mixxx: `portmidicontroller.cpp:214-221`. Corrected 2026-09-30. |
+| All PortMidi output ports on ALSA send through one sequencer handle, so they share one ALSA output buffer. An event for a destination that is gone can probably block that buffer for every port. Not confirmed. | Source: `pmlinuxalsa.c:48`, `:301` and `:513`. Mixxx opens outputs with latency 0 (`portmididevice.h:38-44`). |
 | A controller whose port disappeared stopped the output of a different controller. | Tested: after the virtual probe stopped, sends to a virtual MIDI card failed with `Host error`, then with `Invalid MIDI message Data`. After the dead controller was disabled and Mixxx restarted, the errors stopped. |
 | Unplugging a controller whose mapping sends nothing back caused no send error. | Tested: a USB control surface, 0 errors |
 | Unplugging a controller whose mapping sends feedback stops the output of all controllers. Disabling the dead controller in Preferences restores the output with no restart. The messages sent during the outage are lost. | Tested on 2026-09-28: a mapping that sent to a USB control surface each 250 ms. After the unplug, the connector heartbeat stopped, and Mixxx logged 109 send errors for the connector port. |

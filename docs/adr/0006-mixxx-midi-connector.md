@@ -24,6 +24,11 @@ that the producer read. At startup the producer reads the latest row only
 after the entry, and that row can come from an earlier Mixxx session. The
 rule does not change.
 
+Amended 2026-09-30: §Context no longer names the global PortMidi error flag
+as the cause of the output stop. `Pm_Write` clears that flag at its start. The
+probable cause is the shared ALSA sequencer handle. The tested behavior and
+the decision do not change.
+
 Amended 2026-09-29 by the operator: this amendment changes one decision.
 Before it, a row that existed before the entry into the connector mode never
 linked. Now the producer links such a row again after an outage, when the
@@ -53,8 +58,9 @@ is in `docs/architecture/mixxx-interfaces.md`.
 - A kernel `snd-virmidi` port always exists. Mixxx opens its sequencer side.
   A program can open its raw MIDI device as a file at any time, and can
   restart while Mixxx runs.
-- PortMidi keeps its error state in one global flag. A device that disappears
-  while Mixxx sends to it can stop MIDI output for all controllers.
+- A device that disappears while Mixxx sends to it can stop MIDI output for
+  all controllers. The probable cause is the one ALSA sequencer handle that
+  all PortMidi output ports share.
 - A SysEx send that fails halfway leaves PortMidi in the middle of a message.
   The next messages then fail with `Invalid MIDI message Data`.
 - The Mixxx deck duration comes from the decoder, and it is correct. The
