@@ -8,6 +8,29 @@ Mixxx plays.
 Read `docs/architecture/broadcast-chain-boundaries.md` before a change that
 crosses a repository boundary.
 
+## Current State
+
+`docs/README.md` lists each ADR with its status, each plan and each task
+packet.
+
+- No one runs the publisher or the relay in production. A change needs no
+  transition period for an older version.
+- The publisher, the producer, the dead block and the relay keepalive operate
+  and have tests (ADR 0005).
+- The producer uses the Mixxx MIDI connector when the V4V card and the mapping
+  are present (ADR 0006). The manual checks with Mixxx 2.5.6 passed. Without
+  the connector, the producer uses the history-only mode of ADR 0005.
+- The operator deferred the packaging pass. The package files exist, but no
+  one built or installed a package that holds them. `docs/plans/packaging-pass.md` lists
+  the open gates. ADR 0006 becomes `Implemented` after that pass.
+- ADR 0003, the show log contract, has the status `Accepted`. Its
+  implementation has not started.
+- These items need a new ADR before work starts:
+  - commands from a consumer to Mixxx through the connector, for example a
+    track skip,
+  - the talk break block from `v4vmm`,
+  - a track identity source that is earlier than the Mixxx history row.
+
 ## Build / Lint / Test Commands
 
 ```bash
