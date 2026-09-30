@@ -78,3 +78,25 @@ One accepted exception to "each dead block gets a fresh `blockGuid`": the dead
 block for an empty route list keeps the block identity of its track. A later
 route upgrade for the same track then keeps the same `blockGuid`, the same as
 any route upgrade.
+
+## Live Test With A Stream Delay
+
+Done 2026-09-30 with a local relay, `LEASE_SECS=10` and
+`stream_delay_secs = 20`. Result: pass.
+
+- The startup dead block went out at once, and the relay ended the lease
+  10 seconds later, because no producer lock was held.
+- When the lock was held again, the first keepalive got `409`, and the
+  publisher sent the dead block again at once.
+- A track waited 20 seconds in the schedule. The keepalives kept the dead
+  block on air meanwhile.
+- When the lock was freed, the track stayed on air for 20 seconds with
+  keepalives. The dead block went out after 20 seconds. The keepalive then
+  stopped, and the relay ended the lease 10 seconds later.
+
+The first run of this test found a busy loop in the watch loop. The probe
+opened `.producer.lock`, and `notify` reported that open as an event that
+started the next probe. The fix and its test are in commit "Stop the producer
+probe from starting on its own lock file events". In that first run, the
+probe also reported the lock as free for 2 seconds while `flock` held it. That
+did not occur again after the fix.
