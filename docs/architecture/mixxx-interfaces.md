@@ -83,6 +83,7 @@ Each fact has an evidence class:
 | Send MIDI with `midi.sendShortMsg` and `midi.sendSysexMsg`. | Tested |
 | Receive MIDI input and call a script function. | Tested |
 | Start and stop a deck, and start an AutoDJ fade or skip. | Tested: `play` on a deck, and a mapping that sets `[AutoDJ],fade_now`. |
+| A script that sets `[AutoDJ],fade_now` to 1 and then to 0 starts the AutoDJ transition at once. During a transition, Mixxx ignores it. With AutoDJ disabled, it does nothing. | Tested on 2026-09-30 with a script on the V4V card. Source: `src/library/autodj/autodjprocessor.cpp:203-230` |
 | Read the file path, title, artist or library identifier of the loaded track. | Tested: not possible. The controls `track_location`, `track_title`, `track_artist`, `track_id`, `location`, `title` and `artist` do not exist. `engine` and `midi` have no call that returns a track. |
 
 The `engine` object has these members: `getSetting`, `getValue`, `setValue`,

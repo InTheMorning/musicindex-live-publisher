@@ -123,7 +123,15 @@ Manual, with Mixxx, because it needs a running Mixxx:
 
 1. In a test mapping on the V4V card, a script sets `[AutoDJ],fade_now` to 1
    and then to 0 while AutoDJ plays. Record that the transition starts.
+   Passed on 2026-09-30. The transition started at once, and the mapping
+   answered CC 4.
 2. Do step 1 while a transition is in progress. Record that Mixxx ignores it.
+   Passed on 2026-09-30. A second command 1 second after the first gave one
+   normal transition and no second skip. The mapping answered CC 4 both
+   times, as §Messages says.
+
+Also tested on 2026-09-30: with AutoDJ disabled, the mapping answered CC 5,
+and nothing changed in Mixxx.
 
 ## Verification After Implementation
 
