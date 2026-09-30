@@ -42,7 +42,7 @@ the next priority. Confirm that logging works before the show.
   Accepted. A kernel virtual MIDI port gives the producer the deck play state,
   so a stop or a pause ends the payment at once
 - [ADR 0007: Commands to Mixxx through the connector](adr/0007-mixxx-connector-commands.md)
-  — Proposed. Protocol version 3 adds an AutoDJ fade-now command with an
+  — Accepted. Protocol version 3 adds an AutoDJ fade-now command with an
   answer, and a `mixxx-now-playing command` subcommand
 
 ## Plans
@@ -136,13 +136,15 @@ tasks 001 and 002.
 
 Mixxx connector packets. ADR 0006 governs them. Tasks 001 and 002 can go in
 either order. Task 003 needs task 002. Task 004 needs tasks 001 and 003.
-Task 005 needs tasks 001 to 003.
+Task 005 needs tasks 001 to 003. Task 006 needs task 005. ADR 0007 governs
+task 006.
 
 - [001 — The mapping](tasks/mixxx-connector-task-001-mapping.md)
 - [002 — The connector core](tasks/mixxx-connector-task-002-connector-core.md)
 - [003 — The link rules and the poll loop](tasks/mixxx-connector-task-003-link-and-poll-loop.md)
 - [004 — Packaging and setup](tasks/mixxx-connector-task-004-packaging-and-setup.md)
 - [005 — Relink after an outage](tasks/mixxx-connector-task-005-relink-after-outage.md)
+- [006 — Commands to Mixxx](tasks/mixxx-connector-task-006-commands.md)
 
 ## Reviews
 

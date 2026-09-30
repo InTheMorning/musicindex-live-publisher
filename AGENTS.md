@@ -25,9 +25,9 @@ packet.
   the open gates. ADR 0006 becomes `Implemented` after that pass.
 - ADR 0003, the show log contract, has the status `Accepted`. Its
   implementation has not started.
+- ADR 0007, commands to Mixxx through the connector, has the status
+  `Accepted`. Connector task 006 implements it.
 - These items need a new ADR before work starts:
-  - commands from a consumer to Mixxx through the connector, for example a
-    track skip,
   - the talk break block from `v4vmm`,
   - a track identity source that is earlier than the Mixxx history row.
 

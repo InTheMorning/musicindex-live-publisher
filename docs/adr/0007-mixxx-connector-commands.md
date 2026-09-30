@@ -1,10 +1,16 @@
 # ADR 0007: Commands To Mixxx Through The Connector
 
-Status: Proposed
+Status: Accepted
 Date: 2026-09-30
 
-This ADR extends the protocol of ADR 0006. It becomes Accepted when the
-operator accepts it and the check in §Verification Before Acceptance passes.
+Accepted 2026-09-30 by the operator. The checks in §Verification Before
+Acceptance passed.
+
+Amended 2026-09-30 at acceptance: exit code 4 also covers a raw device that
+the command line cannot find or open. In that case too, the command was not
+sent. No decision changed.
+
+This ADR extends the protocol of ADR 0006.
 
 ## Context
 
@@ -96,7 +102,7 @@ Exit codes:
 | 0 | The mapping did the command |
 | 2 | The command line is not correct |
 | 3 | The mapping refused the command |
-| 4 | No heartbeat of version 3 before the timeout. The command was not sent. |
+| 4 | The command was not sent: the raw device cannot be found or opened, or no heartbeat of version 3 arrived before the timeout. |
 | 5 | The command was sent, but no answer arrived before the timeout. The result is not known. |
 
 A caller must not repeat a command after exit code 5 without a check of the

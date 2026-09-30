@@ -24,6 +24,11 @@ that the producer read. At startup the producer reads the latest row only
 after the entry, and that row can come from an earlier Mixxx session. The
 rule does not change.
 
+Amended 2026-09-30: ADR 0007 is accepted. It adds commands from a consumer to
+Mixxx, and the protocol becomes version 3. §Protocol points to ADR 0007 for
+the command messages. The non-goal about commands no longer applies to the
+commands of ADR 0007. No other decision here changes.
+
 Amended 2026-09-30: §Context no longer names the global PortMidi error flag
 as the cause of the output stop. `Pm_Write` clears that flag at its start. The
 probable cause is the shared ALSA sequencer handle. The tested behavior and
@@ -183,7 +188,7 @@ From Mixxx to a consumer. N is the deck number, 1 to 4:
 
 | CC | Value | Meaning |
 |---|---|---|
-| 1 | Protocol version, now 2 | Heartbeat, sent each second |
+| 1 | Protocol version, now 3 | Heartbeat, sent each second |
 | 2 | 0 to 4 | The loudest deck that plays, or 0 for none. See §The Loudest Deck. |
 | 3 | 1 | The end of the complete state |
 | 10 + N | 0 or 127 | Deck N `play` |
@@ -241,12 +246,13 @@ From a consumer to Mixxx:
 | CC | Value | Meaning |
 |---|---|---|
 | 1 | 1 | Send the complete state of all decks |
+| 4 | Command code | Do a command of ADR 0007 |
 
 A consumer ignores a message that repeats the last value. Mixxx sends
 `play = 0` more than one time at a stop.
 
-A later ADR adds commands, for example a talk break from `v4vmm`. A change to
-a message meaning needs a new protocol version.
+ADR 0007 owns the command messages: CC 4 from a consumer, and CC 4 and CC 5
+from Mixxx. A change to a message meaning needs a new protocol version.
 
 ### How `mixxx-now-playing` Uses The Deck State
 
@@ -498,7 +504,8 @@ Negative and risks:
 
 ## Non-Goals
 
-- Commands from `v4vmm` to Mixxx, other than the state request.
+- Commands from a consumer to Mixxx, other than the state request and the
+  commands of ADR 0007.
 - The talk break block.
 - Support for more than four decks.
 - A connector for a player other than Mixxx.
