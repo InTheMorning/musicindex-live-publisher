@@ -657,70 +657,67 @@ fn run_watch_loop(
         .watch(watch_dir, RecursiveMode::NonRecursive)
         .with_context(|| format!("watch {}", watch_dir.display()))?;
 
+    let mut last_probe = Instant::now();
     loop {
         // Poll rather than block forever so a relay worker that stopped
         // fatally surfaces within a second, instead of waiting for whenever the
         // next track happens to change. A pending stream-delay deadline
         // shortens the wait further, so a held payload is released on time
         // rather than at the next health check.
-        let event = match receiver.recv_timeout(next_wakeup(schedule, Instant::now())) {
-            Ok(event) => event,
-            Err(mpsc::RecvTimeoutError::Timeout) => {
-                producer_state = update_producer_state(
-                    watch_dir,
-                    processor,
-                    schedule,
-                    publisher,
-                    &mut pending_missing,
-                    producer_state,
-                    Instant::now(),
-                )?;
-                emit_payloads(
-                    schedule.take_due(Instant::now()),
-                    publisher,
-                    &mut pending_missing,
-                    producer_state,
-                )?;
-                if let Some(publisher) = publisher {
-                    publisher.check_health()?;
-                }
-                continue;
-            }
+        let drop_events = match receiver.recv_timeout(next_wakeup(schedule, Instant::now())) {
+            Ok(Ok(event)) => normalize_notify_event(event),
+            Ok(Err(error)) => return Err(error).context("watch directory event error"),
+            Err(mpsc::RecvTimeoutError::Timeout) => Vec::new(),
             Err(mpsc::RecvTimeoutError::Disconnected) => {
                 return Err(anyhow!("filesystem watcher stopped"));
             }
         };
-        match event {
-            Ok(event) => {
-                let now = Instant::now();
-                producer_state = update_producer_state(
-                    watch_dir,
-                    processor,
-                    schedule,
-                    publisher,
-                    &mut pending_missing,
-                    producer_state,
-                    now,
-                )?;
-                if matches!(producer_state, ProducerState::Missing) {
-                    tracing::debug!("discarding drop file event while the producer is missing");
-                } else {
-                    for drop_event in normalize_notify_event(event) {
-                        for payload in processor.process_event(drop_event, now)? {
-                            schedule.schedule(payload, now);
-                        }
+
+        let now = Instant::now();
+        if probe_due(&drop_events, last_probe, now) {
+            producer_state = update_producer_state(
+                watch_dir,
+                processor,
+                schedule,
+                publisher,
+                &mut pending_missing,
+                producer_state,
+                now,
+            )?;
+            last_probe = now;
+            if let Some(publisher) = publisher {
+                publisher.check_health()?;
+            }
+        }
+        if !drop_events.is_empty() {
+            if matches!(producer_state, ProducerState::Missing) {
+                tracing::debug!("discarding drop file event while the producer is missing");
+            } else {
+                for drop_event in drop_events {
+                    for payload in processor.process_event(drop_event, now)? {
+                        schedule.schedule(payload, now);
                     }
                 }
-                emit_payloads(
-                    schedule.take_due(Instant::now()),
-                    publisher,
-                    &mut pending_missing,
-                    producer_state,
-                )?;
             }
-            Err(error) => return Err(error).context("watch directory event error"),
         }
+        emit_payloads(
+            schedule.take_due(Instant::now()),
+            publisher,
+            &mut pending_missing,
+            producer_state,
+        )?;
     }
+}
+
+/// Gives true when the watch loop must probe the producer lock.
+///
+/// A drop file event needs a probe first, so a file from a producer that
+/// stopped is never published. Other events do not start a probe. The probe
+/// opens `.producer.lock`, and the watcher reports that open as an event. A
+/// probe on each event then never stops. Without a drop file event, the loop
+/// probes when `HEALTH_CHECK_INTERVAL` has passed since the last probe.
+fn probe_due(drop_events: &[DropEvent], last_probe: Instant, now: Instant) -> bool {
+    !drop_events.is_empty() || now.saturating_duration_since(last_probe) >= HEALTH_CHECK_INTERVAL
 }
 
 /// Probes the producer lock and, on a change, publishes the transition's
@@ -980,6 +977,51 @@ mod tests {
 
     fn payload_for(event_guid: &str, block_guid: &str) -> LiveValuePayload {
         musicindex_live_publisher::dead_payload(event_guid, block_guid)
+    }
+
+    #[test]
+    fn an_open_of_the_lock_file_does_not_start_a_probe() {
+        let lock = PathBuf::from("/drop").join(musicindex_live_publisher::LOCK_FILE_NAME);
+        let open = notify::Event::new(EventKind::Access(notify::event::AccessKind::Open(
+            notify::event::AccessMode::Any,
+        )))
+        .add_path(lock);
+        let drop_events = normalize_notify_event(open);
+        let last_probe = Instant::now();
+
+        assert!(drop_events.is_empty());
+        assert!(!probe_due(
+            &drop_events,
+            last_probe,
+            last_probe + Duration::from_millis(10)
+        ));
+    }
+
+    #[test]
+    fn a_drop_file_event_starts_a_probe_at_once() {
+        let drop_events = vec![DropEvent {
+            kind: DropEventKind::Upsert,
+            path: PathBuf::from("/drop/default.json"),
+        }];
+        let last_probe = Instant::now();
+
+        assert!(probe_due(&drop_events, last_probe, last_probe));
+    }
+
+    #[test]
+    fn the_probe_runs_after_the_interval_with_no_drop_file_event() {
+        let last_probe = Instant::now();
+
+        assert!(!probe_due(
+            &[],
+            last_probe,
+            last_probe + Duration::from_millis(999)
+        ));
+        assert!(probe_due(
+            &[],
+            last_probe,
+            last_probe + HEALTH_CHECK_INTERVAL
+        ));
     }
 
     #[test]

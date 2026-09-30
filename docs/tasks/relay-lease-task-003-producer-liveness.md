@@ -178,3 +178,16 @@ publish the stale track. The producer writes its present track again after it
 starts, so the watch loop receives that file as a normal event. The scan method
 stays, because the startup rule uses it. The constraint, the goal sentence and
 the prompt text above describe the design before this change.
+
+## Defect Found 2026-09-30
+
+The constraint "The probe runs before each batch of filesystem events" caused
+a busy loop. The watcher in `notify` 8.2.0 reports an open of a file as an
+event. The probe opens `.producer.lock`, so each probe started the next probe.
+The live lease test with a stream delay showed about 110,000 events each
+second.
+
+Now only a drop file event starts a probe at once. Without a drop file event,
+the watch loop probes when one second has passed since the last probe. The
+test `the_watch_loop_is_idle_while_a_producer_holds_the_lock` in
+`tests/liveness.rs` measures the CPU time of the publisher.
