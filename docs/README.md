@@ -42,7 +42,7 @@ the next priority. Confirm that logging works before the show.
   Accepted. A kernel virtual MIDI port gives the producer the deck play state,
   so a stop or a pause ends the payment at once
 - [ADR 0007: Commands to Mixxx through the connector](adr/0007-mixxx-connector-commands.md)
-  — Accepted. Protocol version 3 adds an AutoDJ fade-now command with an
+  — Implemented. Protocol version 3 adds an AutoDJ fade-now command with an
   answer, and a `mixxx-now-playing command` subcommand
 
 ## Plans

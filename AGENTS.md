@@ -25,8 +25,8 @@ packet.
   the open gates. ADR 0006 becomes `Implemented` after that pass.
 - ADR 0003, the show log contract, has the status `Accepted`. Its
   implementation has not started.
-- ADR 0007, commands to Mixxx through the connector, has the status
-  `Accepted`. Connector task 006 implements it.
+- `mixxx-now-playing command fade-now` starts an AutoDJ fade through the
+  connector (ADR 0007).
 - These items need a new ADR before work starts:
   - the talk break block from `v4vmm`,
   - a track identity source that is earlier than the Mixxx history row.

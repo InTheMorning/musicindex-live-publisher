@@ -1,7 +1,12 @@
 # ADR 0007: Commands To Mixxx Through The Connector
 
-Status: Accepted
+Status: Implemented
 Date: 2026-09-30
+
+Implemented 2026-10-01: connector task 006 is merged, and its visual checks
+with Mixxx passed. See `docs/tasks/mixxx-connector-task-006-commands.md`
+§Review Result. The package install of the mapping and the binary belongs to
+`docs/plans/packaging-pass.md`.
 
 Accepted 2026-09-30 by the operator. The checks in §Verification Before
 Acceptance passed.

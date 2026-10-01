@@ -1,7 +1,7 @@
 # Mixxx Connector Task 006: Commands To Mixxx
 
-Status: Implemented - 2026-09-30. The visual checks are open. See §Review
-Result.
+Status: Implemented - 2026-09-30. The visual checks passed on 2026-10-01.
+See §Review Result.
 
 The acceptance criteria are mechanical. The visual checks are in a separate
 list.
@@ -237,3 +237,11 @@ The review accepts these deviations:
   code as the producer.
 
 The visual checks need Mixxx. They are open.
+
+Changed 2026-10-01: the visual checks passed with Mixxx 2.5.6.
+
+- With AutoDJ on, the fade started, and the exit code was 0.
+- With AutoDJ off, the mapping refused the command, and the exit code was 3.
+- With the mapping disabled, the command was not sent, and the exit code was
+  4. The producer logged `history-only mode` with `reason=NoHeartbeat` only in
+  this check.
