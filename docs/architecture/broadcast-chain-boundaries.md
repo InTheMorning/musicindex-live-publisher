@@ -118,11 +118,13 @@ the exit codes and the output.
 
 ## Known Limits
 
-- The relay keeps state in memory. A relay restart discards the live item, the
-  token, and the snapshot. The event then dies.
-- The relay also removes an event after an idle TTL. The default is 24 hours.
-  A configured `event_id` can therefore stop working with no restart and no
-  change on this side.
+- An ordinary relay event lives in memory only. A relay restart discards it,
+  and the relay also removes it after an idle TTL. The default is 24 hours.
+  A configured `event_id` of this class can stop working with no change on
+  this side.
+- A reserved relay event survives a restart and the idle TTL (relay ADR
+  0001). Only the relay operator makes one. After a relay restart it has no
+  snapshot until the next publish.
 - The relay returns a broadcaster token one time only.
 - The drop-file contract has no pause state. A producer reports play or stop.
 - This service has no remote control API. Remote control uses `ssh` today.
