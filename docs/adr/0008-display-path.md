@@ -1,10 +1,10 @@
 # ADR 0008: An Optional Display Path For Artwork
 
-Status: Proposed
+Status: Accepted
 Date: 2026-10-04
 
-This ADR becomes Accepted when the operator accepts it and the items in
-§Before Acceptance are done.
+Accepted 2026-10-04 by the operator. The items in §Before Acceptance are
+done.
 
 `musicindex-live-relay` ADR 0003 owns the relay routes, their limits and their
 storage. This ADR decides what the producer and the publisher send.
@@ -214,7 +214,7 @@ A target turns on the display path with `display_dir`. The value is the
    of about one track in 55, so the producer reduces large images. See
    §Context and §The Embedded Image.
 2. **The `butt` check.** Done on 2026-10-04. See §Context.
-3. **Relay ADR 0003** is accepted.
+3. **Relay ADR 0003** is accepted. Done on 2026-10-04.
 
 ## Verification After Implementation
 

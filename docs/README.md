@@ -45,7 +45,7 @@ the next priority. Confirm that logging works before the show.
   — Implemented. Protocol version 3 adds an AutoDJ fade-now command with an
   answer, and a `mixxx-now-playing command` subcommand
 - [ADR 0008: An optional display path for artwork](adr/0008-display-path.md)
-  — Proposed. Artwork and track text for every track, through the stream delay,
+  — Accepted. Artwork and track text for every track, through the stream delay,
   to the display routes of the relay. A paused stream clears the `butt` title
 
 ## Plans

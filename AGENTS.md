@@ -27,6 +27,9 @@ packet.
   implementation has not started.
 - `mixxx-now-playing command fade-now` starts an AutoDJ fade through the
   connector (ADR 0007).
+- ADR 0008, the optional display path for artwork, has the status `Accepted`.
+  Its implementation has not started. Its relay side, relay ADR 0003, needs
+  the reserved events of relay ADR 0001 first.
 - These items need a new ADR before work starts:
   - the talk break block from `v4vmm`,
   - a track identity source that is earlier than the Mixxx history row.
