@@ -82,7 +82,11 @@ Each item needs a decision or a check in the pass.
 5. **The upgrade path.** A unit that an older setup helper wrote keeps
    `PrivateDevices=true`, and that producer cannot open the device. Decide if
    the operator runs the setup helper again, and say so in the install
-   message and the runbook.
+   message and the runbook. Seen on 2026-10-04: the operator's generated unit
+   in `~/.config/systemd/user/` kept `PrivateDevices=true`, and the producer
+   logged `history-only mode reason=NoDevice`. A run of the setup helper also
+   provisions a new relay event, so it is not a safe upgrade step. The pass
+   needs an upgrade path that changes only the unit.
 6. **The setup helper and `--no-connector`.** The helper stops without the
    card, also for an operator who does not want the connector. The helper
    has no `--connector-card` or `--no-connector` option. ADR 0006 says that
