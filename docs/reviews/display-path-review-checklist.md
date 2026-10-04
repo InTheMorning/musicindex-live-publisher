@@ -63,7 +63,8 @@ Record each result here. A check that did not run is an open gate.
 
 1. A pause in Mixxx clears the Icecast title and the artwork. A resume gives
    both back.
-2. After the producer stops, the stream shows no title.
+2. After the producer stops, the stream shows no title. Pass on 2026-10-04,
+   after task 001: `systemctl --user stop` gave an empty song name in `butt`.
 3. With the private app, the artwork changes when the listener hears the new
    track. Check a V4V track and a track that pays nobody.
 
