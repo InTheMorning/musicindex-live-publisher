@@ -28,8 +28,10 @@ packet.
 - `mixxx-now-playing command fade-now` starts an AutoDJ fade through the
   connector (ADR 0007).
 - ADR 0008, the optional display path for artwork, has the status `Accepted`.
-  Display tasks 001 and 002 are done. Its relay side is relay ADR 0003. Relay
-  ADR 0001, the reserved events that it needs, is Implemented.
+  Display tasks 001 to 004 are implemented. A target with `display_dir` sends
+  the display state and the image to the relay through its stream delay. Its
+  relay side is relay ADR 0003. The review of task 004 and the visual check
+  are open.
 - These items need a new ADR before work starts:
   - the talk break block from `v4vmm`,
   - a track identity source that is earlier than the Mixxx history row.

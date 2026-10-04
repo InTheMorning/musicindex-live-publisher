@@ -80,9 +80,60 @@ Optional target fields:
   are negative, not finite, or above 300 are rejected at startup with the target
   name in the error.
 
+- `display_dir`: the display directory of the producer of this target. It is
+  the `DIR` of `mixxx-now-playing --display-dir DIR`. Without this field, the
+  target has no display path. See "The Display Path" below.
+
 A `[target.fallback]` table is a load error. ADR 0005 removes the configured
 fallback. The error names the ADR and the target, so an operator can remove
 the table.
+
+## The Display Path
+
+ADR 0008 owns these rules. This section restates them.
+`musicindex-live-relay` ADR 0003 owns the relay routes.
+
+Example:
+
+```toml
+[[target]]
+name = "default"
+event_id = "replace-with-provisioned-event-guid"
+token_file = "~/.config/musicindex-live-publisher/mixxx/tokens/default.token"
+stream_delay_secs = 12
+display_dir = "/run/user/1000/musicindex-live-publisher/mixxx/display"
+```
+
+- `display_dir` must not be `watch_dir`. The publisher reads each JSON file
+  in `watch_dir` as a drop file. The publisher stops at startup with an error
+  that names ADR 0008 and the target. It also compares the two paths after it
+  resolves symbolic links.
+- The event of the target must be a reserved event (relay ADR 0001). For an
+  ephemeral event, the relay answers `409 event_not_reserved`. The publisher
+  then turns off the display path of that target until the next start, with
+  one warning.
+- The publisher watches `display_dir`. If the directory is not there at
+  startup, the publisher tries again each second. The payment path does not
+  wait for it.
+- When `display.json` changes, the publisher immediately reads it and the
+  image that it names. A file with an unknown schema gets a warning, and the
+  publisher ignores it. An image that is missing, larger than 524,288 bytes,
+  or with a SHA-256 that is not its file name gives `artwork: null` and a
+  warning.
+- The display state waits for `stream_delay_secs`, in sequence with the
+  payloads of the target.
+- One display worker sends the display requests of all targets. A payload or a
+  keepalive does not wait for it. It uploads each image one time, then it
+  publishes the display state. It sends only the latest state of a target.
+- When the producer stops, the publisher sends the display state `null`
+  adjacent to the dead block.
+- A display error gives a warning. It does not stop the publisher. It does
+  not change a payload.
+
+A track change costs at most three relay requests for the target: the
+payload, the image upload and the display publish. A URL artwork or a `null`
+state needs no upload. These requests share the per-event publish rate limit
+of the relay.
 
 Destination fields, for a `value_routes` entry in the drop file:
 

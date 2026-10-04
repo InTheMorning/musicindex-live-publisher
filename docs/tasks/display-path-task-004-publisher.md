@@ -1,6 +1,6 @@
 # Display Path Task 004: The Publisher Display Path
 
-Status: Ready - 2026-10-04. Do after task 003.
+Status: Implemented - 2026-10-04.
 
 The acceptance criteria are mechanical. The visual check is in a separate
 list.
@@ -142,3 +142,40 @@ never blocks a payload, exactly as §Constraints says. Do not change a payload
 or keepalive rule or test. Write the tests in §Acceptance Criteria, with a
 mutation list. Run the test commands. Report: 1. files changed 2. tests run
 3. behavior changed 4. deviations 5. unresolved concerns 6. mutations.
+
+## Review Result
+
+Reviewed 2026-10-04. The full gate passes, and the 27 mapping tests pass.
+`Cargo.lock` adds `sha2` to the publisher package only. That crate was in the
+lock already.
+
+No payload or keepalive test changed. The `config()` helper in
+`tests/relay.rs` got one line, `display_dir: None`, because the target type
+has a new field. The review accepts that line.
+
+One display thread serves every target. A payload worker sends no display
+request. After a lease republish, a payload worker puts one `Resend` command
+on the display channel, and that send never blocks. The token is only in
+`RelayTarget`, and its `Debug` output hides the token.
+
+The review accepts these deviations:
+
+- The display tests are in `tests/display.rs`.
+- A resend clears the image cache of the target. The `artwork_missing` path
+  still has a test.
+- After a refused upload, the worker sends the state with `artwork: null`.
+- The publisher checks the first bytes of an image against its type.
+- At startup, the display state goes out with no stream delay, as the startup
+  payload does.
+- `config show` and `target list` do not show `display_dir`.
+
+Open items:
+
+- `target add --replace` writes the target from its flags only. It removes a
+  `display_dir` from the file. The control command has no `--display-dir`
+  option. This needs a task before a control surface uses `--replace` on a
+  target with a display path.
+- The watch on a display directory is added one time. If that directory is
+  deleted and made again, the publisher gets no display event until a
+  restart.
+- The visual check is open.

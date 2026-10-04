@@ -4,6 +4,7 @@
 //! transforms, watching, configuration, and publishing.
 
 pub mod config;
+pub mod display;
 pub mod dropfile;
 pub mod liveness;
 pub mod livevalue;
@@ -17,6 +18,10 @@ pub use config::{
     add_target_to_config, list_config_targets, list_config_targets_from_str, load_config,
     load_config_bytes, remove_target_from_config, show_config, show_config_from_str,
 };
+pub use display::{
+    Artwork, ArtworkImage, DISPLAY_FILE_NAME, DISPLAY_SCHEMA, DisplayEntry, DisplayState,
+    DisplayTrack, ImageMime, MAX_IMAGE_BYTES, read_display_state,
+};
 pub use dropfile::{DropFile, PaymentRoute, SCHEMA_VERSION, parse};
 pub use liveness::{LOCK_FILE_NAME, ProducerState, probe_producer};
 pub use livevalue::{
@@ -24,10 +29,11 @@ pub use livevalue::{
     destination_from_payment_route, format_split, payload_from_dropfile,
 };
 pub use relay::{
-    DEFAULT_INITIAL_BACKOFF, DEFAULT_MAX_BACKOFF, DEFAULT_REQUEST_TIMEOUT, ProvisionedLiveItem,
-    PublishOutcome, RelayClient, RelayPublisher, RelayTarget, write_token_file,
+    DEFAULT_INITIAL_BACKOFF, DEFAULT_MAX_BACKOFF, DEFAULT_REQUEST_TIMEOUT, DisplayOutcome,
+    ProvisionedLiveItem, PublishOutcome, RelayClient, RelayPublisher, RelayTarget,
+    write_token_file,
 };
-pub use schedule::PublishSchedule;
+pub use schedule::{PublishSchedule, ScheduledItem};
 pub use watcher::{
     DEFAULT_DEBOUNCE_WINDOW, DropEvent, DropEventKind, DropWatcher, WatchTarget, is_final_drop_file,
 };

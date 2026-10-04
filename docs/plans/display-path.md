@@ -3,6 +3,11 @@
 Date: 2026-10-04. This plan states no rule. ADR 0008 owns the rules here.
 `musicindex-live-relay` ADR 0003 owns the relay routes.
 
+## Status
+
+Tasks 001 to 004 are implemented - 2026-10-04. The review of task 004 and
+the visual check of ADR 0008 are open.
+
 ## Goal
 
 When this plan is complete:

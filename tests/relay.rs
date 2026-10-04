@@ -254,6 +254,7 @@ fn config(endpoint: &str) -> PublisherConfig {
             token_file: Path::new("/tmp/default.token").to_path_buf(),
             token: "secret-token".to_owned(),
             stream_delay: Duration::ZERO,
+            display_dir: None,
         }],
     }
 }

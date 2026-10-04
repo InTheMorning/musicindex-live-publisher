@@ -10,11 +10,15 @@
 //!
 //! This module holds each payload for its target's configured delay so the
 //! block a listener boosts is the block they are hearing.
+//!
+//! The display state of ADR 0008 passes through the same delay. A display
+//! entry waits next to the payloads of its target, in one order, so the
+//! artwork changes when the listener hears the track.
 
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-use crate::LiveValuePayload;
+use crate::{DisplayEntry, LiveValuePayload};
 
 /// Holds outgoing payloads until their target's stream delay has elapsed.
 ///
@@ -35,7 +39,34 @@ pub struct PublishSchedule {
 struct Scheduled {
     due_at: Instant,
     queued_at: Instant,
-    payload: LiveValuePayload,
+    item: ScheduledItem,
+}
+
+/// One item that waits in the schedule: a payload or a display entry.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ScheduledItem {
+    /// A live value payload for the payload worker of its target.
+    Payload(LiveValuePayload),
+    /// A display state for the display worker (ADR 0008).
+    Display(DisplayEntry),
+}
+
+impl ScheduledItem {
+    /// The event GUID of the target of this item.
+    pub fn event_id(&self) -> &str {
+        match self {
+            Self::Payload(payload) => &payload.event_guid,
+            Self::Display(entry) => &entry.event_id,
+        }
+    }
+
+    /// The payload, when this item is a payload.
+    pub fn as_payload(&self) -> Option<&LiveValuePayload> {
+        match self {
+            Self::Payload(payload) => Some(payload),
+            Self::Display(_) => None,
+        }
+    }
 }
 
 impl PublishSchedule {
@@ -66,8 +97,9 @@ impl PublishSchedule {
         let delay = self.delay_for(&payload.event_guid);
 
         if let Some(pending) = self.pending.iter_mut().find(|pending| {
-            pending.payload.event_guid == payload.event_guid
-                && pending.payload.block_guid == payload.block_guid
+            matches!(&pending.item, ScheduledItem::Payload(pending_payload)
+                if pending_payload.event_guid == payload.event_guid
+                    && pending_payload.block_guid == payload.block_guid)
         }) {
             tracing::debug!(
                 event_id = %payload.event_guid,
@@ -75,7 +107,7 @@ impl PublishSchedule {
                 title = %payload.title,
                 "replacing pending live value payload in the same block"
             );
-            pending.payload = payload;
+            pending.item = ScheduledItem::Payload(payload);
             return;
         }
 
@@ -92,7 +124,22 @@ impl PublishSchedule {
         self.pending.push(Scheduled {
             due_at: now.checked_add(delay).unwrap_or(now),
             queued_at: now,
-            payload,
+            item: ScheduledItem::Payload(payload),
+        });
+    }
+
+    /// Queues one display entry for release after its target's stream delay.
+    ///
+    /// The entry waits behind every item that its target queued before it,
+    /// with the same delay, so it leaves in order with the payloads (ADR
+    /// 0008). A display entry never replaces a pending item. The display
+    /// worker sends only the latest state of a target.
+    pub fn schedule_display(&mut self, entry: DisplayEntry, now: Instant) {
+        let delay = self.delay_for(&entry.event_id);
+        self.pending.push(Scheduled {
+            due_at: now.checked_add(delay).unwrap_or(now),
+            queued_at: now,
+            item: ScheduledItem::Display(entry),
         });
     }
 
@@ -102,7 +149,22 @@ impl PublishSchedule {
     /// rest are retained. Scanning the whole queue rather than popping from the
     /// front is deliberate: a target with no delay must not wait behind a
     /// target with a long one.
+    ///
+    /// This call also removes a due display entry and does not return it. A
+    /// caller with a display path uses [`PublishSchedule::take_due_items`].
     pub fn take_due(&mut self, now: Instant) -> Vec<LiveValuePayload> {
+        self.take_due_items(now)
+            .into_iter()
+            .filter_map(|item| match item {
+                ScheduledItem::Payload(payload) => Some(payload),
+                ScheduledItem::Display(_) => None,
+            })
+            .collect()
+    }
+
+    /// Removes and returns every item whose deadline has been reached, in the
+    /// order they were scheduled.
+    pub fn take_due_items(&mut self, now: Instant) -> Vec<ScheduledItem> {
         let mut due = Vec::new();
         let mut waiting = Vec::with_capacity(self.pending.len());
 
@@ -113,15 +175,22 @@ impl PublishSchedule {
             }
             let held = now.saturating_duration_since(entry.queued_at);
             if !held.is_zero() {
-                tracing::info!(
-                    event_id = %entry.payload.event_guid,
-                    block_guid = %entry.payload.block_guid,
-                    title = %entry.payload.title,
-                    held_ms = held.as_millis(),
-                    "releasing live value payload after stream delay"
-                );
+                match &entry.item {
+                    ScheduledItem::Payload(payload) => tracing::info!(
+                        event_id = %payload.event_guid,
+                        block_guid = %payload.block_guid,
+                        title = %payload.title,
+                        held_ms = held.as_millis(),
+                        "releasing live value payload after stream delay"
+                    ),
+                    ScheduledItem::Display(entry) => tracing::debug!(
+                        event_id = %entry.event_id,
+                        held_ms = held.as_millis(),
+                        "releasing display state after stream delay"
+                    ),
+                }
             }
-            due.push(entry.payload);
+            due.push(entry.item);
         }
 
         self.pending = waiting;

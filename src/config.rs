@@ -43,6 +43,9 @@ pub struct PublisherTarget {
     pub token_file: PathBuf,
     pub token: String,
     pub stream_delay: Duration,
+    /// The display directory of the producer of this target (ADR 0008).
+    /// `None` turns the display path off for this target.
+    pub display_dir: Option<PathBuf>,
 }
 
 impl fmt::Debug for PublisherTarget {
@@ -54,6 +57,7 @@ impl fmt::Debug for PublisherTarget {
             .field("token_file", &self.token_file)
             .field("token", &"<redacted>")
             .field("stream_delay", &self.stream_delay)
+            .field("display_dir", &self.display_dir)
             .finish()
     }
 }
@@ -142,6 +146,7 @@ struct RawTarget {
     event_id: String,
     token_file: PathBuf,
     stream_delay_secs: Option<f64>,
+    display_dir: Option<PathBuf>,
     /// Detects a removed `[target.fallback]` table (ADR 0005). The publisher
     /// never reads its content.
     fallback: Option<toml::Value>,
@@ -391,12 +396,43 @@ fn resolve_config(raw: RawConfig, overrides: ConfigOverrides) -> Result<Publishe
         .into_iter()
         .map(|target| resolve_target(target, &mut seen))
         .collect::<Result<Vec<_>>>()?;
+    let watch_dir = overrides.watch_dir.unwrap_or(raw.watch_dir);
+    for target in &targets {
+        if let Some(display_dir) = &target.display_dir {
+            validate_display_dir(&target.name, display_dir, &watch_dir)?;
+        }
+    }
 
     Ok(PublisherConfig {
-        watch_dir: overrides.watch_dir.unwrap_or(raw.watch_dir),
+        watch_dir,
         endpoint: overrides.endpoint.unwrap_or(raw.endpoint),
         targets,
     })
+}
+
+/// Refuses a display directory that is empty or that is the watch directory.
+///
+/// ADR 0008: the publisher reads each JSON file in the watch directory as a
+/// drop file, so `display.json` must not be there. The check compares the
+/// paths as written, and also after canonicalization when both exist.
+fn validate_display_dir(target_name: &str, display_dir: &Path, watch_dir: &Path) -> Result<()> {
+    if display_dir.as_os_str().is_empty() {
+        return Err(anyhow!(
+            "target {target_name} display_dir must not be empty"
+        ));
+    }
+    let same = display_dir == watch_dir
+        || matches!(
+            (fs::canonicalize(display_dir), fs::canonicalize(watch_dir)),
+            (Ok(display), Ok(watch)) if display == watch
+        );
+    if same {
+        return Err(anyhow!(
+            "ADR 0008: target {target_name} display_dir {} must not be the watch_dir",
+            display_dir.display()
+        ));
+    }
+    Ok(())
 }
 
 fn resolve_target(target: RawTarget, seen: &mut HashSet<String>) -> Result<PublisherTarget> {
@@ -423,6 +459,7 @@ fn resolve_target(target: RawTarget, seen: &mut HashSet<String>) -> Result<Publi
         token_file,
         token,
         stream_delay,
+        display_dir: target.display_dir,
     })
 }
 

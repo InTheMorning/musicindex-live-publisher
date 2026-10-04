@@ -1010,3 +1010,126 @@ fn config_stream_delay_above_the_ceiling_is_error() -> Result<()> {
     assert!(delay_error("12000")?.contains("exceeds the 300 second maximum"));
     Ok(())
 }
+
+fn config_text_with_display_dir(watch_dir: &Path, token: &Path, display_dir: &Path) -> String {
+    format!(
+        "{}display_dir = \"{}\"\n",
+        config_text(watch_dir, token, None),
+        display_dir.display()
+    )
+}
+
+#[test]
+fn config_loads_an_optional_display_dir() -> Result<()> {
+    let temp = TempDir::new()?;
+    let watch_dir = temp.path().join("watch");
+    let display_dir = temp.path().join("display");
+    let token = write_token(temp.path(), "default.token", "secret-token")?;
+    let config_path = write_config(
+        temp.path(),
+        &config_text_with_display_dir(&watch_dir, &token, &display_dir),
+    )?;
+
+    let config = load_config(&config_path, ConfigOverrides::default())?;
+
+    assert_eq!(
+        config.targets[0].display_dir.as_deref(),
+        Some(display_dir.as_path())
+    );
+    Ok(())
+}
+
+#[test]
+fn config_without_display_dir_has_no_display_path() -> Result<()> {
+    let temp = TempDir::new()?;
+    let watch_dir = temp.path().join("watch");
+    let token = write_token(temp.path(), "default.token", "secret-token")?;
+    let config_path = write_config(temp.path(), &config_text(&watch_dir, &token, None))?;
+
+    let config = load_config(&config_path, ConfigOverrides::default())?;
+
+    assert_eq!(config.targets[0].display_dir, None);
+    Ok(())
+}
+
+#[test]
+fn config_display_dir_equal_to_watch_dir_is_error_naming_target() -> Result<()> {
+    let temp = TempDir::new()?;
+    let watch_dir = temp.path().join("watch");
+    let token = write_token(temp.path(), "default.token", "secret-token")?;
+    let config_path = write_config(
+        temp.path(),
+        &config_text_with_display_dir(&watch_dir, &token, &watch_dir),
+    )?;
+
+    let error = load_config(&config_path, ConfigOverrides::default())
+        .expect_err("display_dir equal to watch_dir must be refused");
+
+    let message = format!("{error:#}");
+    assert!(message.contains("ADR 0008"), "{message}");
+    assert!(message.contains("default"), "{message}");
+    assert!(message.contains("display_dir"), "{message}");
+    Ok(())
+}
+
+#[test]
+fn config_display_dir_equal_to_the_watch_dir_override_is_error() -> Result<()> {
+    let temp = TempDir::new()?;
+    let watch_dir = temp.path().join("watch");
+    let display_dir = temp.path().join("display");
+    let token = write_token(temp.path(), "default.token", "secret-token")?;
+    let config_path = write_config(
+        temp.path(),
+        &config_text_with_display_dir(&watch_dir, &token, &display_dir),
+    )?;
+
+    let result = load_config(
+        &config_path,
+        ConfigOverrides {
+            watch_dir: Some(display_dir),
+            endpoint: None,
+        },
+    );
+
+    assert!(result.is_err_and(|error| format!("{error:#}").contains("ADR 0008")));
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn config_display_dir_equal_to_watch_dir_after_canonicalization_is_error() -> Result<()> {
+    let temp = TempDir::new()?;
+    let watch_dir = temp.path().join("watch");
+    fs::create_dir(&watch_dir)?;
+    let link = temp.path().join("link-to-watch");
+    std::os::unix::fs::symlink(&watch_dir, &link)?;
+    let token = write_token(temp.path(), "default.token", "secret-token")?;
+    let config_path = write_config(
+        temp.path(),
+        &config_text_with_display_dir(&watch_dir, &token, &link),
+    )?;
+
+    let result = load_config(&config_path, ConfigOverrides::default());
+
+    assert!(result.is_err_and(|error| format!("{error:#}").contains("ADR 0008")));
+    Ok(())
+}
+
+#[test]
+fn config_target_debug_with_display_dir_redacts_the_token() -> Result<()> {
+    let temp = TempDir::new()?;
+    let watch_dir = temp.path().join("watch");
+    let display_dir = temp.path().join("display");
+    let token = write_token(temp.path(), "default.token", "secret-token")?;
+    let config_path = write_config(
+        temp.path(),
+        &config_text_with_display_dir(&watch_dir, &token, &display_dir),
+    )?;
+
+    let config = load_config(&config_path, ConfigOverrides::default())?;
+    let rendered = format!("{config:?}");
+
+    assert!(rendered.contains("display_dir"));
+    assert!(!rendered.contains("secret-token"));
+    Ok(())
+}

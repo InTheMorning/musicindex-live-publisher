@@ -9,6 +9,7 @@ notify = "8"
 reqwest = { version = "0.13", default-features = false, features = ["blocking", "charset", "http2", "json", "native-tls", "system-proxy"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = { version = "0.10", default-features = false }
 toml = "1.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

@@ -7,10 +7,11 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow};
 use musicindex_live_publisher::{
-    ConfigEditError, ConfigOverrides, DEFAULT_CONFIG_PATH, DEFAULT_DEBOUNCE_WINDOW, DropEvent,
-    DropEventKind, DropWatcher, LiveValuePayload, ProducerState, PublishSchedule,
-    RedactedPublisherConfig, RelayClient, RelayPublisher, TargetConfigEdit, TargetConfigSummary,
-    add_target_to_config, list_config_targets, load_config, probe_producer,
+    ConfigEditError, ConfigOverrides, DEFAULT_CONFIG_PATH, DEFAULT_DEBOUNCE_WINDOW,
+    DISPLAY_FILE_NAME, DisplayEntry, DisplayState, DropEvent, DropEventKind, DropWatcher,
+    LiveValuePayload, ProducerState, PublishSchedule, PublisherConfig, RedactedPublisherConfig,
+    RelayClient, RelayPublisher, ScheduledItem, TargetConfigEdit, TargetConfigSummary,
+    add_target_to_config, list_config_targets, load_config, probe_producer, read_display_state,
     remove_target_from_config, show_config, write_token_file,
 };
 use notify::event::{CreateKind, ModifyKind, RemoveKind, RenameMode};
@@ -75,9 +76,11 @@ fn run_cli(cli: Cli) -> Result<()> {
             target = %target.name,
             event_id = %target.event_id,
             stream_delay_secs = target.stream_delay.as_secs_f64(),
+            display_dir = ?target.display_dir,
             "configured publish target"
         );
     }
+    let mut display = DisplayPath::from_config(&config);
 
     let publisher = if cli.dry_run {
         None
@@ -112,8 +115,19 @@ fn run_cli(cli: Cli) -> Result<()> {
     // been sitting there for most of a song, and holding it would leave the
     // relay serving nothing for the length of the delay. Emit it directly.
     let mut pending_missing = HashMap::new();
-    emit_payloads(
-        processor.startup_payloads(&config.watch_dir, producer_state)?,
+    emit_items(
+        processor
+            .startup_payloads(&config.watch_dir, producer_state)?
+            .into_iter()
+            .map(ScheduledItem::Payload)
+            .collect(),
+        publisher.as_ref(),
+        &mut pending_missing,
+        producer_state,
+    )?;
+    // The display state follows the same recovery rule, after the payloads.
+    emit_items(
+        display.startup_items(producer_state),
         publisher.as_ref(),
         &mut pending_missing,
         producer_state,
@@ -122,10 +136,165 @@ fn run_cli(cli: Cli) -> Result<()> {
         &config.watch_dir,
         &mut processor,
         &mut schedule,
+        &mut display,
         publisher.as_ref(),
         producer_state,
         pending_missing,
     )
+}
+
+/// One display directory (ADR 0008) and the targets that read it.
+#[derive(Debug)]
+struct DisplayDir {
+    path: PathBuf,
+    event_ids: Vec<String>,
+    watched: bool,
+}
+
+/// The display directories of every target with `display_dir`, and the last
+/// display state that the watch loop scheduled for each target.
+#[derive(Debug, Default)]
+struct DisplayPath {
+    dirs: Vec<DisplayDir>,
+    last: HashMap<String, DisplayState>,
+}
+
+impl DisplayPath {
+    fn from_config(config: &PublisherConfig) -> Self {
+        let mut display = Self::default();
+        for target in &config.targets {
+            let Some(path) = &target.display_dir else {
+                continue;
+            };
+            match display.dirs.iter_mut().find(|dir| dir.path == *path) {
+                Some(dir) => dir.event_ids.push(target.event_id.clone()),
+                None => display.dirs.push(DisplayDir {
+                    path: path.clone(),
+                    event_ids: vec![target.event_id.clone()],
+                    watched: false,
+                }),
+            }
+        }
+        display
+    }
+
+    /// The index of the display directory that holds `path`.
+    fn dir_index(&self, path: &Path) -> Option<usize> {
+        let parent = path.parent()?;
+        self.dirs.iter().position(|dir| dir.path == parent)
+    }
+
+    /// The display state of each target at startup, for a direct send.
+    ///
+    /// A running producer gives the state in `display.json`. A missing
+    /// producer gives `null`.
+    fn startup_items(&mut self, producer: ProducerState) -> Vec<ScheduledItem> {
+        let mut items = Vec::new();
+        for index in 0..self.dirs.len() {
+            let state = match producer {
+                ProducerState::Running => read_display_state(&self.dirs[index].path),
+                ProducerState::Missing => Some(DisplayState::null()),
+            };
+            if let Some(state) = state {
+                items.extend(
+                    self.changed_entries(index, &state)
+                        .into_iter()
+                        .map(ScheduledItem::Display),
+                );
+            }
+        }
+        items
+    }
+
+    /// Reads `display.json` of one directory and schedules its state.
+    fn schedule_dir(&mut self, index: usize, schedule: &mut PublishSchedule, now: Instant) {
+        let Some(state) = read_display_state(&self.dirs[index].path) else {
+            return;
+        };
+        for entry in self.changed_entries(index, &state) {
+            schedule.schedule_display(entry, now);
+        }
+    }
+
+    /// Schedules the display state `null` for each display target (ADR 0008).
+    fn schedule_null(&mut self, schedule: &mut PublishSchedule, now: Instant) {
+        for index in 0..self.dirs.len() {
+            for entry in self.changed_entries(index, &DisplayState::null()) {
+                schedule.schedule_display(entry, now);
+            }
+        }
+    }
+
+    /// The entries for the targets of one directory whose last scheduled state
+    /// is not `state`. A state that did not change costs no request.
+    fn changed_entries(&mut self, index: usize, state: &DisplayState) -> Vec<DisplayEntry> {
+        let mut entries = Vec::new();
+        for event_id in &self.dirs[index].event_ids {
+            if self.last.get(event_id) == Some(state) {
+                continue;
+            }
+            self.last.insert(event_id.clone(), state.clone());
+            entries.push(DisplayEntry {
+                event_id: event_id.clone(),
+                state: state.clone(),
+            });
+        }
+        entries
+    }
+
+    /// Adds a watch for each display directory that has none yet, and gives
+    /// the index of each directory that it added.
+    ///
+    /// A directory that does not exist yet gives one warning, and the loop
+    /// tries again later. A display directory never stops the payment path.
+    fn watch_new_dirs(&mut self, watcher: &mut impl Watcher) -> Vec<usize> {
+        let mut added = Vec::new();
+        for (index, dir) in self.dirs.iter_mut().enumerate() {
+            if dir.watched {
+                continue;
+            }
+            match watcher.watch(&dir.path, RecursiveMode::NonRecursive) {
+                Ok(()) => {
+                    tracing::info!(path = %dir.path.display(), "watching display directory");
+                    dir.watched = true;
+                    added.push(index);
+                }
+                Err(error) => {
+                    tracing::debug!(
+                        path = %dir.path.display(),
+                        %error,
+                        "cannot watch display directory yet"
+                    );
+                }
+            }
+        }
+        added
+    }
+}
+
+/// Divides watch events into drop file events and display directory changes.
+///
+/// An event in a display directory is never a drop file event, so it never
+/// starts a producer probe and never reaches the drop file processor. Only an
+/// upsert of `display.json` is a display change. Each changed directory is
+/// given one time.
+fn split_events(events: Vec<DropEvent>, display: &DisplayPath) -> (Vec<DropEvent>, Vec<usize>) {
+    let mut drop_events = Vec::new();
+    let mut changed = Vec::new();
+    for event in events {
+        let Some(index) = display.dir_index(&event.path) else {
+            drop_events.push(event);
+            continue;
+        };
+        let is_display_file = event
+            .path
+            .file_name()
+            .is_some_and(|name| name == DISPLAY_FILE_NAME);
+        if is_display_file && event.kind == DropEventKind::Upsert && !changed.contains(&index) {
+            changed.push(index);
+        }
+    }
+    (drop_events, changed)
 }
 
 #[derive(Debug)]
@@ -647,6 +816,7 @@ fn run_watch_loop(
     watch_dir: &Path,
     processor: &mut DropWatcher,
     schedule: &mut PublishSchedule,
+    display: &mut DisplayPath,
     publisher: Option<&RelayPublisher>,
     mut producer_state: ProducerState,
     mut pending_missing: HashMap<String, String>,
@@ -656,6 +826,14 @@ fn run_watch_loop(
     watcher
         .watch(watch_dir, RecursiveMode::NonRecursive)
         .with_context(|| format!("watch {}", watch_dir.display()))?;
+    // `startup_items` already read each display directory that exists now.
+    let _watched_at_startup = display.watch_new_dirs(&mut watcher);
+    for dir in display.dirs.iter().filter(|dir| !dir.watched) {
+        tracing::warn!(
+            path = %dir.path.display(),
+            "display directory does not exist yet; the publisher tries again each second"
+        );
+    }
 
     let mut last_probe = Instant::now();
     loop {
@@ -664,7 +842,7 @@ fn run_watch_loop(
         // next track happens to change. A pending stream-delay deadline
         // shortens the wait further, so a held payload is released on time
         // rather than at the next health check.
-        let drop_events = match receiver.recv_timeout(next_wakeup(schedule, Instant::now())) {
+        let events = match receiver.recv_timeout(next_wakeup(schedule, Instant::now())) {
             Ok(Ok(event)) => normalize_notify_event(event),
             Ok(Err(error)) => return Err(error).context("watch directory event error"),
             Err(mpsc::RecvTimeoutError::Timeout) => Vec::new(),
@@ -672,6 +850,7 @@ fn run_watch_loop(
                 return Err(anyhow!("filesystem watcher stopped"));
             }
         };
+        let (drop_events, mut display_changes) = split_events(events, display);
 
         let now = Instant::now();
         if probe_due(&drop_events, last_probe, now) {
@@ -679,6 +858,7 @@ fn run_watch_loop(
                 watch_dir,
                 processor,
                 schedule,
+                display,
                 publisher,
                 &mut pending_missing,
                 producer_state,
@@ -687,6 +867,11 @@ fn run_watch_loop(
             last_probe = now;
             if let Some(publisher) = publisher {
                 publisher.check_health()?;
+            }
+            for index in display.watch_new_dirs(&mut watcher) {
+                if !display_changes.contains(&index) {
+                    display_changes.push(index);
+                }
             }
         }
         if !drop_events.is_empty() {
@@ -700,8 +885,11 @@ fn run_watch_loop(
                 }
             }
         }
-        emit_payloads(
-            schedule.take_due(Instant::now()),
+        for index in display_changes {
+            display.schedule_dir(index, schedule, now);
+        }
+        emit_items(
+            schedule.take_due_items(Instant::now()),
             publisher,
             &mut pending_missing,
             producer_state,
@@ -725,6 +913,8 @@ fn probe_due(drop_events: &[DropEvent], last_probe: Instant, now: Instant) -> bo
 ///
 /// A change from running to missing publishes the dead block for each
 /// target through `schedule` and clears the watcher's block identity state.
+/// It also schedules the display state `null` for each display target, next
+/// to the dead block (ADR 0008).
 /// It also records each target's dead-block `blockGuid` in `pending_missing`,
 /// keyed by `eventGuid`. `emit_payloads` reads that record: only once a
 /// target's own dead block leaves `schedule` does its worker learn the
@@ -745,10 +935,12 @@ fn probe_due(drop_events: &[DropEvent], last_probe: Instant, now: Instant) -> bo
 /// # Errors
 ///
 /// Returns an error when the probe fails.
+#[allow(clippy::too_many_arguments)]
 fn update_producer_state(
     watch_dir: &Path,
     processor: &mut DropWatcher,
     schedule: &mut PublishSchedule,
+    display: &mut DisplayPath,
     publisher: Option<&RelayPublisher>,
     pending_missing: &mut HashMap<String, String>,
     previous: ProducerState,
@@ -769,6 +961,7 @@ fn update_producer_state(
                 pending_missing.insert(payload.event_guid.clone(), payload.block_guid.clone());
                 schedule.schedule(payload, now);
             }
+            display.schedule_null(schedule, now);
         }
         ProducerState::Running => {
             tracing::info!(
@@ -874,27 +1067,43 @@ fn remove_events(paths: Vec<PathBuf>) -> Vec<DropEvent> {
         .collect()
 }
 
-/// Publishes each released payload and, for a target whose dead block just
-/// went out, tells that target's worker the producer is missing.
+/// Publishes each released payload and display state in order and, for a
+/// target whose dead block just went out, tells that target's worker the
+/// producer is missing.
 ///
 /// See `missing_transitions_for_released` and `update_producer_state` for
 /// the rule this follows (ADR 0005, relay-lease-task-004). Each payload is
 /// sent to its target's worker before that target's `Producer(Missing)`
 /// command: they share one channel, so this order is what the worker
 /// receives them in.
-fn emit_payloads(
-    payloads: Vec<LiveValuePayload>,
+///
+/// A display state goes to the display worker. That send never blocks and
+/// never fails, so a display state never delays a payload (ADR 0008).
+fn emit_items(
+    items: Vec<ScheduledItem>,
     publisher: Option<&RelayPublisher>,
     pending_missing: &mut HashMap<String, String>,
     producer_state: ProducerState,
 ) -> Result<()> {
+    let payloads: Vec<LiveValuePayload> = items
+        .iter()
+        .filter_map(ScheduledItem::as_payload)
+        .cloned()
+        .collect();
     let missing_targets =
         missing_transitions_for_released(&payloads, pending_missing, producer_state);
-    for payload in payloads {
-        if let Some(publisher) = publisher {
-            publisher.publish(payload)?;
-        } else {
-            println!("{}", serde_json::to_string_pretty(&payload)?);
+    for item in items {
+        match (item, publisher) {
+            (ScheduledItem::Payload(payload), Some(publisher)) => publisher.publish(payload)?,
+            (ScheduledItem::Payload(payload), None) => {
+                println!("{}", serde_json::to_string_pretty(&payload)?);
+            }
+            (ScheduledItem::Display(entry), Some(publisher)) => publisher.publish_display(entry),
+            (ScheduledItem::Display(entry), None) => tracing::info!(
+                event_id = %entry.event_id,
+                body = %entry.state.body(),
+                "dry run: display state"
+            ),
         }
     }
     if let Some(publisher) = publisher {
@@ -1078,6 +1287,130 @@ mod tests {
         assert_eq!(targets, vec!["event-a".to_owned()]);
         assert_eq!(pending.get("event-b"), Some(&"dead-b".to_owned()));
         assert!(!pending.contains_key("event-a"));
+    }
+
+    fn display_path(dir: &Path, event_ids: &[&str]) -> DisplayPath {
+        DisplayPath {
+            dirs: vec![DisplayDir {
+                path: dir.to_path_buf(),
+                event_ids: event_ids.iter().map(|id| (*id).to_owned()).collect(),
+                watched: true,
+            }],
+            last: HashMap::new(),
+        }
+    }
+
+    #[test]
+    fn a_display_event_does_not_start_a_producer_probe() {
+        let display = display_path(Path::new("/display"), &["event"]);
+        let write = notify::Event::new(EventKind::Modify(ModifyKind::Name(RenameMode::To)))
+            .add_path(PathBuf::from("/display").join(DISPLAY_FILE_NAME));
+        let last_probe = Instant::now();
+
+        let (drop_events, changed) = split_events(normalize_notify_event(write), &display);
+
+        assert!(drop_events.is_empty());
+        assert_eq!(changed, vec![0]);
+        assert!(!probe_due(
+            &drop_events,
+            last_probe,
+            last_probe + Duration::from_millis(10)
+        ));
+    }
+
+    #[test]
+    fn an_image_event_in_the_display_dir_is_no_change_and_no_drop_event() {
+        let display = display_path(Path::new("/display"), &["event"]);
+        let image = notify::Event::new(EventKind::Create(CreateKind::File))
+            .add_path(PathBuf::from("/display/abc.jpg"));
+
+        let (drop_events, changed) = split_events(normalize_notify_event(image), &display);
+
+        assert!(drop_events.is_empty());
+        assert!(changed.is_empty());
+    }
+
+    #[test]
+    fn a_drop_file_event_stays_a_drop_file_event_with_a_display_path() {
+        let display = display_path(Path::new("/display"), &["event"]);
+        let drop = notify::Event::new(EventKind::Create(CreateKind::File))
+            .add_path(PathBuf::from("/drop/default.json"));
+
+        let (drop_events, changed) = split_events(normalize_notify_event(drop), &display);
+
+        assert_eq!(drop_events.len(), 1);
+        assert!(changed.is_empty());
+    }
+
+    #[test]
+    fn a_producer_that_becomes_missing_gives_the_display_state_null_after_the_delay() -> Result<()>
+    {
+        let watch = tempfile::TempDir::new()?;
+        let delay = Duration::from_secs(12);
+        let mut processor = DropWatcher::new_targets(
+            vec![musicindex_live_publisher::WatchTarget {
+                name: "default".to_owned(),
+                event_guid: "event".to_owned(),
+            }],
+            Duration::ZERO,
+        );
+        let mut schedule = PublishSchedule::new(HashMap::from([("event".to_owned(), delay)]));
+        let mut display = display_path(Path::new("/display"), &["event"]);
+        let mut pending_missing = HashMap::new();
+        let now = Instant::now();
+
+        // No lock file: the probe gives `Missing`.
+        let state = update_producer_state(
+            watch.path(),
+            &mut processor,
+            &mut schedule,
+            &mut display,
+            None,
+            &mut pending_missing,
+            ProducerState::Running,
+            now,
+        )?;
+
+        assert_eq!(state, ProducerState::Missing);
+        assert!(
+            schedule
+                .take_due_items(now + delay - Duration::from_millis(1))
+                .is_empty()
+        );
+        let due = schedule.take_due_items(now + delay);
+        assert_eq!(due.len(), 2);
+        assert!(matches!(&due[0], ScheduledItem::Payload(_)));
+        assert_eq!(
+            due[1],
+            ScheduledItem::Display(DisplayEntry {
+                event_id: "event".to_owned(),
+                state: DisplayState::null(),
+            })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn an_unchanged_display_state_is_not_scheduled_again() {
+        let mut display = display_path(Path::new("/display"), &["event-a", "event-b"]);
+
+        assert_eq!(display.changed_entries(0, &DisplayState::null()).len(), 2);
+        assert!(display.changed_entries(0, &DisplayState::null()).is_empty());
+    }
+
+    #[test]
+    fn startup_with_a_missing_producer_gives_the_display_state_null() {
+        let mut display = display_path(Path::new("/nonexistent/display"), &["event"]);
+
+        let items = display.startup_items(ProducerState::Missing);
+
+        assert_eq!(
+            items,
+            vec![ScheduledItem::Display(DisplayEntry {
+                event_id: "event".to_owned(),
+                state: DisplayState::null(),
+            })]
+        );
     }
 
     #[test]

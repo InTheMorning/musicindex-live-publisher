@@ -1,13 +1,13 @@
 //! MusicIndex relay HTTP client and retry workers.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::Path;
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, anyhow};
 use reqwest::StatusCode;
@@ -15,7 +15,10 @@ use reqwest::blocking::Client;
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::{LiveValuePayload, ProducerState, PublisherConfig, PublisherTarget};
+use crate::{
+    ArtworkImage, DisplayEntry, DisplayState, LiveValuePayload, ProducerState, PublisherConfig,
+    PublisherTarget,
+};
 
 /// Default per-request timeout for relay calls.
 pub const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
@@ -94,6 +97,24 @@ pub enum KeepaliveOutcome {
     Fatal {
         reason: String,
     },
+}
+
+/// Result of one display publish or one image upload (relay ADR 0003).
+///
+/// No outcome is fatal (ADR 0008). A display failure never changes the
+/// payment path.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DisplayOutcome {
+    /// The relay accepted the request.
+    Accepted,
+    /// `409 artwork_missing`: the relay does not hold the named image.
+    ArtworkMissing,
+    /// `404` or `409 event_not_reserved`: the event has no display path.
+    Disabled { reason: String },
+    /// A network error, a `5xx` or a `429`.
+    Retryable { reason: String },
+    /// Any other answer. The worker logs it and drops the state.
+    Refused { reason: String },
 }
 
 /// Response from `POST /v1/liveitems`.
@@ -275,6 +296,67 @@ impl RelayClient {
         }
     }
 
+    /// Publishes one display state (relay ADR 0003).
+    ///
+    /// `POST {endpoint}/v1/liveitems/{event_id}/display` with the bearer
+    /// token. The body is [`DisplayState::body`], which holds only `track`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the target's token is invalid or the endpoint
+    /// cannot be built.
+    pub fn publish_display(
+        &self,
+        target: &RelayTarget,
+        state: &DisplayState,
+    ) -> Result<DisplayOutcome> {
+        validate_bearer_token(&target.token)?;
+        let url = build_url(
+            &target.endpoint,
+            &["v1", "liveitems", &target.event_id, "display"],
+        )?;
+        let request = self
+            .client
+            .post(url)
+            .bearer_auth(&target.token)
+            .json(&state.body());
+        Ok(display_outcome(request.send()))
+    }
+
+    /// Uploads one image (relay ADR 0003).
+    ///
+    /// `PUT {endpoint}/v1/liveitems/{event_id}/artwork/{sha256}` with the
+    /// bearer token. The body is the image bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the target's token is invalid or the endpoint
+    /// cannot be built.
+    pub fn upload_artwork(
+        &self,
+        target: &RelayTarget,
+        image: &ArtworkImage,
+    ) -> Result<DisplayOutcome> {
+        validate_bearer_token(&target.token)?;
+        let url = build_url(
+            &target.endpoint,
+            &[
+                "v1",
+                "liveitems",
+                &target.event_id,
+                "artwork",
+                image.sha256(),
+            ],
+        )?;
+        let request = self
+            .client
+            .put(url)
+            .bearer_auth(&target.token)
+            .header(reqwest::header::CONTENT_TYPE, image.mime().as_str())
+            .body(image.bytes().to_vec());
+        Ok(display_outcome(request.send()))
+    }
+
     /// Provisions a live item and returns its one-time token response.
     ///
     /// # Errors
@@ -346,11 +428,64 @@ enum WorkerCommand {
     Producer(ProducerState),
 }
 
+/// Maps one display answer to its outcome.
+fn display_outcome(
+    response: std::result::Result<reqwest::blocking::Response, reqwest::Error>,
+) -> DisplayOutcome {
+    let response = match response {
+        Ok(response) => response,
+        Err(error) => {
+            return DisplayOutcome::Retryable {
+                reason: format!("network error: {error}"),
+            };
+        }
+    };
+    let status = response.status();
+    if status == StatusCode::OK {
+        return DisplayOutcome::Accepted;
+    }
+    let reason = format!("relay returned HTTP {status}");
+    if status == StatusCode::NOT_FOUND {
+        return DisplayOutcome::Disabled { reason };
+    }
+    if status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error() {
+        return DisplayOutcome::Retryable { reason };
+    }
+    if status == StatusCode::CONFLICT {
+        let code = response
+            .json::<Value>()
+            .ok()
+            .and_then(|body| body.get("error").and_then(Value::as_str).map(str::to_owned));
+        return match code.as_deref() {
+            Some("artwork_missing") => DisplayOutcome::ArtworkMissing,
+            Some("event_not_reserved") => DisplayOutcome::Disabled {
+                reason: format!("{reason} event_not_reserved"),
+            },
+            _ => DisplayOutcome::Refused { reason },
+        };
+    }
+    DisplayOutcome::Refused { reason }
+}
+
+/// A command for the display worker (ADR 0008).
+#[derive(Debug)]
+enum DisplayCommand {
+    /// A display state that left the stream-delay schedule.
+    Publish(DisplayEntry),
+    /// A keepalive got `409` and the payload worker sent its last payload
+    /// again. The lease end cleared the display state and the images in the
+    /// relay, so the display worker sends its latest state again.
+    Resend { event_id: String },
+}
+
 /// Coordinates per-target relay workers.
 #[derive(Debug)]
 pub struct RelayPublisher {
     senders: HashMap<String, mpsc::Sender<WorkerCommand>>,
     fatal: Arc<Mutex<Option<String>>>,
+    /// The channel of the display worker. `None` when no target has a
+    /// display path.
+    display: Option<mpsc::Sender<DisplayCommand>>,
 }
 
 impl RelayPublisher {
@@ -376,10 +511,17 @@ impl RelayPublisher {
         let client = RelayClient::new(DEFAULT_REQUEST_TIMEOUT)?;
         let mut senders = HashMap::new();
         let fatal = Arc::new(Mutex::new(None));
+        let display = start_display_worker(config, &client, initial_backoff, max_backoff);
 
         for target in &config.targets {
             let relay_target = RelayTarget::from_config(&config.endpoint, target);
             let (sender, receiver) = mpsc::channel();
+            // Only a target with a display path tells the display worker
+            // about a republish after a keepalive `409`.
+            let display = display
+                .as_ref()
+                .filter(|_| target.display_dir.is_some())
+                .cloned();
             thread::Builder::new()
                 .name(format!("relay-publisher-{}", relay_target.name))
                 .spawn({
@@ -393,6 +535,7 @@ impl RelayPublisher {
                             initial_backoff,
                             max_backoff,
                             &fatal,
+                            display,
                         )
                     }
                 })
@@ -400,7 +543,29 @@ impl RelayPublisher {
             senders.insert(target.event_id.clone(), sender);
         }
 
-        Ok(Self { senders, fatal })
+        Ok(Self {
+            senders,
+            fatal,
+            display,
+        })
+    }
+
+    /// Queues one display state for the display worker (ADR 0008).
+    ///
+    /// This call never blocks and never fails. A display state for a target
+    /// with no display path, or a display worker that stopped, gives a
+    /// warning. No display failure is fatal.
+    pub fn publish_display(&self, entry: DisplayEntry) {
+        let Some(display) = self.display.as_ref() else {
+            tracing::warn!(
+                event_id = %entry.event_id,
+                "no display worker runs; dropping the display state"
+            );
+            return;
+        };
+        if display.send(DisplayCommand::Publish(entry)).is_err() {
+            tracing::warn!("the display worker stopped; dropping the display state");
+        }
     }
 
     /// Returns an error once any target has failed fatally.
@@ -490,6 +655,9 @@ struct WorkerContext<'a> {
     initial_backoff: Duration,
     max_backoff: Duration,
     fatal: &'a Mutex<Option<String>>,
+    /// The display worker, for a target with a display path. The payload
+    /// worker only sends it a command. It never sends a display request.
+    display: Option<&'a mpsc::Sender<DisplayCommand>>,
 }
 
 /// Outcome of retrying one payload until it settles.
@@ -747,10 +915,19 @@ fn republish_after_lease_expiry(
         PublishAttempt::Accepted {
             payload,
             keepalive_interval,
-        } => KeepaliveAttempt::Republished {
-            payload,
-            interval: keepalive_interval,
-        },
+        } => {
+            // The lease end cleared the display state and the images in the
+            // relay (relay ADR 0003). The send never blocks.
+            if let Some(display) = ctx.display {
+                let _ignored = display.send(DisplayCommand::Resend {
+                    event_id: target.event_id.clone(),
+                });
+            }
+            KeepaliveAttempt::Republished {
+                payload,
+                interval: keepalive_interval,
+            }
+        }
         PublishAttempt::Dropped => KeepaliveAttempt::Idle,
         PublishAttempt::Stop => KeepaliveAttempt::Stop,
     }
@@ -776,6 +953,7 @@ fn publish_worker(
     initial_backoff: Duration,
     max_backoff: Duration,
     fatal: &Mutex<Option<String>>,
+    display: Option<mpsc::Sender<DisplayCommand>>,
 ) {
     let ctx = WorkerContext {
         client: &client,
@@ -784,6 +962,7 @@ fn publish_worker(
         initial_backoff,
         max_backoff,
         fatal,
+        display: display.as_ref(),
     };
     let mut last_accepted: Option<LiveValuePayload> = None;
     let mut keepalive_interval: Option<Duration> = None;
@@ -841,6 +1020,310 @@ fn publish_worker(
                     PublishAttempt::Stop => return,
                 }
             }
+        }
+    }
+}
+
+/// Starts the one display worker when a target has a display path.
+///
+/// A spawn failure gives a warning and no display path. It does not stop the
+/// payment path.
+fn start_display_worker(
+    config: &PublisherConfig,
+    client: &RelayClient,
+    initial_backoff: Duration,
+    max_backoff: Duration,
+) -> Option<mpsc::Sender<DisplayCommand>> {
+    let slots: BTreeMap<String, DisplaySlot> = config
+        .targets
+        .iter()
+        .filter(|target| target.display_dir.is_some())
+        .map(|target| {
+            (
+                target.event_id.clone(),
+                DisplaySlot::new(
+                    RelayTarget::from_config(&config.endpoint, target),
+                    initial_backoff,
+                ),
+            )
+        })
+        .collect();
+    if slots.is_empty() {
+        return None;
+    }
+    let (sender, receiver) = mpsc::channel();
+    let worker = DisplayWorker {
+        client: client.clone(),
+        slots,
+        initial_backoff,
+        max_backoff,
+    };
+    match thread::Builder::new()
+        .name("relay-display".to_owned())
+        .spawn(move || worker.run(&receiver))
+    {
+        Ok(_handle) => Some(sender),
+        Err(error) => {
+            tracing::warn!(%error, "cannot start the display worker; the display path is off");
+            None
+        }
+    }
+}
+
+/// The display state of one target in the display worker.
+#[derive(Debug)]
+struct DisplaySlot {
+    /// The relay target. Its `Debug` output redacts the token.
+    target: RelayTarget,
+    /// The latest state that waits. A newer state replaces it.
+    pending: Option<DisplayState>,
+    /// The last state that the relay accepted, for a resend.
+    last_sent: Option<DisplayState>,
+    /// The SHA-256 of each image that this process uploaded to this target.
+    uploaded: HashSet<String>,
+    /// True after `404` or `409 event_not_reserved`, until the next start.
+    disabled: bool,
+    backoff: Duration,
+    /// The earliest time of the next attempt after a retryable failure.
+    retry_at: Option<Instant>,
+}
+
+impl DisplaySlot {
+    fn new(target: RelayTarget, initial_backoff: Duration) -> Self {
+        Self {
+            target,
+            pending: None,
+            last_sent: None,
+            uploaded: HashSet::new(),
+            disabled: false,
+            backoff: initial_backoff,
+            retry_at: None,
+        }
+    }
+
+    fn ready(&self, now: Instant) -> bool {
+        !self.disabled && self.pending.is_some() && self.retry_at.is_none_or(|at| at <= now)
+    }
+}
+
+/// How one display attempt ended.
+enum DisplayStep {
+    Done,
+    Retry(String),
+    Disable(String),
+    Drop(String),
+}
+
+/// The one display worker thread for every target (ADR 0008).
+///
+/// It sends display requests only. A payload worker never waits for it, and
+/// it never waits for a payload worker.
+struct DisplayWorker {
+    client: RelayClient,
+    slots: BTreeMap<String, DisplaySlot>,
+    initial_backoff: Duration,
+    max_backoff: Duration,
+}
+
+impl DisplayWorker {
+    fn run(mut self, receiver: &mpsc::Receiver<DisplayCommand>) {
+        loop {
+            // Apply every waiting command first, so an attempt always sends
+            // the latest state of its target.
+            loop {
+                match receiver.try_recv() {
+                    Ok(command) => self.apply(command),
+                    Err(mpsc::TryRecvError::Empty) => break,
+                    Err(mpsc::TryRecvError::Disconnected) => return,
+                }
+            }
+
+            let now = Instant::now();
+            let ready = self
+                .slots
+                .iter()
+                .find(|(_, slot)| slot.ready(now))
+                .map(|(event_id, _)| event_id.clone());
+            if let Some(event_id) = ready {
+                self.attempt(&event_id);
+                continue;
+            }
+
+            let next_retry = self
+                .slots
+                .values()
+                .filter(|slot| !slot.disabled && slot.pending.is_some())
+                .filter_map(|slot| slot.retry_at)
+                .min();
+            let command = match next_retry {
+                Some(at) => match receiver.recv_timeout(at.saturating_duration_since(now)) {
+                    Ok(command) => command,
+                    Err(mpsc::RecvTimeoutError::Timeout) => continue,
+                    Err(mpsc::RecvTimeoutError::Disconnected) => return,
+                },
+                None => match receiver.recv() {
+                    Ok(command) => command,
+                    Err(_) => return,
+                },
+            };
+            self.apply(command);
+        }
+    }
+
+    fn apply(&mut self, command: DisplayCommand) {
+        match command {
+            DisplayCommand::Publish(entry) => {
+                let Some(slot) = self.slots.get_mut(&entry.event_id) else {
+                    tracing::warn!(
+                        event_id = %entry.event_id,
+                        "no display path for this event; dropping the display state"
+                    );
+                    return;
+                };
+                if slot.disabled {
+                    tracing::debug!(
+                        target = %slot.target.name,
+                        "display path is off; dropping the display state"
+                    );
+                    return;
+                }
+                // Only the latest state waits. A retry time stays, so a new
+                // state does not make the worker send faster during an
+                // outage.
+                slot.pending = Some(entry.state);
+            }
+            DisplayCommand::Resend { event_id } => {
+                let Some(slot) = self.slots.get_mut(&event_id) else {
+                    return;
+                };
+                if slot.disabled {
+                    return;
+                }
+                tracing::info!(
+                    target = %slot.target.name,
+                    event_id = %slot.target.event_id,
+                    "relay lease was renewed by a republish; sending the display state again"
+                );
+                // The lease end removed every image of the event.
+                slot.uploaded.clear();
+                if slot.pending.is_none() {
+                    slot.pending = slot.last_sent.clone();
+                }
+            }
+        }
+    }
+
+    fn attempt(&mut self, event_id: &str) {
+        let initial_backoff = self.initial_backoff;
+        let max_backoff = self.max_backoff;
+        let Some(slot) = self.slots.get_mut(event_id) else {
+            return;
+        };
+        let Some(state) = slot.pending.clone() else {
+            return;
+        };
+        let target = slot.target.clone();
+        match send_display(&self.client, slot, &state) {
+            DisplayStep::Done => {
+                tracing::info!(
+                    target = %target.name,
+                    event_id = %target.event_id,
+                    "published display state"
+                );
+                slot.pending = None;
+                slot.last_sent = Some(state);
+                slot.retry_at = None;
+                slot.backoff = initial_backoff;
+            }
+            DisplayStep::Retry(reason) => {
+                let delay = jittered_delay(slot.backoff).min(max_backoff);
+                tracing::warn!(
+                    target = %target.name,
+                    event_id = %target.event_id,
+                    %reason,
+                    delay_ms = delay.as_millis(),
+                    "display request failed; backing off"
+                );
+                slot.retry_at = Some(Instant::now() + delay);
+                slot.backoff = next_backoff(slot.backoff, max_backoff);
+            }
+            DisplayStep::Disable(reason) => {
+                tracing::warn!(
+                    target = %target.name,
+                    event_id = %target.event_id,
+                    %reason,
+                    "the relay has no display path for this event; display path off until the next start"
+                );
+                slot.disabled = true;
+                slot.pending = None;
+                slot.retry_at = None;
+            }
+            DisplayStep::Drop(reason) => {
+                tracing::warn!(
+                    target = %target.name,
+                    event_id = %target.event_id,
+                    %reason,
+                    "relay refused the display state; dropping it"
+                );
+                slot.pending = None;
+                slot.retry_at = None;
+                slot.backoff = initial_backoff;
+            }
+        }
+    }
+}
+
+/// Uploads the image of `state` when needed, then publishes `state`.
+///
+/// After `409 artwork_missing`, it uploads the image again and publishes
+/// again, one time.
+fn send_display(client: &RelayClient, slot: &mut DisplaySlot, state: &DisplayState) -> DisplayStep {
+    let mut state = state.clone();
+    let mut missing_retried = false;
+    loop {
+        if let Some(image) = state.image().cloned()
+            && !slot.uploaded.contains(image.sha256())
+        {
+            match client.upload_artwork(&slot.target, &image) {
+                Ok(DisplayOutcome::Accepted) => {
+                    slot.uploaded.insert(image.sha256().to_owned());
+                }
+                Ok(DisplayOutcome::Retryable { reason }) => return DisplayStep::Retry(reason),
+                Ok(DisplayOutcome::Disabled { reason }) => return DisplayStep::Disable(reason),
+                Ok(DisplayOutcome::ArtworkMissing) => {
+                    return DisplayStep::Drop("unexpected artwork_missing on upload".to_owned());
+                }
+                Ok(DisplayOutcome::Refused { reason }) => {
+                    tracing::warn!(
+                        target = %slot.target.name,
+                        event_id = %slot.target.event_id,
+                        %reason,
+                        "relay refused the image; publishing the display state with artwork null"
+                    );
+                    state = state.without_image();
+                }
+                Err(error) => return DisplayStep::Drop(format!("{error:#}")),
+            }
+        }
+
+        match client.publish_display(&slot.target, &state) {
+            Ok(DisplayOutcome::Accepted) => return DisplayStep::Done,
+            Ok(DisplayOutcome::ArtworkMissing) => {
+                let Some(image) = state.image() else {
+                    return DisplayStep::Drop(
+                        "artwork_missing for a state with no image".to_owned(),
+                    );
+                };
+                if missing_retried {
+                    return DisplayStep::Drop("artwork_missing after a new upload".to_owned());
+                }
+                missing_retried = true;
+                slot.uploaded.remove(image.sha256());
+            }
+            Ok(DisplayOutcome::Retryable { reason }) => return DisplayStep::Retry(reason),
+            Ok(DisplayOutcome::Disabled { reason }) => return DisplayStep::Disable(reason),
+            Ok(DisplayOutcome::Refused { reason }) => return DisplayStep::Drop(reason),
+            Err(error) => return DisplayStep::Drop(format!("{error:#}")),
         }
     }
 }

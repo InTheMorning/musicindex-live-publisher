@@ -73,4 +73,6 @@ Record each result here. A check that did not run is an open gate.
 
 ## Review Result
 
-Status: Open.
+Status: Open. The mechanical checks pass after task 004, on 2026-10-04. Each
+task packet has its own §Review Result. Manual check 1 (artwork part) and
+manual check 3 are open gates.
