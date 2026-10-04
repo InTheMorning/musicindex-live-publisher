@@ -31,13 +31,22 @@ These facts constrain the design:
 - In the connector mode, the `Coordinator` links only a V4V row, because only
   that row can pay. A track that pays nobody has no link, so the producer
   cannot see its deck stop.
-- The producer deletes `now-playing.txt` at startup. The `butt` ChangeLog says
-  that an empty song file clears the song name, and that `butt` reads an
-  unreadable file again each 5 seconds. It does not say that `butt` clears the
-  title when the file is missing. So `butt` probably sends the last title
-  after a producer restart.
+- The producer deletes `now-playing.txt` at startup, and it leaves the file
+  with the last title when it stops. Tested on 2026-10-04 with `butt` 1.46.0:
+  an empty file made `butt` send an empty song name, and the next title line
+  came through at once. A deleted file gave no update, and `butt` kept the
+  last title. So after the producer stops, the stream shows a title that does
+  not play.
 - `%t`, the runtime directory of the user units, is a tmpfs. A file there uses
   memory.
+- A survey of the operator's library on 2026-10-04 found 29,171 audio files.
+  28,347 have embedded art. The median image is 60 KiB and 500 pixels.
+  - 514 images (1.8 %) are larger than 512 KiB.
+  - 709 images (2.5 %) have a side longer than 1,000 pixels. The longest side
+    is 4,000 pixels.
+  - Four images are 10,143 KiB at only 1,600 pixels. The largest image is
+    32,442 KiB.
+  - JPEG is 28,260 images, PNG 84 and GIF 3.
 
 ## Decision
 
@@ -74,7 +83,8 @@ The display state is `null` or one track:
 - **A track** is present while the display link is on a deck that plays, or,
   in the history-only mode, while a history row is present.
 - **`null`** applies at startup, while no display link exists, while the
-  linked deck does not play, and when the producer stops.
+  linked deck does not play, and when the producer stops. At a stop, the
+  producer writes the `null` state before it exits.
 
 The artist and the title come from the history row, the same source as
 `now-playing.txt`. The display state holds them as two raw fields. The format
@@ -110,9 +120,13 @@ The producer writes `DIR/display.json`:
 ```
 
 - `track` is `null` for the `null` display state.
-- `artwork` is `null` when the file has no usable image, when the file cannot
-  be read, or when its drive is not mounted. That is a normal state, not an
-  error.
+- `artwork` has one of three forms:
+  - `{"url": "https://…"}` for an image that the app loads from its own host.
+    See §The Artwork Source.
+  - `{"sha256": "…", "mime": "…"}` for an embedded image that the producer
+    writes into `DIR`.
+  - `null` when the track has no usable image, when the file cannot be read,
+    or when its drive is not mounted. That is a normal state, not an error.
 
 The image goes into `DIR/<sha256>.jpg` or `DIR/<sha256>.png`. The producer
 writes the image before `display.json`, and it writes each file to a temporary
@@ -120,19 +134,38 @@ file and renames it (AGENTS.md §6). It keeps the image of the present display
 state and the image of the state before it. It deletes every other image in
 `DIR`.
 
-### The Image
+### The Artwork Source
+
+- **A V4V track** is a track that the drop file rules count as V4V. If its
+  `TXXX:MusicIndex Image` tag holds an `http` or `https` URL of at most 2,048
+  characters, the artwork is that URL. It is the same value as `image` in the
+  drop file. The producer does not read, check or change the image at that
+  URL, so an animated image stays animated.
+- A V4V track with no such URL uses its embedded image, by the rules of
+  §The Embedded Image.
+- **Any other track** uses its embedded image, by the same rules.
+
+The survey found three embedded GIF images. One of them is in a V4V track of
+the operator, and it is 32,442 KiB. That track has an image URL, so it does
+not use the embedded image.
+
+### The Embedded Image
 
 - The producer takes the front cover. If the file has none, it takes the
   first picture.
 - It accepts JPEG or PNG only, by the first bytes of the data, not by the
   type text in the tag.
-- Before it decodes an image, it reads the size from the image header. It
-  rejects an image with a side longer than 4,000 pixels, or with more than
-  8 MiB of data.
-- The rule for large images comes from the survey in §Before Acceptance. Either
-  the producer reduces an image to 1,000 pixels on its longest side and writes
-  JPEG, or it rejects an image above the relay limit of 524,288 bytes. The
-  result is never larger than that limit.
+- It rejects image data larger than 64 MiB without a further read.
+- Before it decodes an image, it reads the pixel size from the image header.
+  It rejects an image whose header it cannot read, or whose longest side is
+  more than 4,000 pixels. The decoded image then uses at most 64 MB.
+- An image of 524,288 bytes or less, with no side longer than 1,000 pixels,
+  goes out unchanged.
+- The producer reduces every other image to 1,000 pixels on its longest side
+  and writes it as JPEG. If the result is larger than 524,288 bytes, the track
+  has no image.
+- The size is the cause of the reduction, not the pixel count alone. The
+  survey found images of 10 MB at 1,600 pixels.
 
 ### The Publisher
 
@@ -140,12 +173,13 @@ A target turns on the display path with `display_dir`. The value is the
 `DIR` of its producer.
 
 - The publisher watches `DIR`. When `display.json` changes, it reads the file
-  and the image bytes at once, because the producer can delete the image
+  and, for an embedded image, the image bytes at once, because the producer can delete the image
   before the stream delay ends.
 - It holds the display state and the bytes in the stream-delay schedule of the
   target. It releases them in order with the payloads of that target.
-- At the release, it uploads an image that the relay does not hold yet, and
-  then it publishes the display state (relay ADR 0003). It does not upload one
+- At the release, it uploads an embedded image that the relay does not hold
+  yet, and then it publishes the display state (relay ADR 0003). A URL needs
+  no upload. It does not upload one
   image two times in one process.
 - A display request never delays a payload or a keepalive. It waits behind
   them.
@@ -170,15 +204,16 @@ A target turns on the display path with `display_dir`. The value is the
   file with no text.
 - No image larger than the relay limit leaves the producer.
 - `DIR` holds at most two images.
+- The producer never fetches an image from a URL.
 - The display state and the payload of one target pass through the same
   stream delay.
 
 ## Before Acceptance
 
-1. **The survey.** The embedded art survey of the operator's library decides
-   between the reduction and the rejection in §The Image.
-2. **The `butt` check.** With the operator's `butt` and Icecast, record what a
-   client shows when the song file has no text, and when the file is deleted.
+1. **The survey.** Done on 2026-10-04. A rejection would remove the artwork
+   of about one track in 55, so the producer reduces large images. See
+   §Context and §The Embedded Image.
+2. **The `butt` check.** Done on 2026-10-04. See §Context.
 3. **Relay ADR 0003** is accepted.
 
 ## Verification After Implementation
@@ -193,8 +228,15 @@ Mechanical:
   and that startup does not delete the file.
 - A test that `display.json` is written after its image, and that a third
   image deletes the first.
-- A test for each image rule: no picture, a type that is not JPEG or PNG, a
-  side over 4,000 pixels, and the large image rule.
+- A test that a V4V track with an image URL gives `{"url": …}` and writes no
+  image file, that a V4V track with no URL uses its embedded image, and that a
+  URL that is not `http` or `https` is not used.
+- A test for each embedded image rule: no picture, a type that is not JPEG or PNG, a
+  header that cannot be read, a side over 4,000 pixels, an image that goes out
+  unchanged, and a reduction of a large image to 1,000 pixels and at most
+  524,288 bytes.
+- A test that the producer writes `now-playing.txt` with no text when it
+  stops.
 - A publisher test that a display entry waits for the stream delay, that it
   does not delay a payload, and that an image is uploaded once.
 
@@ -245,7 +287,8 @@ Positive:
 
 Negative and risks:
 
-- The producer gains image code, and maybe a reduction library.
+- The producer gains an image library for the header read and the
+  reduction. That is a new dependency, and `Cargo.lock` grows.
 - The connector mode keeps two links.
 - The display path needs a reserved event on the relay.
 
