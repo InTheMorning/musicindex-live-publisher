@@ -1,6 +1,6 @@
 # Tag Read Task 001: The Producer Reads The Image Tag
 
-Status: Ready - 2026-10-04.
+Status: Implemented - 2026-10-04.
 
 Every criterion is mechanical.
 
@@ -75,3 +75,21 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 - The publisher changes `image` in a way that this task does not expect. Check
   `src/livevalue.rs` and the golden tests.
+
+## Review Result
+
+Reviewed 2026-10-04. The present tests did not change. `Cargo.lock` did not
+change. The full gate passes.
+
+The review added one change. The tag read keeps an empty value as an empty
+string, for each field. Thus `render.rs` now changes an empty `Image` value to
+`null`, and a test covers it. The other fields did not change.
+
+Mutations:
+
+- With no vocabulary entry, the two tests for a tag value fail.
+- With no empty filter, the test for an empty tag fails.
+
+Note for a person who writes tags with `lofty`: `Tag::insert` drops a new
+`TXXX` frame that has no key for the tag type. The tests use
+`insert_unchecked` to prevent this.

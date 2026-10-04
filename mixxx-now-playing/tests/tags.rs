@@ -1,12 +1,42 @@
 use std::path::{Path, PathBuf};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
+use lofty::config::WriteOptions;
+use lofty::prelude::*;
+use lofty::tag::{ItemValue, TagItem};
 use mixxx_now_playing::tags::read_tags;
+use tempfile::TempDir;
 
 fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures")
         .join(name)
+}
+
+/// Copies the mp3 fixture into `dir` and writes a `TXXX:MusicIndex Image`
+/// frame with `value` onto the copy, returning the copy's path.
+///
+/// `insert_unchecked` is required here, not `insert_text`: the checked
+/// `Tag::insert` rejects an `ItemKey::Unknown` that has no mapping for the
+/// target `TagType`, so it silently drops a brand new MusicIndex frame.
+fn fixture_with_image_tag(dir: &Path, value: &str) -> Result<PathBuf> {
+    let copy = dir.join("musicindex-tagged-with-image.mp3");
+    std::fs::copy(fixture("musicindex-tagged.mp3"), &copy).context("copy mp3 fixture")?;
+
+    let mut tagged_file =
+        lofty::read_from_path(&copy).context("read mp3 fixture copy for tagging")?;
+    let tag = tagged_file
+        .primary_tag_mut()
+        .context("mp3 fixture copy must carry a primary tag")?;
+    tag.insert_unchecked(TagItem::new(
+        ItemKey::Unknown("MusicIndex Image".to_string()),
+        ItemValue::Text(value.to_string()),
+    ));
+    tagged_file
+        .save_to_path(&copy, WriteOptions::default())
+        .context("save mp3 fixture copy with image tag")?;
+
+    Ok(copy)
 }
 
 fn musicindex_value<'a>(
@@ -125,4 +155,28 @@ fn tags_file_lofty_cannot_open_returns_error() {
     let result = read_tags(Path::new("tests/fixtures/missing.mp3"));
 
     assert!(result.is_err());
+}
+
+#[test]
+fn tags_image_tag_reads_the_musicindex_image_value() -> Result<()> {
+    let temp = TempDir::new()?;
+    let tagged = fixture_with_image_tag(temp.path(), "https://example.com/cover.jpg")?;
+
+    let tags = read_tags(&tagged)?;
+
+    assert_eq!(
+        musicindex_value(&tags, "Image"),
+        Some("https://example.com/cover.jpg")
+    );
+
+    Ok(())
+}
+
+#[test]
+fn tags_image_tag_absent_gives_none() -> Result<()> {
+    let tags = read_tags(&fixture("musicindex-tagged.mp3"))?;
+
+    assert_eq!(musicindex_value(&tags, "Image"), None);
+
+    Ok(())
 }

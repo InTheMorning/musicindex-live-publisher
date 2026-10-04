@@ -27,6 +27,7 @@ pub const MUSICINDEX_VOCABULARY: &[MusicIndexFrame] = &[
     MusicIndexFrame::new("Barcode", "TXXX:BARCODE"),
     MusicIndexFrame::new("Release Type", "TXXX:MusicBrainz Album Type"),
     MusicIndexFrame::new("Disc Subtitle", "TSST"),
+    MusicIndexFrame::new("Image", "TXXX:MusicIndex Image"),
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

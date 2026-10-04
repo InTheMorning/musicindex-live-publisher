@@ -298,6 +298,5 @@ Fixes 002, 003, and 005 are applied. Still open at deployment time:
 
 - **Fix 004** — the publisher does not verify drop-directory ownership. The
   `0700` runtime directory in these units makes that unreachable in practice.
-- `image` is always null in the drop file. No artwork reaches listening apps.
 - Value routes fetched from the MusicIndex API are cached for the life of the
   process; restart the publisher to pick up changed splits.

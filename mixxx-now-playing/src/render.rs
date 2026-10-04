@@ -78,7 +78,11 @@ pub fn render_metadata_json_with_routes(
         artist: display.artist,
         title: display.title,
         duration_secs: display.tags.duration.map(|duration| duration.as_secs_f64()),
-        image: display.tags.musicindex_value("Image"),
+        // An empty tag is not an artwork URL. The drop file then holds `null`.
+        image: display
+            .tags
+            .musicindex_value("Image")
+            .filter(|image| !image.is_empty()),
         feed_guid: display.tags.musicindex_value("Feed Guid"),
         track_guid: display.tags.musicindex_value("Track Guid"),
         value_routes,
