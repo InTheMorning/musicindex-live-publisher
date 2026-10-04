@@ -1,6 +1,6 @@
 # Display Path Task 003: The Producer Display Output
 
-Status: Ready - 2026-10-04. Do after task 002.
+Status: Implemented - 2026-10-04.
 
 Every criterion is mechanical.
 
@@ -97,8 +97,9 @@ Each item is a test:
 - Each rule was broken on purpose, and a test failed. The report lists each
   mutation.
 
-Also: the full gate passes. `Cargo.lock` adds only the `image` crate and its
-dependencies.
+Also: the full gate passes. `Cargo.lock` adds only the `image` crate, the
+`sha2` crate and their dependencies. The operator approved `sha2` on
+2026-10-04. The producer uses it for the SHA-256 of the image file name.
 
 ## Test Commands
 
@@ -125,3 +126,28 @@ limited to its jpeg and png features. Do not touch the payment path. Write the
 tests in §Acceptance Criteria, with a mutation list. Run the test commands.
 Report: 1. files changed 2. tests run 3. behavior changed 4. deviations
 5. unresolved concerns 6. mutations.
+
+## Review Result
+
+Reviewed 2026-10-04. The present tests on master did not change. The full
+gate passes, and the 27 mapping tests pass. `Cargo.lock` adds only `image`,
+`sha2` and their dependencies.
+
+The first version had a separate picture read. A probe on the 71 V4V files
+showed that one read is sufficient, so the rework removed that read. The
+rework also replaced a SHA-256 written by hand with the crate `sha2`.
+
+The review accepts these deviations:
+
+- `ShutdownCleanup` is the only code that writes the display `null` at exit.
+  A second write in `run()` had no test that could fail.
+- The image URL is not trimmed. The display URL is the same value as `image`
+  in the drop file. An empty value gives no URL, and the track then uses its
+  embedded image.
+
+Each display rule was broken on purpose, and a test failed each time. A test
+reads a real file with the `TXXX:MusicIndex Image` tag and gets the URL.
+
+Known limit: `lofty` 0.22 does not read a picture frame larger than 16 MiB.
+Such a track gets no artwork, and its tag read passes. The 64 MiB check stays,
+as the packet requires.

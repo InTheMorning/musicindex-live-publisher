@@ -7,6 +7,9 @@ use mixxx_now_playing::connector::{
     Action, Coordinator, DeviceEvent, DeviceLocation, DisplayState, DisplayTrack, FADE_NOW,
     Outcome, Row, STATE_REQUEST, open_device, pump, send_command, spawn_reader,
 };
+use mixxx_now_playing::display::{
+    Artwork, DisplayOutput, ShownTrack, file_artwork, v4v_artwork, write_null_at_exit,
+};
 use mixxx_now_playing::expiry::Expiry;
 use mixxx_now_playing::history::{HistoryWatcher, TrackRow};
 use mixxx_now_playing::lock::ProducerLock;
@@ -19,7 +22,7 @@ use mixxx_now_playing::render::{
     render_now_playing_line,
 };
 use mixxx_now_playing::sink::{OutputFile, Presence, ensure_empty_file, remove_file_if_exists};
-use mixxx_now_playing::tags::read_tags;
+use mixxx_now_playing::tags::{read_tags, read_tags_with_picture};
 use signal_hook::consts::signal::{SIGINT, SIGTERM};
 use signal_hook::iterator::Signals;
 use std::ffi::OsString;
@@ -53,6 +56,9 @@ fn main() -> Result<()> {
         println!("V4V root: {}", config.v4v_root.display());
         println!("MusicIndex endpoint: {}", config.musicindex_endpoint);
         println!("MusicIndex API enabled: {}", !cli.no_api);
+        if let Some(display_dir) = config.display_dir.as_deref() {
+            println!("Display directory: {}", display_dir.display());
+        }
     }
 
     run(&cli, &config)?;
@@ -167,7 +173,11 @@ fn run(cli: &cli::Cli, config: &config::ResolvedConfig) -> Result<()> {
 
     let mut runtime = Runtime::new(cli, config, !cli.no_connector)?;
 
-    let _cleanup = ShutdownCleanup::new(config.id3_file.clone(), config.txt_file.clone());
+    let _cleanup = ShutdownCleanup::new(
+        config.id3_file.clone(),
+        config.txt_file.clone(),
+        config.display_dir.clone(),
+    );
     let (terminated, wakeup, wake_sender) = install_signal_flags()?;
     let connector_events = runtime.start_connector(&wake_sender);
     drop(wake_sender);
@@ -189,7 +199,21 @@ fn run(cli: &cli::Cli, config: &config::ResolvedConfig) -> Result<()> {
     // `ShutdownCleanup` covers an early return above it.
     runtime.now_playing.set(Presence::Present(String::new()))?;
     runtime.metadata.set(Presence::Absent)?;
+    // ADR 0008 §The Display State: `ShutdownCleanup` writes the display state
+    // `null` on every exit path.
     Ok(())
+}
+
+/// Writes the display state. A display failure gives a warning. It never
+/// stops the producer, so the payment path does not change.
+fn write_display(output: &mut DisplayOutput, track: Option<ShownTrack<'_>>) {
+    if let Err(error) = output.write(track) {
+        tracing::warn!(
+            dir = %output.dir().display(),
+            error = %format!("{error:#}"),
+            "display write failed"
+        );
+    }
 }
 
 /// Returns the drop directory, the parent directory of the metadata output.
@@ -255,6 +279,21 @@ struct CurrentTrack {
     routes_source: ValueRoutesSource,
 }
 
+/// The artwork input of a history row for the display output.
+#[derive(Debug)]
+enum ArtworkInput {
+    /// A row that is not V4V. The producer reads the picture of its file.
+    File,
+    /// A V4V row with its `MusicIndex Image` value and its picture data,
+    /// from the one tag read of the row.
+    V4v {
+        image_tag: Option<String>,
+        picture: Option<Vec<u8>>,
+    },
+    /// A file that the producer could not read.
+    Unreadable,
+}
+
 #[derive(Debug)]
 struct Runtime<'a> {
     cli: &'a cli::Cli,
@@ -266,6 +305,13 @@ struct Runtime<'a> {
     resolver: ValueRouteResolver,
     coordinator: Coordinator,
     connector_writer: Option<File>,
+    /// The display output. `None` when `--display-dir` is not set.
+    display: Option<DisplayOutput>,
+    /// The artwork of the latest history row. The display link applies
+    /// only to that row, so a resume or a relink uses it with no new read.
+    row_artwork: Option<Artwork>,
+    /// True after a new history row, until the display output gets it.
+    row_artwork_changed: bool,
 }
 
 impl<'a> Runtime<'a> {
@@ -286,6 +332,19 @@ impl<'a> Runtime<'a> {
             cli.verbose,
         )?;
         let watcher = HistoryWatcher::open(&config.db_file)?;
+        // ADR 0008 §The Display State: the display state is `null` at
+        // startup.
+        let display = config.display_dir.as_ref().map(|dir| {
+            let mut display = DisplayOutput::new(dir);
+            if let Err(error) = display.start() {
+                tracing::warn!(
+                    dir = %dir.display(),
+                    error = %format!("{error:#}"),
+                    "display output did not start"
+                );
+            }
+            display
+        });
 
         Ok(Self {
             cli,
@@ -297,6 +356,9 @@ impl<'a> Runtime<'a> {
             resolver,
             coordinator: Coordinator::new(connector, Instant::now()),
             connector_writer: None,
+            display,
+            row_artwork: None,
+            row_artwork_changed: false,
         })
     }
 
@@ -384,16 +446,56 @@ impl<'a> Runtime<'a> {
     ///
     /// Returns an error when the file write fails.
     fn apply_display_change(&mut self) -> Result<()> {
-        let Some(state) = self.coordinator.take_display_change() else {
-            return Ok(());
+        let change = self.coordinator.take_display_change();
+        if let Some(state) = change.as_ref() {
+            let line = match state {
+                DisplayState::Track { artist, title, .. } => {
+                    render_now_playing_line(artist, title, self.cli.strip_hyphens)
+                }
+                DisplayState::Null => String::new(),
+            };
+            self.now_playing.set(Presence::Present(line))?;
+        }
+        let artwork_changed = std::mem::take(&mut self.row_artwork_changed);
+        if change.is_some() || artwork_changed {
+            self.apply_display_output();
+        }
+        Ok(())
+    }
+
+    /// Writes `display.json` from the display state and the artwork of the
+    /// latest row (ADR 0008 §The Producer Output).
+    fn apply_display_output(&mut self) {
+        let Some(display) = self.display.as_mut() else {
+            return;
         };
-        let line = match state {
+        match self.coordinator.display_state() {
             DisplayState::Track { artist, title, .. } => {
-                render_now_playing_line(&artist, &title, self.cli.strip_hyphens)
+                let track = ShownTrack {
+                    artist: &artist,
+                    title: &title,
+                    artwork: self.row_artwork.as_ref(),
+                };
+                write_display(display, Some(track));
             }
-            DisplayState::Null => String::new(),
+            DisplayState::Null => write_display(display, None),
+        }
+    }
+
+    /// Sets the artwork of a new history row, only when the display output
+    /// is on. Without it, the producer reads no more file data.
+    fn set_row_artwork(&mut self, path: &Path, input: ArtworkInput) {
+        if self.display.is_none() {
+            return;
+        }
+        self.row_artwork = match input {
+            ArtworkInput::File => file_artwork(path),
+            ArtworkInput::V4v { image_tag, picture } => {
+                v4v_artwork(image_tag.as_deref(), picture.as_deref())
+            }
+            ArtworkInput::Unreadable => None,
         };
-        self.now_playing.set(Presence::Present(line))
+        self.row_artwork_changed = true;
     }
 
     /// Gives a history row to the `Coordinator`, then does its actions and
@@ -402,13 +504,17 @@ impl<'a> Runtime<'a> {
     /// # Errors
     ///
     /// Returns an error when a file write fails.
-    fn apply_row(&mut self, row: Row, track: &TrackRow) -> Result<()> {
+    ///
+    /// The artwork work comes after the payment actions, so an image
+    /// reduction does not delay a drop file write.
+    fn apply_row(&mut self, row: Row, track: &TrackRow, artwork: ArtworkInput) -> Result<()> {
         let display = DisplayTrack {
             artist: track.artist.clone(),
             title: track.title.clone(),
         };
         let actions = self.coordinator.history_row(row, display);
         self.perform(&actions)?;
+        self.set_row_artwork(&track.path, artwork);
         self.apply_display_change()
     }
 
@@ -449,11 +555,18 @@ impl<'a> Runtime<'a> {
     fn process_track(&mut self, row: &TrackRow, now: Instant) -> Result<()> {
         if !is_v4v_track(&row.path, &self.config.v4v_root) {
             self.state.clear();
-            return self.apply_row(Row::Other, row);
+            return self.apply_row(Row::Other, row, ArtworkInput::File);
         }
 
-        let tags = match read_tags(&row.path) {
-            Ok(tags) => tags,
+        // With the display output on, the one tag read of the row also
+        // gives the picture. Both functions give the same tags.
+        let read = if self.display.is_some() {
+            read_tags_with_picture(&row.path)
+        } else {
+            read_tags(&row.path).map(|tags| (tags, None))
+        };
+        let (tags, picture) = match read {
+            Ok(read) => read,
             Err(error) => {
                 if self.cli.verbose {
                     eprintln!(
@@ -462,8 +575,12 @@ impl<'a> Runtime<'a> {
                     );
                 }
                 self.state.clear();
-                return self.apply_row(Row::Other, row);
+                return self.apply_row(Row::Other, row, ArtworkInput::Unreadable);
             }
+        };
+        let artwork = ArtworkInput::V4v {
+            image_tag: tags.musicindex_value("Image").map(str::to_owned),
+            picture,
         };
         // The expiry keeps its source in both modes. The `Coordinator`
         // enforces it only in the history-only mode.
@@ -490,6 +607,7 @@ impl<'a> Runtime<'a> {
                 expiry,
             },
             row,
+            artwork,
         )?;
         if let Some(current) = self.state.current.as_ref() {
             match self.resolver.request(row.hist_id, &current.tags) {
@@ -684,17 +802,22 @@ fn sleep_interruptibly(duration: Duration, wakeup: &mpsc::Receiver<()>) {
 /// `drop` removes the metadata file. That behavior does not change. `drop`
 /// also writes the song file with no text, unless the file already holds no
 /// text (AGENTS.md §6). See ADR 0008 §The Song File For `butt`.
+///
+/// With `--display-dir`, `drop` also writes the display state `null`,
+/// unless `display.json` already holds it (ADR 0008 §The Display State).
 #[derive(Debug)]
 struct ShutdownCleanup {
     metadata_path: PathBuf,
     song_path: PathBuf,
+    display_dir: Option<PathBuf>,
 }
 
 impl ShutdownCleanup {
-    fn new(metadata_path: PathBuf, song_path: PathBuf) -> Self {
+    fn new(metadata_path: PathBuf, song_path: PathBuf, display_dir: Option<PathBuf>) -> Self {
         Self {
             metadata_path,
             song_path,
+            display_dir,
         }
     }
 }
@@ -703,5 +826,38 @@ impl Drop for ShutdownCleanup {
     fn drop(&mut self) {
         let _ = remove_file_if_exists(&self.metadata_path);
         let _ = ensure_empty_file(&self.song_path);
+        if let Some(dir) = self.display_dir.as_deref() {
+            let _ = write_null_at_exit(dir);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shutdown_cleanup_writes_null_display() -> Result<()> {
+        let temp = tempfile::TempDir::new()?;
+        let display_dir = temp.path().join("display");
+        fs::create_dir_all(&display_dir)?;
+        fs::write(
+            display_dir.join("display.json"),
+            r#"{"schema": "musicindex.display/1", "track": {"artist": "A", "title": "T", "artwork": null}}"#,
+        )?;
+
+        drop(ShutdownCleanup::new(
+            temp.path().join("metadata.txt"),
+            temp.path().join("now-playing.txt"),
+            Some(display_dir.clone()),
+        ));
+
+        let display: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(display_dir.join("display.json"))?)?;
+        assert_eq!(
+            display,
+            serde_json::json!({"schema": "musicindex.display/1", "track": null})
+        );
+        Ok(())
     }
 }

@@ -35,6 +35,8 @@ pub(crate) struct Cli {
     pub(crate) verbose: bool,
     pub(crate) connector_card: String,
     pub(crate) no_connector: bool,
+    /// `--display-dir DIR` turns on the display output (ADR 0008).
+    pub(crate) display_dir: Option<PathBuf>,
 }
 
 impl Default for Cli {
@@ -57,6 +59,7 @@ impl Default for Cli {
             verbose: false,
             connector_card: "V4V".to_owned(),
             no_connector: false,
+            display_dir: None,
         }
     }
 }
@@ -168,6 +171,9 @@ impl Cli {
                     cli.connector_card = next_string(&mut args, "--connector-card")?;
                 }
                 Some("--no-connector") => cli.no_connector = true,
+                Some("--display-dir") => {
+                    cli.display_dir = Some(next_path(&mut args, "--display-dir")?);
+                }
                 Some(flag) if flag.starts_with("--") => return Err(anyhow!("unknown flag {flag}")),
                 Some(value) => return Err(anyhow!("unexpected argument {value}")),
                 None => {
@@ -344,6 +350,17 @@ mod tests {
         for args in cases {
             assert!(CommandCli::parse(args).is_err(), "{args:?} must fail");
         }
+    }
+
+    #[test]
+    fn display_dir_is_off_by_default_and_takes_a_path() -> Result<()> {
+        assert_eq!(Cli::parse(["mixxx-now-playing"])?.display_dir, None);
+        let cli = Cli::parse(["mixxx-now-playing", "--display-dir", "/run/display"])?;
+
+        assert_eq!(cli.display_dir, Some(PathBuf::from("/run/display")));
+        assert!(Cli::parse(["mixxx-now-playing", "--display-dir"]).is_err());
+        assert!(Cli::parse(["mixxx-now-playing", "--display-dir", ""]).is_err());
+        Ok(())
     }
 
     #[test]

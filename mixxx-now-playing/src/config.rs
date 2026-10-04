@@ -6,6 +6,8 @@ use anyhow::{Context, Result, anyhow};
 use directories::{BaseDirs, ProjectDirs};
 use serde::Deserialize;
 
+use mixxx_now_playing::display::same_directory;
+
 use crate::cli::Cli;
 
 const DEFAULT_BASE_URL: &str = "https://api.musicindex.org";
@@ -19,6 +21,9 @@ pub(crate) struct ResolvedConfig {
     pub(crate) id3_file: PathBuf,
     pub(crate) v4v_root: PathBuf,
     pub(crate) musicindex_endpoint: String,
+    /// The display directory of ADR 0008 §The Producer Output. `None` turns
+    /// the display output off.
+    pub(crate) display_dir: Option<PathBuf>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -69,6 +74,10 @@ impl ResolvedConfig {
             .map(normalize_musicindex_endpoint)
             .transpose()?
             .unwrap_or_else(|| DEFAULT_BASE_URL.to_string());
+        let display_dir = resolve_path_override(&cli.display_dir, &env.home_dir);
+        if let Some(display_dir) = display_dir.as_deref() {
+            check_display_dir(display_dir, &id3_file)?;
+        }
 
         Ok(Self {
             db_file,
@@ -76,8 +85,30 @@ impl ResolvedConfig {
             id3_file,
             v4v_root,
             musicindex_endpoint,
+            display_dir,
         })
     }
+}
+
+/// Refuses a display directory that is the drop directory. The publisher
+/// reads each JSON file in the drop directory as a drop file.
+///
+/// # Errors
+///
+/// Returns an error that names ADR 0008 when the two directories are the
+/// same.
+fn check_display_dir(display_dir: &Path, id3_file: &Path) -> Result<()> {
+    let drop_dir = match id3_file.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => parent,
+        _ => Path::new("."),
+    };
+    if same_directory(display_dir, drop_dir) {
+        return Err(anyhow!(
+            "--display-dir {} is the drop directory. ADR 0008 §The Producer Output: use a different directory, because the publisher reads each JSON file in the drop directory as a drop file",
+            display_dir.display()
+        ));
+    }
+    Ok(())
 }
 
 fn default_output_dir(env: &ResolutionEnv) -> PathBuf {
@@ -350,6 +381,40 @@ mod tests {
 
         assert_eq!(resolved.txt_file, output_dir.join(DEFAULT_TXT_FILE_NAME));
         assert_eq!(resolved.id3_file, output_dir.join(DEFAULT_ID3_FILE_NAME));
+        Ok(())
+    }
+
+    #[test]
+    fn config_refuses_display_dir_equal_to_drop_dir() -> Result<()> {
+        let temp = TempDir::new()?;
+        let env = test_env(&temp);
+        let drop_dir = temp.path().join("drop");
+        let cli = Cli {
+            id3_file: Some(drop_dir.join("metadata.txt")),
+            display_dir: Some(drop_dir.join(".").join("sub").join("..")),
+            ..Cli::default()
+        };
+
+        let error = ResolvedConfig::resolve_with_env(&cli, &env)
+            .expect_err("a display directory equal to the drop directory must fail");
+
+        assert!(error.to_string().contains("ADR 0008"), "{error}");
+        Ok(())
+    }
+
+    #[test]
+    fn config_accepts_a_separate_display_dir() -> Result<()> {
+        let temp = TempDir::new()?;
+        let env = test_env(&temp);
+        let cli = Cli {
+            id3_file: Some(temp.path().join("drop").join("metadata.txt")),
+            display_dir: Some(temp.path().join("display")),
+            ..Cli::default()
+        };
+
+        let resolved = ResolvedConfig::resolve_with_env(&cli, &env)?;
+
+        assert_eq!(resolved.display_dir, Some(temp.path().join("display")));
         Ok(())
     }
 

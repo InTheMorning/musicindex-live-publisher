@@ -2,7 +2,8 @@ use std::path::Path;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use lofty::picture::Picture;
+use lofty::file::TaggedFile;
+use lofty::picture::{Picture, PictureType};
 use lofty::prelude::*;
 use lofty::tag::{ItemKey, ItemValue, Tag};
 use serde::Serialize;
@@ -92,6 +93,56 @@ impl TrackTags {
 pub fn read_tags(path: &Path) -> Result<TrackTags> {
     let tagged_file = lofty::read_from_path(path)
         .with_context(|| format!("read tags from {}", path.display()))?;
+    Ok(track_tags(&tagged_file))
+}
+
+/// Reads the tags and the display picture of `path` in one read of the
+/// file.
+///
+/// The tags are the same as the tags of [`read_tags`]. The picture is the
+/// front cover, else the first picture (ADR 0008 §The Embedded Image).
+///
+/// # Errors
+///
+/// Returns an error when `lofty` cannot read the file.
+pub fn read_tags_with_picture(path: &Path) -> Result<(TrackTags, Option<Vec<u8>>)> {
+    let mut tagged_file = lofty::read_from_path(path)
+        .with_context(|| format!("read tags from {}", path.display()))?;
+    let tags = track_tags(&tagged_file);
+    let picture = take_picture(&mut tagged_file);
+    Ok((tags, picture))
+}
+
+/// Selects the display picture: the front cover, else the first picture
+/// (ADR 0008 §The Embedded Image). The tags are examined in their order.
+fn select_picture<'a, I>(tags: I) -> Option<(usize, usize)>
+where
+    I: IntoIterator<Item = &'a [Picture]>,
+    I::IntoIter: Clone,
+{
+    let tags = tags.into_iter();
+    let front = tags.clone().enumerate().find_map(|(tag_index, pictures)| {
+        pictures
+            .iter()
+            .position(|picture| picture.pic_type() == PictureType::CoverFront)
+            .map(|index| (tag_index, index))
+    });
+    front.or_else(|| {
+        tags.enumerate()
+            .find_map(|(tag_index, pictures)| (!pictures.is_empty()).then_some((tag_index, 0)))
+    })
+}
+
+/// Removes the selected picture from `tagged_file` and gives its data. The
+/// removal prevents a copy of the data.
+fn take_picture(tagged_file: &mut TaggedFile) -> Option<Vec<u8>> {
+    let (tag_index, index) = select_picture(tagged_file.tags().iter().map(|tag| tag.pictures()))?;
+    let tag_type = tagged_file.tags().get(tag_index)?.tag_type();
+    let tag = tagged_file.tag_mut(tag_type)?;
+    (index < tag.pictures().len()).then(|| tag.remove_picture(index).into_data())
+}
+
+fn track_tags(tagged_file: &TaggedFile) -> TrackTags {
     let duration = nonzero_duration(tagged_file.properties().duration());
     let mut track_tags = TrackTags {
         musicindex: Vec::new(),
@@ -104,7 +155,7 @@ pub fn read_tags(path: &Path) -> Result<TrackTags> {
         collect_pictures(tag, &mut track_tags);
     }
 
-    Ok(track_tags)
+    track_tags
 }
 
 fn nonzero_duration(duration: Duration) -> Option<Duration> {

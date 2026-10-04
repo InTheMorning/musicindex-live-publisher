@@ -218,3 +218,259 @@ fn wait_until(timeout: Duration, predicate: impl Fn() -> bool) -> Result<()> {
     }
     Err(anyhow!("timed out waiting for condition"))
 }
+
+fn run_once_with_display(
+    db_path: &Path,
+    txt_file: &Path,
+    metadata_file: &Path,
+    v4v_root: &Path,
+    display_dir: &Path,
+) -> Result<std::process::Output> {
+    Ok(Command::new(binary())
+        .arg("--once")
+        .arg("--db-file")
+        .arg(db_path)
+        .arg("--txt-file")
+        .arg(txt_file)
+        .arg("--id3-file")
+        .arg(metadata_file)
+        .arg("--v4v-root")
+        .arg(v4v_root)
+        .arg("--display-dir")
+        .arg(display_dir)
+        .output()?)
+}
+
+fn read_display(display_dir: &Path) -> Result<serde_json::Value> {
+    Ok(serde_json::from_str(&fs::read_to_string(
+        display_dir.join("display.json"),
+    )?)?)
+}
+
+#[test]
+fn lifecycle_display_dir_equal_to_drop_dir_fails_at_startup() -> Result<()> {
+    let temp = TempDir::new()?;
+    let v4v_root = temp.path().join("V4Vmusic");
+    let drop_dir = temp.path().join("drop");
+    fs::create_dir_all(&v4v_root)?;
+    fs::create_dir_all(&drop_dir)?;
+    let db = SyntheticMixxxDb::new()?;
+
+    let output = run_once_with_display(
+        db.path(),
+        &temp.path().join("now-playing.txt"),
+        &drop_dir.join("metadata.txt"),
+        &v4v_root,
+        &drop_dir,
+    )?;
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("ADR 0008"), "{stderr}");
+    assert!(!drop_dir.join("display.json").exists());
+    Ok(())
+}
+
+#[test]
+fn lifecycle_display_startup_writes_null_track() -> Result<()> {
+    let temp = TempDir::new()?;
+    let v4v_root = temp.path().join("V4Vmusic");
+    let display_dir = temp.path().join("display");
+    fs::create_dir_all(&v4v_root)?;
+    fs::create_dir_all(&display_dir)?;
+    fs::write(
+        display_dir.join("display.json"),
+        r#"{"schema": "musicindex.display/1", "track": {"artist": "Old", "title": "Old", "artwork": null}}"#,
+    )?;
+    let db = SyntheticMixxxDb::new()?;
+
+    let output = run_once_with_display(
+        db.path(),
+        &temp.path().join("now-playing.txt"),
+        &temp.path().join("metadata.txt"),
+        &v4v_root,
+        &display_dir,
+    )?;
+
+    assert!(output.status.success());
+    assert_eq!(
+        read_display(&display_dir)?,
+        serde_json::json!({"schema": "musicindex.display/1", "track": null})
+    );
+    Ok(())
+}
+
+#[test]
+fn lifecycle_display_writes_the_track_and_its_embedded_image() -> Result<()> {
+    let temp = TempDir::new()?;
+    let v4v_root = temp.path().join("V4Vmusic");
+    let other_root = temp.path().join("OtherMusic");
+    let display_dir = temp.path().join("display");
+    fs::create_dir_all(&v4v_root)?;
+    fs::create_dir_all(&other_root)?;
+    let v4v_track = v4v_root.join("track.mp3");
+    let plain_track = other_root.join("plain.flac");
+    fs::copy(fixture("musicindex-tagged.mp3"), &v4v_track)?;
+    fs::copy(fixture("untagged.flac"), &plain_track)?;
+    let txt_file = temp.path().join("now-playing.txt");
+    let metadata_file = temp.path().join("metadata.txt");
+    let mut db = SyntheticMixxxDb::new()?;
+
+    // A V4V track with no image URL uses its embedded image.
+    db.append_history_row_with_metadata(Some("Test-Artist"), Some("Test-Title"), &v4v_track)?;
+    let output = run_once_with_display(
+        db.path(),
+        &txt_file,
+        &metadata_file,
+        &v4v_root,
+        &display_dir,
+    )?;
+    assert!(output.status.success());
+    let display = read_display(&display_dir)?;
+    assert_eq!(display["schema"], "musicindex.display/1");
+    // The display state holds the raw fields. The hyphen removal of the
+    // song file does not apply.
+    assert_eq!(display["track"]["artist"], "Test-Artist");
+    assert_eq!(display["track"]["title"], "Test-Title");
+    assert_eq!(display["track"]["artwork"]["mime"], "image/jpeg");
+    let sha256 = display["track"]["artwork"]["sha256"]
+        .as_str()
+        .ok_or_else(|| anyhow!("artwork has no sha256"))?;
+    let image = fs::read(display_dir.join(format!("{sha256}.jpg")))?;
+    assert_eq!(mixxx_now_playing::display::sha256_hex(&image), sha256);
+    assert!(metadata_file.exists());
+
+    // A track that is not V4V uses its embedded image too.
+    let other_with_picture = other_root.join("other.mp3");
+    fs::copy(fixture("musicindex-tagged.mp3"), &other_with_picture)?;
+    db.append_history_row_with_metadata(Some("Other"), Some("Song"), &other_with_picture)?;
+    let output = run_once_with_display(
+        db.path(),
+        &txt_file,
+        &metadata_file,
+        &v4v_root,
+        &display_dir,
+    )?;
+    assert!(output.status.success());
+    let display = read_display(&display_dir)?;
+    assert_eq!(display["track"]["artist"], "Other");
+    assert_eq!(display["track"]["artwork"]["sha256"], sha256);
+    assert!(!metadata_file.exists());
+
+    // A track with no picture gives the `null` artwork.
+    db.append_history_row_with_metadata(Some("Plain"), Some("Track"), &plain_track)?;
+    let output = run_once_with_display(
+        db.path(),
+        &txt_file,
+        &metadata_file,
+        &v4v_root,
+        &display_dir,
+    )?;
+    assert!(output.status.success());
+    let display = read_display(&display_dir)?;
+    assert_eq!(display["track"]["artist"], "Plain");
+    assert_eq!(display["track"]["artwork"], serde_json::Value::Null);
+    Ok(())
+}
+
+#[test]
+fn lifecycle_sigterm_writes_null_display_before_exit() -> Result<()> {
+    let temp = TempDir::new()?;
+    let v4v_root = temp.path().join("V4Vmusic");
+    let display_dir = temp.path().join("display");
+    fs::create_dir_all(&v4v_root)?;
+    let track = v4v_root.join("track.mp3");
+    fs::copy(fixture("musicindex-tagged.mp3"), &track)?;
+    let txt_file = temp.path().join("now-playing.txt");
+    let metadata_file = temp.path().join("metadata.txt");
+    let mut db = SyntheticMixxxDb::new()?;
+    db.append_history_row_with_metadata(Some("Signal Artist"), Some("Signal Title"), &track)?;
+
+    let mut fake_mixxx = spawn_fake_mixxx(&temp)?;
+    let mut child = Command::new(binary())
+        .arg("--db-file")
+        .arg(db.path())
+        .arg("--txt-file")
+        .arg(&txt_file)
+        .arg("--id3-file")
+        .arg(&metadata_file)
+        .arg("--v4v-root")
+        .arg(&v4v_root)
+        .arg("--display-dir")
+        .arg(&display_dir)
+        .arg("--poll-secs")
+        .arg("0.05")
+        .arg("--no-connector")
+        .spawn()?;
+
+    let shows_track = || {
+        read_display(&display_dir)
+            .map(|display| display["track"]["artist"] == "Signal Artist")
+            .unwrap_or(false)
+    };
+    let waited = wait_until(Duration::from_secs(5), shows_track);
+    let status = Command::new("kill")
+        .arg("-TERM")
+        .arg(child.id().to_string())
+        .status()?;
+    let exit = child.wait()?;
+    let _ = fake_mixxx.kill();
+    let _ = fake_mixxx.wait();
+    waited?;
+
+    assert!(status.success());
+    assert!(exit.success());
+    assert_eq!(
+        read_display(&display_dir)?,
+        serde_json::json!({"schema": "musicindex.display/1", "track": null})
+    );
+    Ok(())
+}
+
+#[test]
+fn lifecycle_display_v4v_track_with_image_tag_gives_the_url() -> Result<()> {
+    use lofty::config::WriteOptions;
+    use lofty::prelude::*;
+    use lofty::tag::{ItemKey, ItemValue, TagItem};
+
+    let temp = TempDir::new()?;
+    let v4v_root = temp.path().join("V4Vmusic");
+    let display_dir = temp.path().join("display");
+    fs::create_dir_all(&v4v_root)?;
+    let track = v4v_root.join("track.mp3");
+    fs::copy(fixture("musicindex-tagged.mp3"), &track)?;
+    // `Tag::insert` drops a new `TXXX` frame that has no key for the tag
+    // type, so the test uses `insert_unchecked`.
+    let mut tagged = lofty::read_from_path(&track)?;
+    tagged
+        .primary_tag_mut()
+        .ok_or_else(|| anyhow!("the MP3 fixture has a primary tag"))?
+        .insert_unchecked(TagItem::new(
+            ItemKey::Unknown("MusicIndex Image".to_owned()),
+            ItemValue::Text("https://example.test/cover.gif".to_owned()),
+        ));
+    tagged.save_to_path(&track, WriteOptions::default())?;
+    let mut db = SyntheticMixxxDb::new()?;
+    db.append_history_row_with_metadata(Some("Url Artist"), Some("Url Title"), &track)?;
+
+    let output = run_once_with_display(
+        db.path(),
+        &temp.path().join("now-playing.txt"),
+        &temp.path().join("metadata.txt"),
+        &v4v_root,
+        &display_dir,
+    )?;
+
+    assert!(output.status.success());
+    let display = read_display(&display_dir)?;
+    assert_eq!(display["track"]["artist"], "Url Artist");
+    assert_eq!(
+        display["track"]["artwork"],
+        serde_json::json!({"url": "https://example.test/cover.gif"})
+    );
+    let names: Vec<String> = fs::read_dir(&display_dir)?
+        .filter_map(|entry| entry.ok()?.file_name().into_string().ok())
+        .collect();
+    assert_eq!(names, vec!["display.json".to_owned()]);
+    Ok(())
+}
