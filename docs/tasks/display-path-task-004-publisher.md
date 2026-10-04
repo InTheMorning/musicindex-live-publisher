@@ -69,6 +69,9 @@ delays a payload or a keepalive.
     fatal.
 - When the producer becomes missing, the publisher schedules the display state
   `null` for each display target, next to the dead block.
+- The display publish body holds only the key `track`. Do not send the
+  `schema` key of `display.json`. The relay refuses an unknown key with
+  `400 invalid_display` (relay display state task 001). Added 2026-10-04.
 - A display request uses the broadcaster token of the target. The token never
   appears in a log line, an error or a `Debug` output (AGENTS.md §5).
 - The configuration runbook describes `display_dir`, restates ADR 0008 and
