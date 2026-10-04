@@ -18,7 +18,7 @@ use mixxx_now_playing::render::{
     TrackDisplay, render_metadata_json_with_routes, render_metadata_text_with_routes,
     render_now_playing_line,
 };
-use mixxx_now_playing::sink::{OutputFile, Presence, remove_file_if_exists};
+use mixxx_now_playing::sink::{OutputFile, Presence, ensure_empty_file, remove_file_if_exists};
 use mixxx_now_playing::tags::read_tags;
 use signal_hook::consts::signal::{SIGINT, SIGTERM};
 use signal_hook::iterator::Signals;
@@ -167,7 +167,7 @@ fn run(cli: &cli::Cli, config: &config::ResolvedConfig) -> Result<()> {
 
     let mut runtime = Runtime::new(cli, config, !cli.no_connector)?;
 
-    let _cleanup = MetadataCleanup::new(config.id3_file.clone());
+    let _cleanup = ShutdownCleanup::new(config.id3_file.clone(), config.txt_file.clone());
     let (terminated, wakeup, wake_sender) = install_signal_flags()?;
     let connector_events = runtime.start_connector(&wake_sender);
     drop(wake_sender);
@@ -184,6 +184,10 @@ fn run(cli: &cli::Cli, config: &config::ResolvedConfig) -> Result<()> {
         sleep_interruptibly(poll_interval, &wakeup);
     }
 
+    // ADR 0008 §The Song File For `butt`: the song file holds no text at
+    // exit. It is never deleted. This call covers the ordinary exit path.
+    // `ShutdownCleanup` covers an early return above it.
+    runtime.now_playing.set(Presence::Present(String::new()))?;
     runtime.metadata.set(Presence::Absent)?;
     Ok(())
 }
@@ -270,7 +274,10 @@ impl<'a> Runtime<'a> {
         ensure_output_parent(&config.id3_file)?;
         let mut now_playing = OutputFile::new(&config.txt_file);
         let mut metadata = OutputFile::new(&config.id3_file);
-        now_playing.set(Presence::Absent)?;
+        // ADR 0008 §The Song File For `butt`: the song file holds no text at
+        // startup. It is never deleted. The metadata (drop) file keeps its
+        // present behavior.
+        now_playing.set(Presence::Present(String::new()))?;
         metadata.set(Presence::Absent)?;
         let resolver = ValueRouteResolver::new(
             !cli.no_api,
@@ -636,19 +643,31 @@ fn sleep_interruptibly(duration: Duration, wakeup: &mpsc::Receiver<()>) {
     }
 }
 
+/// Guards the metadata (drop) file and the song file at every exit from the
+/// main loop. An exit can be a normal end, a signal, or an error that `?`
+/// propagates before `run` reaches its own cleanup lines.
+///
+/// `drop` removes the metadata file. That behavior does not change. `drop`
+/// also writes the song file with no text, unless the file already holds no
+/// text (AGENTS.md §6). See ADR 0008 §The Song File For `butt`.
 #[derive(Debug)]
-struct MetadataCleanup {
-    path: PathBuf,
+struct ShutdownCleanup {
+    metadata_path: PathBuf,
+    song_path: PathBuf,
 }
 
-impl MetadataCleanup {
-    fn new(path: PathBuf) -> Self {
-        Self { path }
+impl ShutdownCleanup {
+    fn new(metadata_path: PathBuf, song_path: PathBuf) -> Self {
+        Self {
+            metadata_path,
+            song_path,
+        }
     }
 }
 
-impl Drop for MetadataCleanup {
+impl Drop for ShutdownCleanup {
     fn drop(&mut self) {
-        let _ = remove_file_if_exists(&self.path);
+        let _ = remove_file_if_exists(&self.metadata_path);
+        let _ = ensure_empty_file(&self.song_path);
     }
 }

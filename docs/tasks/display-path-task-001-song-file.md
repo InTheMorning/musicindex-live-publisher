@@ -1,6 +1,6 @@
 # Display Path Task 001: The Song File Is Never Deleted
 
-Status: Ready - 2026-10-04.
+Status: Implemented - 2026-10-04. See §Review Result.
 
 Every criterion is mechanical.
 
@@ -87,3 +87,16 @@ Write the tests in §Acceptance Criteria, and run the test commands.
 
 Report: 1. files changed 2. tests run 3. behavior changed 4. deviations
 5. unresolved concerns.
+
+## Review Result
+
+Reviewed 2026-10-04. The review changed no code. Both rules were broken on
+purpose, and a test failed each time.
+
+- `MetadataCleanup` became `ShutdownCleanup`. Its `drop` removes the drop file
+  as before, and it writes the song file with no text. It covers an early
+  return through `?`.
+- `sink::ensure_empty_file` reads the file first, so the shutdown guard does
+  not rewrite a file that holds no text (AGENTS.md §6).
+- A `SIGKILL` or a crash runs no cleanup. The song file then keeps the last
+  title until the next start, which writes it with no text.

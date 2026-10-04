@@ -86,7 +86,7 @@ fn lifecycle_toggles_metadata_presence_for_v4v_and_non_v4v_tracks() -> Result<()
 }
 
 #[test]
-fn lifecycle_startup_clears_stale_output_before_first_poll() -> Result<()> {
+fn lifecycle_startup_writes_empty_now_playing_and_clears_stale_metadata() -> Result<()> {
     let temp = TempDir::new()?;
     let v4v_root = temp.path().join("V4Vmusic");
     fs::create_dir_all(&v4v_root)?;
@@ -98,7 +98,10 @@ fn lifecycle_startup_clears_stale_output_before_first_poll() -> Result<()> {
 
     run_once(db.path(), &txt_file, &metadata_file, &v4v_root)?;
 
-    assert!(!txt_file.exists());
+    // ADR 0008 §The Song File For `butt`: the producer never deletes the
+    // song file. With no history row, startup leaves it with no text.
+    assert!(txt_file.exists());
+    assert_eq!(fs::read_to_string(&txt_file)?, "");
     assert!(!metadata_file.exists());
     Ok(())
 }
@@ -146,7 +149,7 @@ fn lifecycle_now_playing_line_matches_shell_script_bytes() -> Result<()> {
 }
 
 #[test]
-fn lifecycle_sigterm_removes_metadata_before_exit() -> Result<()> {
+fn lifecycle_sigterm_clears_now_playing_and_removes_metadata_before_exit() -> Result<()> {
     let temp = TempDir::new()?;
     let v4v_root = temp.path().join("V4Vmusic");
     fs::create_dir_all(&v4v_root)?;
@@ -174,6 +177,13 @@ fn lifecycle_sigterm_removes_metadata_before_exit() -> Result<()> {
         .spawn()?;
 
     wait_until(Duration::from_secs(5), || metadata_file.exists())?;
+    // The daemon has written the track line by now. ADR 0008 §The Song File
+    // For `butt` still applies here. A title line is correct while a track
+    // plays. Only the exit must leave the file empty.
+    assert_eq!(
+        fs::read_to_string(&txt_file)?,
+        "Signal Artist - Signal Title"
+    );
     let status = Command::new("kill")
         .arg("-TERM")
         .arg(child.id().to_string())
@@ -185,6 +195,10 @@ fn lifecycle_sigterm_removes_metadata_before_exit() -> Result<()> {
 
     assert!(exit.success());
     assert!(!metadata_file.exists());
+    // ADR 0008 §The Song File For `butt`: the song file is never deleted.
+    // A SIGTERM exit leaves it present with no text.
+    assert!(txt_file.exists());
+    assert_eq!(fs::read_to_string(&txt_file)?, "");
     Ok(())
 }
 
