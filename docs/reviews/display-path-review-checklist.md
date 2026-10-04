@@ -62,7 +62,10 @@ Scope:
 Record each result here. A check that did not run is an open gate.
 
 1. A pause in Mixxx clears the Icecast title and the artwork. A resume gives
-   both back.
+   both back. Title part: pass on 2026-10-04, after task 002, with the
+   installed `r57` package. The artwork part waits for task 004. After a
+   producer restart, the title stays empty until the next history row, by the
+   entry rule of ADR 0006.
 2. After the producer stops, the stream shows no title. Pass on 2026-10-04,
    after task 001: `systemctl --user stop` gave an empty song name in `butt`.
 3. With the private app, the artwork changes when the listener hears the new
