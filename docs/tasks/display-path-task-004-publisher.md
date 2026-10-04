@@ -67,6 +67,10 @@ delays a payload or a keepalive.
     that target until the next start, with one `tracing::warn!` line,
   - logs every other failure with `tracing::warn!`. No display failure is
     fatal.
+- When a keepalive gets `409` and the publisher sends its last payload again,
+  the display worker also sends the latest display state of that target
+  again. A lease end clears the display state and the images in the relay
+  (relay display state tasks 001 and 002). Added 2026-10-04.
 - When the producer becomes missing, the publisher schedules the display state
   `null` for each display target, next to the dead block.
 - The display publish body holds only the key `track`. Do not send the
