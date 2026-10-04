@@ -4,8 +4,8 @@ mod config;
 use anyhow::{Context, Result, anyhow};
 use mixxx_now_playing::classify::is_v4v_track;
 use mixxx_now_playing::connector::{
-    Action, Coordinator, DeviceEvent, DeviceLocation, FADE_NOW, Outcome, Row, STATE_REQUEST,
-    open_device, pump, send_command, spawn_reader,
+    Action, Coordinator, DeviceEvent, DeviceLocation, DisplayState, DisplayTrack, FADE_NOW,
+    Outcome, Row, STATE_REQUEST, open_device, pump, send_command, spawn_reader,
 };
 use mixxx_now_playing::expiry::Expiry;
 use mixxx_now_playing::history::{HistoryWatcher, TrackRow};
@@ -352,6 +352,7 @@ impl<'a> Runtime<'a> {
     fn process_pass(&mut self, now: Instant) -> Result<()> {
         let actions = self.coordinator.update(now);
         self.perform(&actions)?;
+        self.apply_display_change()?;
         self.apply_completed_value_routes()?;
 
         if !self.coordinator.history_allowed() {
@@ -373,6 +374,42 @@ impl<'a> Runtime<'a> {
             }
         }
         Ok(())
+    }
+
+    /// Writes the song file when the display state changed (ADR 0008 §The
+    /// Song File For `butt`). A track gives its title line. `Null` gives a
+    /// file with no text.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the file write fails.
+    fn apply_display_change(&mut self) -> Result<()> {
+        let Some(state) = self.coordinator.take_display_change() else {
+            return Ok(());
+        };
+        let line = match state {
+            DisplayState::Track { artist, title, .. } => {
+                render_now_playing_line(&artist, &title, self.cli.strip_hyphens)
+            }
+            DisplayState::Null => String::new(),
+        };
+        self.now_playing.set(Presence::Present(line))
+    }
+
+    /// Gives a history row to the `Coordinator`, then does its actions and
+    /// writes the song file from the display state.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a file write fails.
+    fn apply_row(&mut self, row: Row, track: &TrackRow) -> Result<()> {
+        let display = DisplayTrack {
+            artist: track.artist.clone(),
+            title: track.title.clone(),
+        };
+        let actions = self.coordinator.history_row(row, display);
+        self.perform(&actions)?;
+        self.apply_display_change()
     }
 
     fn send_state_request(&mut self) {
@@ -410,13 +447,9 @@ impl<'a> Runtime<'a> {
     }
 
     fn process_track(&mut self, row: &TrackRow, now: Instant) -> Result<()> {
-        let line = render_now_playing_line(&row.artist, &row.title, self.cli.strip_hyphens);
-        self.now_playing.set(Presence::Present(line))?;
-
         if !is_v4v_track(&row.path, &self.config.v4v_root) {
             self.state.clear();
-            let actions = self.coordinator.row(Row::Other);
-            return self.perform(&actions);
+            return self.apply_row(Row::Other, row);
         }
 
         let tags = match read_tags(&row.path) {
@@ -429,8 +462,7 @@ impl<'a> Runtime<'a> {
                     );
                 }
                 self.state.clear();
-                let actions = self.coordinator.row(Row::Other);
-                return self.perform(&actions);
+                return self.apply_row(Row::Other, row);
             }
         };
         // The expiry keeps its source in both modes. The `Coordinator`
@@ -452,11 +484,13 @@ impl<'a> Runtime<'a> {
             tags,
             routes_source: ValueRoutesSource::EmbeddedId3,
         });
-        let actions = self.coordinator.row(Row::V4v {
-            header_duration,
-            expiry,
-        });
-        self.perform(&actions)?;
+        self.apply_row(
+            Row::V4v {
+                header_duration,
+                expiry,
+            },
+            row,
+        )?;
         if let Some(current) = self.state.current.as_ref() {
             match self.resolver.request(row.hist_id, &current.tags) {
                 RouteRequestStatus::Spawned => self.state.pending_route_lookup = true,

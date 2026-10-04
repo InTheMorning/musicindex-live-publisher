@@ -1,6 +1,6 @@
 # Display Path Task 002: The Display Link And The Display State
 
-Status: Ready - 2026-10-04. Do after task 001.
+Status: Implemented - 2026-10-04. See §Review Result.
 
 Every criterion is mechanical.
 
@@ -109,3 +109,27 @@ a display state action. The song file follows the display state. Do not change
 any payment decision or payment test. Write the tests in §Acceptance Criteria,
 with a mutation list. Run the test commands. Report: 1. files changed 2. tests
 run 3. behavior changed 4. deviations 5. unresolved concerns 6. mutations.
+
+## Review Result
+
+Reviewed 2026-10-04. The review changed no code. The test module of
+`link.rs` has only additions, so no payment test changed. Each display rule
+was broken on purpose, and a test failed each time. A payment mutation also
+made the present payment tests fail.
+
+The payment link and the display link share the rule code: `RowLink`,
+`LinkEffect`, `link_at_row` and `relink_refusal`.
+
+The review accepts two deviations:
+
+- A display change is not an `Action`. The present payment tests compare full
+  action lists, and they must not change. The `Coordinator` gives
+  `take_display_change()`, and `main.rs` reads it after each call.
+- `Row::Other` carries no text. The artist and the title go to
+  `history_row(row, DisplayTrack)`.
+
+Behavior to note: when the producer leaves the connector mode, the display
+state does not change. A title that shows stays until the next history row,
+because the history-only mode has no stop. The rule `Null` gives an empty song
+file has no test in `main.rs`. The `Coordinator` tests and manual check 1 of
+the review checklist cover it.

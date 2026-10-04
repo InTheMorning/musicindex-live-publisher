@@ -6,6 +6,11 @@
 //! no file and no device. The caller gives it the connector events, the
 //! history rows and the times. It gives back the actions that the caller must
 //! do.
+//!
+//! `Coordinator` also keeps the display link and the display state of ADR 0008
+//! §The Display Link and §The Display State. The display link applies to each
+//! history row. The payment link applies only to a V4V row. The two links use
+//! the same rule code: `link_at_row`, `RowLink` and `relink_refusal`.
 
 use std::time::{Duration, Instant};
 
@@ -48,6 +53,36 @@ pub enum Row {
     Other,
 }
 
+/// The artist and the title of a history row, as Mixxx gives them.
+///
+/// The `Coordinator` does not change them. The format rules of
+/// `now-playing.txt` do not apply here (ADR 0008 §The Display State).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DisplayTrack {
+    /// The artist of the history row.
+    pub artist: String,
+    /// The title of the history row.
+    pub title: String,
+}
+
+/// The display state of ADR 0008 §The Display State.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum DisplayState {
+    /// No track shows. This state applies at startup, while no display link
+    /// exists, and while the linked deck does not play.
+    #[default]
+    Null,
+    /// The track of the present history row shows.
+    Track {
+        /// The artist of the history row.
+        artist: String,
+        /// The title of the history row.
+        title: String,
+        /// True when the row is `Row::V4v`.
+        v4v: bool,
+    },
+}
+
 /// The mode that the `Coordinator` uses now.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum KnownMode {
@@ -64,19 +99,102 @@ struct Link {
     samples: Option<u64>,
 }
 
+/// The cause when a new history row gets no link in the connector mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NoLink {
+    /// The row existed before the entry into the connector mode.
+    BeforeEntry,
+    /// The loudest deck is 0, or that deck does not play.
+    NoPlayingLoudestDeck,
+}
+
+/// The result of a deck change on the linked deck (ADR 0006 §How
+/// `mixxx-now-playing` Uses The Deck State).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LinkEffect {
+    /// The linked deck stopped. The link stays.
+    Stop,
+    /// The linked deck plays again.
+    Resume,
+    /// A new load on the linked deck. The link ended.
+    End,
+}
+
+/// The link of one row and its relink candidate. The payment link and the
+/// display link use this type, so their rules cannot become different.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct RowLink {
+    link: Option<Link>,
+    /// The link from before an outage of the connector. The first state end
+    /// after the next entry tests it (ADR 0006 §Relink After An Outage).
+    relink: Option<Link>,
+}
+
+impl RowLink {
+    /// The link of a new row. A new row has no relink candidate.
+    fn at_row(link: Option<Link>) -> Self {
+        Self { link, relink: None }
+    }
+
+    /// Ends the link at an entry into the connector mode. The relink
+    /// candidate stays for the first state end after the entry.
+    fn enter_connector(&mut self) {
+        self.link = None;
+    }
+
+    /// Keeps the link as the relink candidate at an exit from the connector
+    /// mode. A candidate from an earlier outage that did not relink goes
+    /// away.
+    fn leave_connector(&mut self) {
+        self.relink = self.link.take();
+    }
+
+    /// Applies a deck change. Gives `None` when the change is not on the
+    /// linked deck. A new load ends the link.
+    fn deck_change(&mut self, change: DeckChange) -> Option<LinkEffect> {
+        if self.link.map(|link| link.deck) != Some(change.deck) {
+            return None;
+        }
+        let effect = match change.kind {
+            DeckChangeKind::Play(false) => LinkEffect::Stop,
+            DeckChangeKind::Play(true) => LinkEffect::Resume,
+            DeckChangeKind::TrackLoaded(_)
+            | DeckChangeKind::Duration(_)
+            | DeckChangeKind::Samples(_) => LinkEffect::End,
+        };
+        if effect == LinkEffect::End {
+            self.link = None;
+        }
+        Some(effect)
+    }
+
+    /// Gives the relink candidate. The candidate goes away after this call.
+    fn take_candidate(&mut self) -> Option<Link> {
+        self.relink.take()
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 struct CurrentRow {
     expiry: Expiry,
     /// True when the expiry ended and the file was removed for it.
     expired: bool,
-    link: Option<Link>,
-    /// The link from before an outage of the connector. The first state end
-    /// after the next entry tests it (ADR 0006 §Relink After An Outage).
-    relink: Option<Link>,
+    links: RowLink,
     file_duration: Option<Duration>,
 }
 
-/// Makes each decision about the drop file of the producer.
+/// The present history row for the display state, V4V or not.
+#[derive(Debug, Clone)]
+struct DisplayRow {
+    track: DisplayTrack,
+    v4v: bool,
+    links: RowLink,
+    /// True when the track shows.
+    shown: bool,
+}
+
+/// Makes each decision about the drop file and the display state of the
+/// producer.
 #[derive(Debug)]
 pub struct Coordinator {
     enabled: bool,
@@ -90,6 +208,9 @@ pub struct Coordinator {
     row: Option<CurrentRow>,
     present: bool,
     skip_next_row: bool,
+    display_row: Option<DisplayRow>,
+    /// The display state that `take_display_change` gave last.
+    display_given: DisplayState,
 }
 
 impl Coordinator {
@@ -114,6 +235,8 @@ impl Coordinator {
             row: None,
             present: false,
             skip_next_row: false,
+            display_row: None,
+            display_given: DisplayState::Null,
         }
     }
 
@@ -168,6 +291,29 @@ impl Coordinator {
         self.present
     }
 
+    /// Gives the present display state (ADR 0008 §The Display State).
+    pub fn display_state(&self) -> DisplayState {
+        match &self.display_row {
+            Some(display) if display.shown => DisplayState::Track {
+                artist: display.track.artist.clone(),
+                title: display.track.title.clone(),
+                v4v: display.v4v,
+            },
+            _ => DisplayState::Null,
+        }
+    }
+
+    /// Gives the display state when it is different from the state that
+    /// this function gave last, or `None`. The first state is `Null`.
+    pub fn take_display_change(&mut self) -> Option<DisplayState> {
+        let state = self.display_state();
+        if state == self.display_given {
+            return None;
+        }
+        self.display_given = state.clone();
+        Some(state)
+    }
+
     /// Applies the mode change, the deck changes and the expiry at `now`,
     /// in this order.
     pub fn update(&mut self, now: Instant) -> Vec<Action> {
@@ -178,8 +324,27 @@ impl Coordinator {
         actions
     }
 
-    /// Applies a new history row.
-    pub fn row(&mut self, row: Row) -> Vec<Action> {
+    /// Applies a new history row and its track. It sets the display link of
+    /// the row, then it applies the payment link of the row.
+    pub fn history_row(&mut self, row: Row, track: DisplayTrack) -> Vec<Action> {
+        // `row` takes `skip_next_row`, so the display link reads it first.
+        let link = match self.mode {
+            KnownMode::Connector => self.link_at_row(self.skip_next_row).ok(),
+            KnownMode::HistoryOnly | KnownMode::Unknown => None,
+        };
+        // In the history-only mode, the track shows until the next row.
+        let shown = self.mode == KnownMode::HistoryOnly || link.is_some();
+        self.display_row = Some(DisplayRow {
+            track,
+            v4v: matches!(row, Row::V4v { .. }),
+            links: RowLink::at_row(link),
+            shown,
+        });
+        self.row(row)
+    }
+
+    /// Applies the payment link of a new history row.
+    fn row(&mut self, row: Row) -> Vec<Action> {
         let skip = std::mem::take(&mut self.skip_next_row);
         let Row::V4v {
             header_duration,
@@ -193,36 +358,29 @@ impl Coordinator {
 
         let (link, file_duration) = match self.mode {
             KnownMode::HistoryOnly => (None, header_duration),
-            KnownMode::Connector if skip => {
-                tracing::info!(
-                    loudest = self.state.loudest_deck(),
-                    "history row existed before the connector mode; no link"
-                );
-                (None, None)
-            }
-            KnownMode::Connector => {
-                let loudest = self.state.loudest_deck();
-                if (1..=DECKS).contains(&loudest) && self.state.play(loudest) {
-                    let link = Link {
-                        deck: loudest,
-                        samples: self.state.samples(loudest),
-                    };
-                    (Some(link), self.deck_duration(loudest))
-                } else {
+            KnownMode::Connector => match self.link_at_row(skip) {
+                Ok(link) => (Some(link), self.deck_duration(link.deck)),
+                Err(NoLink::BeforeEntry) => {
+                    tracing::info!(
+                        loudest = self.state.loudest_deck(),
+                        "history row existed before the connector mode; no link"
+                    );
+                    (None, None)
+                }
+                Err(NoLink::NoPlayingLoudestDeck) => {
+                    let loudest = self.state.loudest_deck();
                     tracing::info!(loudest, "no playing loudest deck; history row has no link");
                     (None, None)
                 }
-            }
+            },
             KnownMode::Unknown => (None, None),
         };
 
         let write = self.mode == KnownMode::HistoryOnly || link.is_some();
-        // A new row has no relink candidate.
         self.row = Some(CurrentRow {
             expiry,
             expired: false,
-            link,
-            relink: None,
+            links: RowLink::at_row(link),
             file_duration,
         });
         self.present = write;
@@ -232,6 +390,24 @@ impl Coordinator {
             }]
         } else {
             vec![Action::RemoveFile]
+        }
+    }
+
+    /// Gives the link of a new history row in the connector mode: the
+    /// loudest deck, when it plays. With `skip` true, the row existed before
+    /// the entry and gets no link.
+    fn link_at_row(&self, skip: bool) -> Result<Link, NoLink> {
+        if skip {
+            return Err(NoLink::BeforeEntry);
+        }
+        let loudest = self.state.loudest_deck();
+        if (1..=DECKS).contains(&loudest) && self.state.play(loudest) {
+            Ok(Link {
+                deck: loudest,
+                samples: self.state.samples(loudest),
+            })
+        } else {
+            Err(NoLink::NoPlayingLoudestDeck)
         }
     }
 
@@ -268,7 +444,11 @@ impl Coordinator {
                 // Keep the row and its relink candidate. The first state end
                 // after this entry tests the candidate.
                 if let Some(row) = self.row.as_mut() {
-                    row.link = None;
+                    row.links.enter_connector();
+                }
+                if let Some(display) = self.display_row.as_mut() {
+                    display.links.enter_connector();
+                    display.shown = false;
                 }
                 self.present = false;
                 self.pending.clear();
@@ -280,10 +460,13 @@ impl Coordinator {
                 self.mode = KnownMode::HistoryOnly;
                 // No write here. The expiry of the row applies from the time
                 // of the row, in `apply_expiry`. Only a linked row keeps a
-                // relink candidate. A candidate from an earlier outage that
-                // did not relink goes away.
+                // relink candidate. The display state does not change: the
+                // connector mode removed what does not show.
                 if let Some(row) = self.row.as_mut() {
-                    row.relink = row.link.take();
+                    row.links.leave_connector();
+                }
+                if let Some(display) = self.display_row.as_mut() {
+                    display.links.leave_connector();
                 }
                 self.pending.clear();
             }
@@ -298,8 +481,14 @@ impl Coordinator {
         }
         for event in events {
             match event {
-                ConnectorEvent::Deck(change) => self.apply_deck_change(change, actions),
-                ConnectorEvent::StateEnd => self.apply_state_end(actions),
+                ConnectorEvent::Deck(change) => {
+                    self.apply_display_deck_change(change);
+                    self.apply_deck_change(change, actions);
+                }
+                ConnectorEvent::StateEnd => {
+                    self.apply_display_state_end();
+                    self.apply_state_end(actions);
+                }
             }
         }
     }
@@ -308,15 +497,13 @@ impl Coordinator {
         let Some(row) = self.row.as_mut() else {
             return;
         };
-        if row.link.map(|link| link.deck) != Some(change.deck) {
-            return;
-        }
-        match change.kind {
-            DeckChangeKind::Play(false) => {
+        match row.links.deck_change(change) {
+            None => {}
+            Some(LinkEffect::Stop | LinkEffect::End) => {
                 self.present = false;
                 actions.push(Action::RemoveFile);
             }
-            DeckChangeKind::Play(true) => {
+            Some(LinkEffect::Resume) => {
                 if !self.present {
                     self.present = true;
                     actions.push(Action::WriteFile {
@@ -324,13 +511,17 @@ impl Coordinator {
                     });
                 }
             }
-            DeckChangeKind::TrackLoaded(_)
-            | DeckChangeKind::Duration(_)
-            | DeckChangeKind::Samples(_) => {
-                row.link = None;
-                self.present = false;
-                actions.push(Action::RemoveFile);
-            }
+        }
+    }
+
+    fn apply_display_deck_change(&mut self, change: DeckChange) {
+        let Some(display) = self.display_row.as_mut() else {
+            return;
+        };
+        match display.links.deck_change(change) {
+            None => {}
+            Some(LinkEffect::Stop | LinkEffect::End) => display.shown = false,
+            Some(LinkEffect::Resume) => display.shown = true,
         }
     }
 
@@ -338,7 +529,7 @@ impl Coordinator {
     /// the connector mode (ADR 0006 §Relink After An Outage). The candidate
     /// goes away after this test.
     fn apply_state_end(&mut self, actions: &mut Vec<Action>) {
-        let Some(candidate) = self.row.as_mut().and_then(|row| row.relink.take()) else {
+        let Some(candidate) = self.row.as_mut().and_then(|row| row.links.take_candidate()) else {
             return;
         };
         if let Some(reason) = self.relink_refusal(candidate) {
@@ -355,7 +546,7 @@ impl Coordinator {
         let Some(row) = self.row.as_mut() else {
             return;
         };
-        row.link = Some(candidate);
+        row.links.link = Some(candidate);
         row.file_duration = duration;
         // The ADR 0005 expiry applies again at the next outage. If it already
         // ended, that outage removes the file at once.
@@ -367,6 +558,25 @@ impl Coordinator {
             "history row linked again after an outage"
         );
         actions.push(Action::WriteFile { duration });
+    }
+
+    /// Tests the display relink candidate by the same conditions as the
+    /// payment candidate (ADR 0008 §The Display Link).
+    fn apply_display_state_end(&mut self) {
+        let Some(candidate) = self
+            .display_row
+            .as_mut()
+            .and_then(|display| display.links.take_candidate())
+        else {
+            return;
+        };
+        if self.relink_refusal(candidate).is_some() {
+            return;
+        }
+        if let Some(display) = self.display_row.as_mut() {
+            display.links.link = Some(candidate);
+            display.shown = true;
+        }
     }
 
     /// Gives the cause that stops the candidate link, or `None`
@@ -1234,5 +1444,370 @@ mod tests {
             vec![Action::RemoveFile]
         );
         assert!(!coordinator.file_present());
+    }
+
+    // The display link and the display state (ADR 0008 §The Display Link and
+    // §The Display State).
+
+    fn track(name: &str) -> DisplayTrack {
+        DisplayTrack {
+            artist: format!("{name} Artist"),
+            title: format!("{name} Title"),
+        }
+    }
+
+    fn shown(name: &str, v4v: bool) -> DisplayState {
+        DisplayState::Track {
+            artist: format!("{name} Artist"),
+            title: format!("{name} Title"),
+            v4v,
+        }
+    }
+
+    fn other_row(coordinator: &mut Coordinator, name: &str) -> Vec<Action> {
+        coordinator.history_row(Row::Other, track(name))
+    }
+
+    fn v4v_display_row(
+        coordinator: &mut Coordinator,
+        name: &str,
+        time: Instant,
+        header_secs: u64,
+    ) -> Vec<Action> {
+        coordinator.history_row(v4v_row(time, header_secs), track(name))
+    }
+
+    /// Deck 2 plays and is display-linked to the non-V4V row "A".
+    fn other_linked_deck_2(start: Instant) -> Coordinator {
+        let mut coordinator = deck_2_plays(start);
+        assert_eq!(other_row(&mut coordinator, "A"), vec![Action::RemoveFile]);
+        assert_eq!(coordinator.display_state(), shown("A", false));
+        coordinator
+    }
+
+    #[test]
+    fn display_is_null_at_startup() {
+        let start = Instant::now();
+        let mut coordinator = Coordinator::new(true, start);
+        assert_eq!(coordinator.display_state(), DisplayState::Null);
+        assert_eq!(coordinator.take_display_change(), None);
+    }
+
+    #[test]
+    fn non_v4v_row_with_playing_loudest_deck_gives_display_track_and_no_payment_write() {
+        let start = Instant::now();
+        let mut coordinator = deck_2_plays(start);
+        let actions = other_row(&mut coordinator, "A");
+        assert_eq!(actions, vec![Action::RemoveFile]);
+        assert!(!has_write(&actions));
+        assert!(!coordinator.file_present());
+        assert_eq!(coordinator.api_result(), None);
+        assert_eq!(coordinator.take_display_change(), Some(shown("A", false)));
+        assert_eq!(coordinator.take_display_change(), None);
+    }
+
+    #[test]
+    fn non_v4v_row_with_loudest_deck_0_gives_display_null() {
+        let start = Instant::now();
+        let mut coordinator = deck_2_plays(start);
+        set_loudest(&mut coordinator, 0, start);
+        coordinator.update(start);
+        other_row(&mut coordinator, "A");
+        assert_eq!(coordinator.display_state(), DisplayState::Null);
+    }
+
+    #[test]
+    fn non_v4v_row_with_a_loudest_deck_that_does_not_play_gives_display_null() {
+        let start = Instant::now();
+        let mut coordinator = connector(start);
+        set_play(&mut coordinator, 2, false, start);
+        set_loudest(&mut coordinator, 2, start);
+        coordinator.update(start);
+        other_row(&mut coordinator, "A");
+        assert_eq!(coordinator.display_state(), DisplayState::Null);
+    }
+
+    #[test]
+    fn non_v4v_linked_deck_stop_gives_null_and_start_gives_the_track_again() {
+        let start = Instant::now();
+        let mut coordinator = other_linked_deck_2(start);
+
+        set_play(&mut coordinator, 2, false, start);
+        assert_eq!(coordinator.update(start), vec![]);
+        assert_eq!(coordinator.display_state(), DisplayState::Null);
+
+        set_play(&mut coordinator, 2, true, start);
+        assert_eq!(coordinator.update(start), vec![]);
+        assert_eq!(coordinator.display_state(), shown("A", false));
+        assert!(!coordinator.file_present());
+    }
+
+    /// A new load on the display-linked deck gives `Null`. A start of that
+    /// deck after the load does not show the track again.
+    fn assert_new_load_ends_the_display_link(load: impl Fn(&mut Coordinator, Instant)) {
+        let start = Instant::now();
+        let mut coordinator = other_linked_deck_2(start);
+        load(&mut coordinator, start);
+        assert_eq!(coordinator.update(start), vec![]);
+        assert_eq!(coordinator.display_state(), DisplayState::Null);
+
+        set_play(&mut coordinator, 2, false, start);
+        set_play(&mut coordinator, 2, true, start);
+        coordinator.update(start);
+        assert_eq!(coordinator.display_state(), DisplayState::Null);
+    }
+
+    #[test]
+    fn track_loaded_on_the_display_linked_deck_gives_null() {
+        assert_new_load_ends_the_display_link(|coordinator, time| {
+            coordinator.control_change(cc(22, 127), time);
+        });
+    }
+
+    #[test]
+    fn duration_change_on_the_display_linked_deck_gives_null() {
+        assert_new_load_ends_the_display_link(|coordinator, time| {
+            set_duration(coordinator, 2, 328, time);
+        });
+    }
+
+    #[test]
+    fn samples_change_on_the_display_linked_deck_gives_null() {
+        assert_new_load_ends_the_display_link(|coordinator, time| {
+            set_samples(coordinator, 2, SAMPLES + 2, time);
+        });
+    }
+
+    #[test]
+    fn deck_change_on_a_deck_that_is_not_display_linked_keeps_the_track() {
+        let start = Instant::now();
+        let mut coordinator = other_linked_deck_2(start);
+        set_play(&mut coordinator, 1, true, start);
+        set_play(&mut coordinator, 1, false, start);
+        coordinator.control_change(cc(21, 127), start);
+        set_samples(&mut coordinator, 1, 1000, start);
+        coordinator.update(start);
+        assert_eq!(coordinator.display_state(), shown("A", false));
+    }
+
+    #[test]
+    fn entering_the_connector_mode_gives_null_and_the_prior_row_never_display_links() {
+        let start = Instant::now();
+        let mut coordinator = history_only(start);
+        other_row(&mut coordinator, "A");
+        assert_eq!(coordinator.display_state(), shown("A", false));
+
+        coordinator.device_opened();
+        heartbeat(&mut coordinator, at(start, 1000));
+        coordinator.update(at(start, 1000));
+        assert_eq!(coordinator.display_state(), DisplayState::Null);
+
+        // The complete state shows deck 2 loudest and playing.
+        assert_eq!(
+            complete_state(&mut coordinator, 2, true, SAMPLES, at(start, 1100)),
+            vec![]
+        );
+        assert_eq!(coordinator.display_state(), DisplayState::Null);
+        set_play(&mut coordinator, 2, false, at(start, 1200));
+        set_play(&mut coordinator, 2, true, at(start, 1300));
+        coordinator.update(at(start, 1300));
+        assert_eq!(coordinator.display_state(), DisplayState::Null);
+    }
+
+    #[test]
+    fn startup_row_before_the_entry_has_no_display_link_and_the_next_row_has_one() {
+        let start = Instant::now();
+        let mut coordinator = Coordinator::new(true, start);
+        coordinator.device_opened();
+        heartbeat(&mut coordinator, start);
+        set_play(&mut coordinator, 2, true, start);
+        set_loudest(&mut coordinator, 2, start);
+        coordinator.update(start);
+
+        other_row(&mut coordinator, "A");
+        assert_eq!(coordinator.display_state(), DisplayState::Null);
+        other_row(&mut coordinator, "B");
+        assert_eq!(coordinator.display_state(), shown("B", false));
+    }
+
+    #[test]
+    fn relink_after_an_outage_restores_the_display_track() {
+        let start = Instant::now();
+        let mut coordinator = other_linked_deck_2(start);
+        outage(&mut coordinator, start);
+        // The history-only mode does not change the display state.
+        assert_eq!(coordinator.display_state(), shown("A", false));
+        heartbeat_returns(&mut coordinator, at(start, 5000));
+        assert_eq!(coordinator.display_state(), DisplayState::Null);
+
+        assert_eq!(
+            complete_state(&mut coordinator, 2, true, SAMPLES, at(start, 5100)),
+            vec![]
+        );
+        assert_eq!(coordinator.display_state(), shown("A", false));
+
+        // The display link works again: a stop gives `Null`.
+        set_play(&mut coordinator, 2, false, at(start, 5200));
+        coordinator.update(at(start, 5200));
+        assert_eq!(coordinator.display_state(), DisplayState::Null);
+    }
+
+    #[test]
+    fn v4v_relink_after_an_outage_restores_both_links() {
+        let start = Instant::now();
+        let mut coordinator = deck_2_plays(start);
+        v4v_display_row(&mut coordinator, "V", start, 617);
+        outage(&mut coordinator, start);
+        heartbeat_returns(&mut coordinator, at(start, 5000));
+        assert_eq!(coordinator.display_state(), DisplayState::Null);
+        assert_eq!(
+            complete_state(&mut coordinator, 2, true, SAMPLES, at(start, 5100)),
+            vec![write(200)]
+        );
+        assert_eq!(coordinator.display_state(), shown("V", true));
+    }
+
+    #[test]
+    fn no_display_relink_when_a_different_deck_is_loudest() {
+        let start = Instant::now();
+        let mut coordinator = other_linked_deck_2(start);
+        outage(&mut coordinator, start);
+        heartbeat_returns(&mut coordinator, at(start, 5000));
+        complete_state(&mut coordinator, 1, true, SAMPLES, at(start, 5100));
+        assert_eq!(coordinator.display_state(), DisplayState::Null);
+        // Only the first state end tests the candidate.
+        complete_state(&mut coordinator, 2, true, SAMPLES, at(start, 5200));
+        assert_eq!(coordinator.display_state(), DisplayState::Null);
+    }
+
+    #[test]
+    fn no_display_relink_when_the_sample_count_differs() {
+        let start = Instant::now();
+        let mut coordinator = other_linked_deck_2(start);
+        outage(&mut coordinator, start);
+        heartbeat_returns(&mut coordinator, at(start, 5000));
+        complete_state(&mut coordinator, 2, true, SAMPLES + 2, at(start, 5100));
+        assert_eq!(coordinator.display_state(), DisplayState::Null);
+    }
+
+    #[test]
+    fn no_display_relink_when_the_deck_does_not_play() {
+        let start = Instant::now();
+        let mut coordinator = other_linked_deck_2(start);
+        outage(&mut coordinator, start);
+        heartbeat_returns(&mut coordinator, at(start, 5000));
+        complete_state(&mut coordinator, 2, false, SAMPLES, at(start, 5100));
+        assert_eq!(coordinator.display_state(), DisplayState::Null);
+    }
+
+    #[test]
+    fn deck_change_before_the_state_end_does_not_display_relink() {
+        let start = Instant::now();
+        let mut coordinator = other_linked_deck_2(start);
+        outage(&mut coordinator, start);
+        heartbeat_returns(&mut coordinator, at(start, 5000));
+        set_play(&mut coordinator, 2, false, at(start, 5050));
+        set_play(&mut coordinator, 2, true, at(start, 5060));
+        coordinator.update(at(start, 5060));
+        assert_eq!(coordinator.display_state(), DisplayState::Null);
+
+        state_end(&mut coordinator, at(start, 5100));
+        coordinator.update(at(start, 5100));
+        assert_eq!(coordinator.display_state(), shown("A", false));
+    }
+
+    #[test]
+    fn no_display_relink_after_a_new_history_row_during_the_outage() {
+        let start = Instant::now();
+        let mut coordinator = other_linked_deck_2(start);
+        outage(&mut coordinator, start);
+        other_row(&mut coordinator, "B");
+        assert_eq!(coordinator.display_state(), shown("B", false));
+
+        heartbeat_returns(&mut coordinator, at(start, 5000));
+        complete_state(&mut coordinator, 2, true, SAMPLES, at(start, 5100));
+        assert_eq!(coordinator.display_state(), DisplayState::Null);
+    }
+
+    #[test]
+    fn leaving_the_connector_mode_after_a_stop_keeps_display_null() {
+        let start = Instant::now();
+        let mut coordinator = other_linked_deck_2(start);
+        set_play(&mut coordinator, 2, false, at(start, 1000));
+        coordinator.update(at(start, 1000));
+        assert_eq!(coordinator.display_state(), DisplayState::Null);
+
+        coordinator.update(at(start, 3500));
+        assert_eq!(coordinator.display_state(), DisplayState::Null);
+    }
+
+    #[test]
+    fn v4v_row_gives_a_payment_write_and_a_display_track() {
+        let start = Instant::now();
+        let mut coordinator = deck_2_plays(start);
+        assert_eq!(
+            v4v_display_row(&mut coordinator, "V", start, 617),
+            vec![write(200)]
+        );
+        assert_eq!(coordinator.display_state(), shown("V", true));
+
+        set_play(&mut coordinator, 2, false, start);
+        assert_eq!(coordinator.update(start), vec![Action::RemoveFile]);
+        assert_eq!(coordinator.display_state(), DisplayState::Null);
+
+        set_play(&mut coordinator, 2, true, start);
+        assert_eq!(coordinator.update(start), vec![write(200)]);
+        assert_eq!(coordinator.display_state(), shown("V", true));
+    }
+
+    #[test]
+    fn v4v_row_new_load_gives_a_remove_and_display_null() {
+        let start = Instant::now();
+        let mut coordinator = deck_2_plays(start);
+        v4v_display_row(&mut coordinator, "V", start, 200);
+        set_samples(&mut coordinator, 2, SAMPLES + 2, start);
+        assert_eq!(coordinator.update(start), vec![Action::RemoveFile]);
+        assert_eq!(coordinator.display_state(), DisplayState::Null);
+    }
+
+    #[test]
+    fn non_v4v_row_after_a_v4v_row_removes_the_file_and_shows_the_new_track() {
+        let start = Instant::now();
+        let mut coordinator = deck_2_plays(start);
+        v4v_display_row(&mut coordinator, "V", start, 200);
+        assert_eq!(other_row(&mut coordinator, "A"), vec![Action::RemoveFile]);
+        assert_eq!(coordinator.display_state(), shown("A", false));
+    }
+
+    #[test]
+    fn history_only_display_is_the_latest_row_until_the_next_row() {
+        let start = Instant::now();
+        let mut coordinator = history_only(start);
+        assert_eq!(
+            v4v_display_row(&mut coordinator, "V", start, 10),
+            vec![write(10)]
+        );
+        assert_eq!(coordinator.display_state(), shown("V", true));
+
+        // The ADR 0005 expiry removes the drop file. The display has no stop.
+        assert_eq!(
+            coordinator.update(at(start, 10_000)),
+            vec![Action::RemoveFile]
+        );
+        assert_eq!(coordinator.display_state(), shown("V", true));
+
+        assert_eq!(other_row(&mut coordinator, "A"), vec![Action::RemoveFile]);
+        assert_eq!(coordinator.display_state(), shown("A", false));
+    }
+
+    #[test]
+    fn no_connector_display_is_the_latest_row() {
+        let start = Instant::now();
+        let mut coordinator = Coordinator::new(false, start);
+        assert_eq!(coordinator.display_state(), DisplayState::Null);
+        other_row(&mut coordinator, "A");
+        assert_eq!(coordinator.take_display_change(), Some(shown("A", false)));
+        v4v_display_row(&mut coordinator, "V", start, 617);
+        assert_eq!(coordinator.take_display_change(), Some(shown("V", true)));
     }
 }

@@ -15,7 +15,7 @@ pub use command::{FADE_NOW, Outcome, command_message, send_command};
 pub use device::{
     DeviceEvent, DeviceLocation, STATE_REQUEST, open_device, pump, resolve_raw_device, spawn_reader,
 };
-pub use link::{Action, Coordinator, Row, STARTUP_TIMEOUT};
+pub use link::{Action, Coordinator, DisplayState, DisplayTrack, Row, STARTUP_TIMEOUT};
 pub use midi::{ControlChange, MidiParser};
 pub use state::{
     ConnectorEvent, ConnectorState, DECKS, DeckChange, DeckChangeKind, HEARTBEAT_TIMEOUT,
