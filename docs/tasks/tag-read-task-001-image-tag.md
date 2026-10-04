@@ -1,6 +1,6 @@
-# Tag Read Task 002: The Producer Reads The Image Tag
+# Tag Read Task 001: The Producer Reads The Image Tag
 
-Status: Ready - 2026-10-04. Do after task 001.
+Status: Ready - 2026-10-04.
 
 Every criterion is mechanical.
 
@@ -16,7 +16,9 @@ of ADR 0008 can then use the image URL of a V4V track.
 entry, so `musicindex_value("Image")` is always `None`. The drop file field
 `image` exists in ADR 0002, but the producer never fills it. The audit review
 `docs/reviews/nowplaying-publisher-audit-review.md` records this gap. `v4vmm`
-writes the tag with the frame `TXXX:MusicIndex Image`.
+writes the tag with the frame `TXXX:MusicIndex Image`. A probe on 2026-10-04
+read all 71 files of the operator's V4V folder with `read_tags`. Each read
+passed, and each gave `Image: None`.
 
 No schema changes. The field exists, and this task gives it a value.
 
