@@ -160,6 +160,12 @@ needs relay ADR 0003 for a live test.
 - [003 — The producer display output](tasks/display-path-task-003-producer-output.md)
 - [004 — The publisher display path](tasks/display-path-task-004-publisher.md)
 
+Tag read packets. They correct two defects that the review of display task 003
+found. Task 002 needs task 001.
+
+- [001 — The payment tag read skips the cover art](tasks/tag-read-task-001-skip-cover-art.md)
+- [002 — The producer reads the image tag](tasks/tag-read-task-002-image-tag.md)
+
 ## Reviews
 
 - [Rust now-playing review checklist](reviews/rust-now-playing-review-checklist.md)
