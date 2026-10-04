@@ -64,6 +64,9 @@ the next priority. Confirm that logging works before the show.
   of work with `musicindex-live-relay` ADR 0002
 - [Mixxx MIDI connector phase plan](plans/mixxx-midi-connector.md) — the
   mapping, the connector in the producer and the package setup for ADR 0006
+- [Display path phase plan](plans/display-path.md) — the song file, the
+  display link, the producer display output and the publisher display path for
+  ADR 0008
 - [Packaging pass plan](plans/packaging-pass.md) — deferred. The intended
   package behavior, the open packaging gates and the open decisions
 
@@ -149,6 +152,14 @@ task 006.
 - [005 — Relink after an outage](tasks/mixxx-connector-task-005-relink-after-outage.md)
 - [006 — Commands to Mixxx](tasks/mixxx-connector-task-006-commands.md)
 
+Display path packets. ADR 0008 governs them. They are sequential. Task 004
+needs relay ADR 0003 for a live test.
+
+- [001 — The song file is never deleted](tasks/display-path-task-001-song-file.md)
+- [002 — The display link and the display state](tasks/display-path-task-002-display-link.md)
+- [003 — The producer display output](tasks/display-path-task-003-producer-output.md)
+- [004 — The publisher display path](tasks/display-path-task-004-publisher.md)
+
 ## Reviews
 
 - [Rust now-playing review checklist](reviews/rust-now-playing-review-checklist.md)
@@ -157,6 +168,7 @@ task 006.
 - [Publisher control CLI implementation review](reviews/publisher-control-cli-implementation-review.md)
 - [Relay lease review checklist](reviews/relay-lease-review-checklist.md)
 - [Mixxx connector review checklist](reviews/mixxx-connector-review-checklist.md)
+- [Display path review checklist](reviews/display-path-review-checklist.md)
 
 ## Runbooks
 
