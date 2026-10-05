@@ -346,7 +346,13 @@ fn config_show_json_outputs_redacted_shape() -> Result<()> {
     target_keys.sort_unstable();
     assert_eq!(
         target_keys,
-        vec!["event_id", "name", "stream_delay_secs", "token_file"]
+        vec![
+            "display_dir",
+            "event_id",
+            "name",
+            "stream_delay_secs",
+            "token_file"
+        ]
     );
     assert!(!stdout.contains("secret-token"));
     assert!(!stdout.contains("03station"));
@@ -704,6 +710,295 @@ fn target_remove_missing_exits_with_distinct_code() -> Result<()> {
         Some(3),
         "missing target should use the target-not-found exit code"
     );
+    Ok(())
+}
+
+/// A config with a top-level comment and three targets. The middle target
+/// `mixxx` has a display directory, comments, a blank line and a trailing
+/// comment on `event_id`. The text uses no `stream_delay_secs` on `mixxx`
+/// when `delay` is `None`.
+fn replace_fixture(
+    watch_dir: &Path,
+    old_token: &Path,
+    display_dir: &Path,
+    delay: Option<&str>,
+) -> String {
+    let delay_line = delay
+        .map(|literal| format!("stream_delay_secs = {literal}\n"))
+        .unwrap_or_default();
+    format!(
+        r#"# top-level comment
+watch_dir = "{watch}"
+endpoint = "https://api.example.test"
+
+[[target]]
+name = "first"
+event_id = "event-first"
+token_file = "{old}"
+
+# mixxx target comment
+[[target]]
+name = "mixxx"
+  event_id   =   "event-old"   # reserved event, keep this comment
+# comment between keys
+
+token_file = "{old}"
+{delay_line}display_dir = "{display}"
+# last stanza comment
+
+[[target]]
+name = "last"
+event_id = "event-last"
+token_file = "{old}"
+stream_delay_secs = 4.5
+# trailing comment
+"#,
+        watch = watch_dir.display(),
+        old = old_token.display(),
+        display = display_dir.display(),
+    )
+}
+
+#[test]
+fn target_add_replace_keeps_display_dir_and_comments() -> Result<()> {
+    let temp = TempDir::new()?;
+    let watch_dir = temp.path().join("watch");
+    let display_dir = temp.path().join("display");
+    let old_token = write_token(temp.path(), "old.token", "old-secret")?;
+    let new_token = write_token(temp.path(), "new.token", "new-secret")?;
+    let original = replace_fixture(&watch_dir, &old_token, &display_dir, None);
+    let config_path = write_config(temp.path(), &original)?;
+
+    add_target_to_config(
+        &config_path,
+        &target_edit("mixxx", "event-new", &new_token),
+        true,
+    )?;
+
+    let edited = fs::read_to_string(&config_path)?;
+    let expected = original
+        .replace(
+            "  event_id   =   \"event-old\"   # reserved event",
+            "  event_id   =   \"event-new\"   # reserved event",
+        )
+        .replace(
+            &format!(
+                "# comment between keys\n\ntoken_file = \"{}\"",
+                old_token.display()
+            ),
+            &format!(
+                "# comment between keys\n\ntoken_file = \"{}\"",
+                new_token.display()
+            ),
+        );
+    assert_eq!(edited, expected);
+
+    let config = load_config(&config_path, ConfigOverrides::default())?;
+    let mixxx = &config.targets[1];
+    assert_eq!(mixxx.event_id, "event-new");
+    assert_eq!(mixxx.token_file, new_token);
+    assert_eq!(mixxx.display_dir.as_deref(), Some(display_dir.as_path()));
+    assert_eq!(mixxx.stream_delay, Duration::ZERO);
+    Ok(())
+}
+
+#[test]
+fn target_add_replace_without_delay_flag_keeps_the_present_delay() -> Result<()> {
+    let temp = TempDir::new()?;
+    let watch_dir = temp.path().join("watch");
+    let display_dir = temp.path().join("display");
+    let old_token = write_token(temp.path(), "old.token", "old-secret")?;
+    let new_token = write_token(temp.path(), "new.token", "new-secret")?;
+    let original = replace_fixture(&watch_dir, &old_token, &display_dir, Some("12.5"));
+    let config_path = write_config(temp.path(), &original)?;
+
+    add_target_to_config(
+        &config_path,
+        &target_edit("mixxx", "event-new", &new_token),
+        true,
+    )?;
+
+    let edited = fs::read_to_string(&config_path)?;
+    assert!(edited.contains(&format!(
+        "token_file = \"{}\"\nstream_delay_secs = 12.5\ndisplay_dir",
+        new_token.display()
+    )));
+    let config = load_config(&config_path, ConfigOverrides::default())?;
+    assert_eq!(
+        config.targets[1].stream_delay,
+        Duration::from_millis(12_500)
+    );
+    Ok(())
+}
+
+#[test]
+fn target_add_replace_with_delay_flag_changes_the_present_delay() -> Result<()> {
+    let temp = TempDir::new()?;
+    let watch_dir = temp.path().join("watch");
+    let display_dir = temp.path().join("display");
+    let old_token = write_token(temp.path(), "old.token", "old-secret")?;
+    let original = replace_fixture(&watch_dir, &old_token, &display_dir, Some("12.5"));
+    let config_path = write_config(temp.path(), &original)?;
+    let mut edit = target_edit("mixxx", "event-old", &old_token);
+    edit.stream_delay_secs = Some(30.0);
+
+    add_target_to_config(&config_path, &edit, true)?;
+
+    let edited = fs::read_to_string(&config_path)?;
+    let expected = original.replace("stream_delay_secs = 12.5\n", "stream_delay_secs = 30\n");
+    assert_eq!(edited, expected);
+    let config = load_config(&config_path, ConfigOverrides::default())?;
+    assert_eq!(config.targets[1].stream_delay, Duration::from_secs(30));
+    assert_eq!(
+        config.targets[1].display_dir.as_deref(),
+        Some(display_dir.as_path())
+    );
+    Ok(())
+}
+
+#[test]
+fn target_add_replace_with_delay_flag_adds_a_missing_delay_after_token_file() -> Result<()> {
+    let temp = TempDir::new()?;
+    let watch_dir = temp.path().join("watch");
+    let display_dir = temp.path().join("display");
+    let old_token = write_token(temp.path(), "old.token", "old-secret")?;
+    let original = replace_fixture(&watch_dir, &old_token, &display_dir, None);
+    let config_path = write_config(temp.path(), &original)?;
+    let mut edit = target_edit("mixxx", "event-old", &old_token);
+    edit.stream_delay_secs = Some(7.25);
+
+    add_target_to_config(&config_path, &edit, true)?;
+
+    let edited = fs::read_to_string(&config_path)?;
+    let expected = replace_fixture(&watch_dir, &old_token, &display_dir, Some("7.25"));
+    assert_eq!(edited, expected);
+    Ok(())
+}
+
+#[test]
+fn target_add_replace_keeps_other_targets_and_top_level_keys_byte_for_byte() -> Result<()> {
+    let temp = TempDir::new()?;
+    let watch_dir = temp.path().join("watch");
+    let display_dir = temp.path().join("display");
+    let old_token = write_token(temp.path(), "old.token", "old-secret")?;
+    let new_token = write_token(temp.path(), "new.token", "new-secret")?;
+    let original = replace_fixture(&watch_dir, &old_token, &display_dir, Some("12.5"));
+    let config_path = write_config(temp.path(), &original)?;
+    let mut edit = target_edit("mixxx", "event-new", &new_token);
+    edit.stream_delay_secs = Some(1.5);
+
+    add_target_to_config(&config_path, &edit, true)?;
+
+    let edited = fs::read_to_string(&config_path)?;
+    let head_end = original
+        .find("  event_id   =")
+        .ok_or_else(|| anyhow!("fixture should hold the mixxx event_id line"))?;
+    let tail_start = original
+        .find("display_dir = ")
+        .ok_or_else(|| anyhow!("fixture should hold the display_dir line"))?;
+    let tail = &original[tail_start..];
+    assert!(edited.starts_with(&original[..head_end]));
+    assert!(edited.ends_with(tail));
+    assert!(tail.contains("name = \"last\""));
+    assert!(original[..head_end].contains("name = \"first\""));
+    Ok(())
+}
+
+#[test]
+fn target_add_replace_refuses_a_multi_line_value_and_keeps_the_file() -> Result<()> {
+    let temp = TempDir::new()?;
+    let watch_dir = temp.path().join("watch");
+    let old_token = write_token(temp.path(), "old.token", "old-secret")?;
+    let new_token = write_token(temp.path(), "new.token", "new-secret")?;
+    let original = format!(
+        "watch_dir = \"{}\"\nendpoint = \"https://api.example.test\"\n\n[[target]]\nname = \"mixxx\"\nevent_id = \"\"\"\nevent-old\"\"\"\ntoken_file = \"{}\"\n",
+        watch_dir.display(),
+        old_token.display()
+    );
+    let config_path = write_config(temp.path(), &original)?;
+
+    let error = add_target_to_config(
+        &config_path,
+        &target_edit("mixxx", "event-new", &new_token),
+        true,
+    )
+    .err()
+    .ok_or_else(|| anyhow!("expected a multi-line value error"))?;
+
+    assert!(format!("{error:#}").contains("ADR 0004"));
+    assert_eq!(fs::read_to_string(&config_path)?, original);
+    Ok(())
+}
+
+#[test]
+fn target_add_replace_command_keeps_display_dir() -> Result<()> {
+    let temp = TempDir::new()?;
+    let watch_dir = temp.path().join("watch");
+    let display_dir = temp.path().join("display");
+    let old_token = write_token(temp.path(), "old.token", "old-secret")?;
+    let new_token = write_token(temp.path(), "new.token", "new-secret")?;
+    let original = replace_fixture(&watch_dir, &old_token, &display_dir, None);
+    let config_path = write_config(temp.path(), &original)?;
+
+    let output = publisher_command()
+        .args([
+            "target",
+            "add",
+            "--config",
+            &config_path.display().to_string(),
+            "--name",
+            "mixxx",
+            "--event-id",
+            "event-new",
+            "--token-file",
+            &new_token.display().to_string(),
+            "--replace",
+        ])
+        .output()?;
+
+    assert!(
+        output.status.success(),
+        "target add --replace should succeed"
+    );
+    let config = load_config(&config_path, ConfigOverrides::default())?;
+    assert_eq!(config.targets[1].event_id, "event-new");
+    assert_eq!(
+        config.targets[1].display_dir.as_deref(),
+        Some(display_dir.as_path())
+    );
+    Ok(())
+}
+
+#[test]
+fn config_show_and_target_list_json_give_display_dir_or_null() -> Result<()> {
+    let temp = TempDir::new()?;
+    let watch_dir = temp.path().join("watch");
+    let display_dir = temp.path().join("display");
+    let token = write_token(temp.path(), "old.token", "secret-token")?;
+    let config_path = write_config(
+        temp.path(),
+        &replace_fixture(&watch_dir, &token, &display_dir, None),
+    )?;
+    let config_arg = config_path.display().to_string();
+
+    for args in [
+        ["config", "show", "--config", config_arg.as_str(), "--json"],
+        ["target", "list", "--config", config_arg.as_str(), "--json"],
+    ] {
+        let output = publisher_command().args(args).output()?;
+        assert!(output.status.success(), "{args:?} should succeed");
+        let stdout = String::from_utf8(output.stdout)?;
+        let value: Value = serde_json::from_str(&stdout)?;
+
+        assert_eq!(value["targets"][0]["name"], "first");
+        assert_eq!(value["targets"][0].get("display_dir"), Some(&Value::Null));
+        assert_eq!(value["targets"][1]["name"], "mixxx");
+        assert_eq!(
+            value["targets"][1]["display_dir"],
+            display_dir.display().to_string()
+        );
+        assert!(!stdout.contains("secret-token"));
+    }
     Ok(())
 }
 

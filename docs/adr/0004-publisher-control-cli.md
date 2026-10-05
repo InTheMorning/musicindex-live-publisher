@@ -10,6 +10,10 @@ implementation review is
 Amended 2026-09-27: ADR 0005 removes `fallback_configured` from `config show
 --json`. No decision here changed.
 
+Amended 2026-10-04: `target add --replace` changes only the fields that its
+flags name, and it keeps the other lines of the stanza. This follows
+§Invariants. No decision here changed.
+
 ## Context
 
 `v4vmm` ADR 0059 makes `v4vmm` the control surface for the broadcast chain.

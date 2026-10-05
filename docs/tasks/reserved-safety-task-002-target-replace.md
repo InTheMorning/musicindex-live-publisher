@@ -1,6 +1,6 @@
 # Reserved Safety Task 002: `target add --replace` Keeps The Fields It Was Not Given
 
-Status: Ready - 2026-10-04.
+Status: Implemented - 2026-10-04.
 
 Every criterion is mechanical.
 
@@ -107,3 +107,29 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 - A present test asserts that `--replace` removes a key.
 - A key of the stanza is on more than one line, and the edit cannot keep it.
+
+## Review Result
+
+Reviewed 2026-10-04. The change applies cleanly on master after task 001, and
+the full gate passes there. `Cargo.lock` did not change.
+
+`--replace` edits the lines of the stanza in place. Before the write, the
+command parses the result again. The edited target must hold the new values
+and its old `display_dir`, and the rest of the file must not change. Else the
+file stays as it was.
+
+`v4vmm` decodes `target list --json` with a plain `Deserialize` and no
+`deny_unknown_fields`. The new key `display_dir` thus does not break it.
+
+The review accepts these changes to present tests:
+
+- Two tests assert the exact key set of a target in `config show --json`.
+  This task changes that key set, so each test now lists `display_dir`.
+- Three struct literals in `src/main.rs` tests get `display_dir: None`.
+
+Open items:
+
+- A quoted key, for example `"event_id" = …`, gives an error, and the file
+  does not change.
+- The text output of `target list` and `config show` does not show
+  `display_dir`.

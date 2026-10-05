@@ -383,17 +383,30 @@ musicindex-live-publisher config show --config <path> --json
 token file path to the config. It does not read or print token content.
 
 Use `--stream-delay-secs <seconds>` to set a delay for the target. Use
-`--replace` to replace an existing target stanza.
+`--replace` to change an existing target stanza.
+
+`--replace` keeps the stanza in the file and does not write a new one. It
+changes the values of `event_id` and `token_file`. It changes
+`stream_delay_secs` only when you give `--stream-delay-secs`. If the stanza has
+no `stream_delay_secs`, the command adds the line after `token_file`.
+
+All other lines of the stanza stay the same, for example `display_dir` and the
+comments. The other targets and the top-level keys stay the same. `target add`
+has no `--display-dir` flag. Edit `display_dir` in the file.
+
+If a key to change is not on one simple `key = value` line, `--replace` stops
+with an error. It does not write the file. Edit that stanza by hand.
 
 `target list --json` prints target names, event identifiers, token file paths,
-and stream delays. It does not print token content.
+stream delays and display directories. It does not print token content.
 
 `target remove` removes the target stanza only. It does not remove the token
 file and does not contact the relay.
 
 `config show --json` prints `watch_dir`, `endpoint`, and the target array. Each
-target contains `name`, `event_id`, `token_file`, and `stream_delay_secs`. It
-does not print token content.
+target contains `name`, `event_id`, `token_file`, `stream_delay_secs`, and
+`display_dir`. The value of `display_dir` is `null` when the target has no
+display directory. It does not print token content.
 
 When a JSON command fails after parsing its flags, stdout contains one object
 with an `error` field. The exit code stays the same as the non-JSON command.

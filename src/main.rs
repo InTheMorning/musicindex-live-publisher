@@ -1574,6 +1574,7 @@ mod tests {
             event_id: "event-default".to_owned(),
             token_file: PathBuf::from("/tmp/default.token"),
             stream_delay_secs: 12.5,
+            display_dir: None,
         }];
 
         let output = render_target_list_text(&targets);
@@ -1591,6 +1592,7 @@ mod tests {
             event_id: "event-default".to_owned(),
             token_file: PathBuf::from("/tmp/default.token"),
             stream_delay_secs: 0.0,
+            display_dir: None,
         }];
 
         let output = render_target_list_json(&targets)?;
@@ -1659,6 +1661,7 @@ mod tests {
                 event_id: "event-default".to_owned(),
                 token_file: PathBuf::from("/tmp/default.token"),
                 stream_delay_secs: 12.5,
+                display_dir: None,
             }],
         };
 
@@ -1676,7 +1679,13 @@ mod tests {
         target_keys.sort_unstable();
         assert_eq!(
             target_keys,
-            vec!["event_id", "name", "stream_delay_secs", "token_file"]
+            vec![
+                "display_dir",
+                "event_id",
+                "name",
+                "stream_delay_secs",
+                "token_file"
+            ]
         );
         assert!(!output.contains("secret-token"));
         assert!(!output.contains("03station"));

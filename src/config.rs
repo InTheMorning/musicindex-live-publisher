@@ -95,6 +95,8 @@ pub struct TargetConfigSummary {
     pub event_id: String,
     pub token_file: PathBuf,
     pub stream_delay_secs: f64,
+    /// The display directory of the target (ADR 0008), or `None`.
+    pub display_dir: Option<PathBuf>,
 }
 
 /// A redacted publisher config summary for control surfaces.
@@ -112,6 +114,8 @@ pub struct RedactedPublisherTarget {
     pub event_id: String,
     pub token_file: PathBuf,
     pub stream_delay_secs: f64,
+    /// The display directory of the target (ADR 0008), or `None`.
+    pub display_dir: Option<PathBuf>,
 }
 
 /// A config edit failure with a stable command-line meaning.
@@ -172,6 +176,7 @@ struct RawTargetSummary {
     event_id: String,
     token_file: PathBuf,
     stream_delay_secs: Option<f64>,
+    display_dir: Option<PathBuf>,
     fallback: Option<toml::Value>,
 }
 
@@ -287,6 +292,7 @@ pub fn list_config_targets_from_str(text: &str) -> Result<Vec<TargetConfigSummar
                 event_id: target.event_id,
                 token_file: target.token_file,
                 stream_delay_secs: target.stream_delay_secs.unwrap_or(0.0),
+                display_dir: target.display_dir,
             })
         })
         .collect()
@@ -319,12 +325,17 @@ pub fn show_config_from_str(text: &str) -> Result<RedactedPublisherConfig> {
     })
 }
 
-/// Adds or replaces one target stanza in TOML text.
+/// Adds one target stanza to TOML text, or edits an existing one.
+///
+/// With `replace`, the edit keeps the existing stanza. It changes the values
+/// of `event_id` and `token_file`. It changes `stream_delay_secs` only when
+/// the edit gives a delay. Each other line of the stanza stays the same (ADR
+/// 0004 §Invariants).
 ///
 /// # Errors
 ///
-/// Returns an error when the existing TOML is invalid or the target exists
-/// without `replace`.
+/// Returns an error when the existing TOML is invalid, the target exists
+/// without `replace`, or a key to change is not on one simple line.
 pub fn add_target_to_config_text(
     text: &str,
     edit: &TargetConfigEdit,
@@ -336,17 +347,19 @@ pub fn add_target_to_config_text(
         return Err(ConfigEditError::TargetExists(edit.name.clone()).into());
     }
 
-    let stanza = render_target_config_stanza(edit);
     if exists {
         let lines = split_preserving_newlines(text);
         let span = target_stanza_named(text, &lines, &edit.name)?
             .ok_or_else(|| ConfigEditError::TargetNotFound(edit.name.clone()))?;
+        let stanza = edit_target_stanza(&lines[span.start..span.end], edit)?;
         let mut edited = lines[..span.start].concat();
         edited.push_str(&stanza);
         edited.push_str(&lines[span.end..].concat());
+        verify_replaced_target(text, &edited, edit)?;
         return Ok(edited);
     }
 
+    let stanza = render_target_config_stanza(edit);
     Ok(append_target_config_stanza(text, &stanza))
 }
 
@@ -382,6 +395,7 @@ fn redacted_target_from_raw(
         event_id: target.event_id,
         token_file: target.token_file,
         stream_delay_secs: target.stream_delay_secs.unwrap_or(0.0),
+        display_dir: target.display_dir,
     })
 }
 
@@ -685,6 +699,183 @@ fn render_target_config_stanza(edit: &TargetConfigEdit) -> String {
     stanza
 }
 
+/// Keys that `target add --replace` changes.
+const REPLACED_TARGET_KEYS: [&str; 3] = ["event_id", "token_file", "stream_delay_secs"];
+
+/// Changes the values of an existing target stanza in place.
+///
+/// The stanza lines go from the `[[target]]` header to the last key line. Only
+/// the key lines before a child table header belong to the target table.
+fn edit_target_stanza(lines: &[&str], edit: &TargetConfigEdit) -> Result<String> {
+    let token_file = edit.token_file.display().to_string();
+    let mut output: Vec<String> = Vec::with_capacity(lines.len() + 1);
+    let mut event_id_done = false;
+    let mut token_file_line = None;
+    let mut stream_delay_done = false;
+    let mut in_target_table = true;
+
+    for (index, line) in lines.iter().enumerate() {
+        if index > 0 && table_header_kind(line).is_some() {
+            in_target_table = false;
+        }
+        if index == 0 || !in_target_table || is_blank_or_comment(line) {
+            output.push((*line).to_owned());
+            continue;
+        }
+        let new_value = match simple_line_key(line) {
+            Some("event_id") => {
+                event_id_done = true;
+                Some(toml_string(&edit.event_id))
+            }
+            Some("token_file") => {
+                token_file_line = Some(output.len());
+                Some(toml_string(&token_file))
+            }
+            Some("stream_delay_secs") => {
+                stream_delay_done = true;
+                edit.stream_delay_secs.map(|secs| secs.to_string())
+            }
+            _ => None,
+        };
+        match new_value {
+            Some(value) => output.push(replace_line_value(line, &value, &edit.name)?),
+            None => output.push((*line).to_owned()),
+        }
+    }
+
+    let Some(token_file_index) = token_file_line else {
+        return Err(not_simple_key_error(&edit.name, "token_file"));
+    };
+    if !event_id_done {
+        return Err(not_simple_key_error(&edit.name, "event_id"));
+    }
+    if let (Some(secs), false) = (edit.stream_delay_secs, stream_delay_done) {
+        let ending = line_ending(&output[token_file_index]).to_owned();
+        if ending.is_empty() {
+            output[token_file_index].push('\n');
+        }
+        output.insert(
+            token_file_index + 1,
+            format!("stream_delay_secs = {secs}{ending}"),
+        );
+    }
+
+    Ok(output.concat())
+}
+
+/// Returns the bare key of a `key = value` line, or `None` for another form.
+fn simple_line_key(line: &str) -> Option<&str> {
+    let (key, _value) = line.split_once('=')?;
+    let key = key.trim();
+    let bare = !key.is_empty()
+        && key
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '_' | '-'));
+    bare.then_some(key)
+}
+
+/// Writes a new value into one `key = value` line.
+///
+/// The indentation, the space around `=`, a trailing comment and the line
+/// ending stay the same. The old value must be a complete TOML value on this
+/// line.
+fn replace_line_value(line: &str, new_value: &str, target_name: &str) -> Result<String> {
+    let ending = line_ending(line);
+    let body = &line[..line.len() - ending.len()];
+    let Some((key_part, rest)) = body.split_once('=') else {
+        return Err(not_simple_key_error(target_name, body.trim()));
+    };
+    let key = key_part.trim();
+    let leading = &rest[..rest.len() - rest.trim_start().len()];
+    let value_and_comment = rest.trim_start();
+
+    let parses =
+        |candidate: &str| toml::from_str::<toml::Table>(&format!("{key} = {candidate}")).is_ok();
+    let value_end = value_and_comment
+        .match_indices('#')
+        .map(|(position, _)| position)
+        .find(|position| parses(&value_and_comment[..*position]))
+        .or_else(|| parses(value_and_comment).then_some(value_and_comment.len()));
+    let Some(value_end) = value_end else {
+        return Err(not_simple_key_error(target_name, key));
+    };
+    let old_value = value_and_comment[..value_end].trim_end();
+    let tail = &value_and_comment[old_value.len()..];
+
+    Ok(format!("{key_part}={leading}{new_value}{tail}{ending}"))
+}
+
+fn line_ending(line: &str) -> &str {
+    if line.ends_with("\r\n") {
+        "\r\n"
+    } else if line.ends_with('\n') {
+        "\n"
+    } else {
+        ""
+    }
+}
+
+fn not_simple_key_error(target_name: &str, key: &str) -> anyhow::Error {
+    anyhow!(
+        "ADR 0004: target {target_name} key {key} is not a simple one-line `key = value` line. \
+         target add --replace cannot edit it in place. Edit the config file by hand"
+    )
+}
+
+/// Parses the edited text again before the write.
+///
+/// The edited target must hold the new values. Each other key of that target,
+/// and each other part of the config, must hold its old value.
+fn verify_replaced_target(old_text: &str, new_text: &str, edit: &TargetConfigEdit) -> Result<()> {
+    let old_targets = list_config_targets_from_str(old_text)?;
+    let new_targets = list_config_targets_from_str(new_text)
+        .context("ADR 0004: target add --replace made a config that does not parse")?;
+    let old_target = old_targets
+        .iter()
+        .find(|target| target.name == edit.name)
+        .ok_or_else(|| ConfigEditError::TargetNotFound(edit.name.clone()))?;
+    let new_target = new_targets
+        .iter()
+        .find(|target| target.name == edit.name)
+        .ok_or_else(|| anyhow!("ADR 0004: target add --replace lost target {}", edit.name))?;
+    let expected_delay = edit
+        .stream_delay_secs
+        .unwrap_or(old_target.stream_delay_secs);
+    let values_match = new_target.event_id == edit.event_id
+        && new_target.token_file == edit.token_file
+        && new_target.stream_delay_secs == expected_delay
+        && new_target.display_dir == old_target.display_dir;
+
+    let mut old_value: toml::Table =
+        toml::from_str(old_text).context("parse config TOML for target replace")?;
+    let mut new_value: toml::Table =
+        toml::from_str(new_text).context("parse edited config TOML for target replace")?;
+    for value in [&mut old_value, &mut new_value] {
+        remove_replaced_keys(value, &edit.name);
+    }
+
+    if !values_match || old_value != new_value {
+        return Err(anyhow!(
+            "ADR 0004: target add --replace could not edit target {} in place. Edit the config file by hand",
+            edit.name
+        ));
+    }
+    Ok(())
+}
+
+fn remove_replaced_keys(config: &mut toml::Table, name: &str) {
+    let Some(targets) = config.get_mut("target").and_then(toml::Value::as_array_mut) else {
+        return;
+    };
+    for target in targets.iter_mut().filter_map(toml::Value::as_table_mut) {
+        if target.get("name").and_then(toml::Value::as_str) == Some(name) {
+            for key in REPLACED_TARGET_KEYS {
+                target.remove(key);
+            }
+        }
+    }
+}
+
 fn write_config_text_atomic(path: &Path, text: &str) -> Result<()> {
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
     let file_name = path
@@ -854,5 +1045,61 @@ mod tests {
         let error = resolve_token_file_path(Path::new("~/default.token"), None, None);
 
         assert!(error.is_err_and(|error| error.to_string().contains("requires HOME")));
+    }
+
+    const VERIFY_OLD: &str = "watch_dir = \"/w\"\nendpoint = \"https://e\"\n\n\
+[[target]]\nname = \"a\"\nevent_id = \"event-a\"\ntoken_file = \"/t/a\"\n\
+display_dir = \"/d/a\"\n\n\
+[[target]]\nname = \"b\"\nevent_id = \"event-b\"\ntoken_file = \"/t/b\"\n";
+
+    fn verify_edit() -> TargetConfigEdit {
+        TargetConfigEdit {
+            name: "a".to_owned(),
+            event_id: "event-new".to_owned(),
+            token_file: PathBuf::from("/t/new"),
+            stream_delay_secs: None,
+        }
+    }
+
+    #[test]
+    fn verify_replaced_target_accepts_a_correct_edit() -> Result<()> {
+        let new = VERIFY_OLD
+            .replacen("event-a", "event-new", 1)
+            .replacen("/t/a", "/t/new", 1);
+
+        verify_replaced_target(VERIFY_OLD, &new, &verify_edit())
+    }
+
+    #[test]
+    fn verify_replaced_target_refuses_a_lost_display_dir() {
+        let new = VERIFY_OLD
+            .replacen("event-a", "event-new", 1)
+            .replacen("/t/a", "/t/new", 1)
+            .replacen("display_dir = \"/d/a\"\n", "", 1);
+
+        let result = verify_replaced_target(VERIFY_OLD, &new, &verify_edit());
+
+        assert!(result.is_err_and(|error| error.to_string().contains("ADR 0004")));
+    }
+
+    #[test]
+    fn verify_replaced_target_refuses_a_change_to_another_target() {
+        let new = VERIFY_OLD
+            .replacen("event-a", "event-new", 1)
+            .replacen("/t/a", "/t/new", 1)
+            .replacen("event-b", "event-changed", 1);
+
+        let result = verify_replaced_target(VERIFY_OLD, &new, &verify_edit());
+
+        assert!(result.is_err_and(|error| error.to_string().contains("ADR 0004")));
+    }
+
+    #[test]
+    fn verify_replaced_target_refuses_an_old_value() {
+        let new = VERIFY_OLD.replacen("/t/a", "/t/new", 1);
+
+        let result = verify_replaced_target(VERIFY_OLD, &new, &verify_edit());
+
+        assert!(result.is_err_and(|error| error.to_string().contains("ADR 0004")));
     }
 }
