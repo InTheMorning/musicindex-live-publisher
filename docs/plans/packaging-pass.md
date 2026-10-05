@@ -96,7 +96,13 @@ Each item needs a decision or a check in the pass.
    `nodejs` in `checkdepends`.
 8. **Removal.** `pacman -R` leaves the V4V card until the next reboot. The
    operator file in `/etc/modprobe.d` stays. Say so in the package runbook.
-9. **Before publishing to AUR.** The list in
+9. **The display directory of the producer (ADR 0008).** The producer unit
+   sets `ProtectSystem=strict`. The producer can write only in the paths of
+   `RuntimeDirectory=`. A unit with `--display-dir` must also name the display
+   directory in `RuntimeDirectory=`. Decide if the packaged unit and the setup
+   helper turn on the display output, or if the operator adds it. Found on
+   2026-10-04.
+10. **Before publishing to AUR.** The list in
    `docs/runbooks/musicindex-live-publisher-arch-package.md` §Before
    Publishing To AUR still applies: a license, a public source, a release
    without `-git`, and `namcap`.
