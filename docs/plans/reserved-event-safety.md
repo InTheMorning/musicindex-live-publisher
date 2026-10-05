@@ -44,6 +44,10 @@ These rules are advisory. They stay until the `v4vmm` request is done.
 - Keep the reserved token in a file of this repository, not in a file of the
   `v4vmm` token directory.
 - Keep a copy of the reserved token in a second private file.
+- Before you change the content of a token file, run `target list --json`.
+  Change the file only if no target names it. On 2026-10-05 the old
+  ephemeral token went back into a file that the target still named. The
+  next restart of the publisher got `403`, and systemd stopped the unit.
 - On a computer with a reserved target, run `setup-mixxx-musicindex` only
   with `--units-only`, and only from a package that holds task 003.
 - In `v4vmm`, do not use Attach, Retry, Replace or `broadcast events forget`
