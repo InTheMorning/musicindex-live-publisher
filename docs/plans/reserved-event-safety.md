@@ -26,7 +26,8 @@ The `v4vmm` paths are in the request
 
 ## Packets
 
-Do task 001 and task 002 first. Task 004 needs task 002.
+Tasks 001 to 004 are done on 2026-10-05. Each packet has its review result.
+The `v4vmm` request stays open.
 
 - [001 — `provision` never replaces a token](../tasks/reserved-safety-task-001-provision-token.md)
 - [002 — `target add --replace` keeps the fields it was not given](../tasks/reserved-safety-task-002-target-replace.md)
@@ -38,12 +39,12 @@ the packaging pass. They do not need the package build of that pass.
 
 ## Interim Rules For The Operator
 
-These rules are advisory. They stay until the packets and the `v4vmm` request
-are done.
+These rules are advisory. They stay until the `v4vmm` request is done.
 
 - Keep the reserved token in a file of this repository, not in a file of the
   `v4vmm` token directory.
 - Keep a copy of the reserved token in a second private file.
-- Do not run `setup-mixxx-musicindex` on a computer with a reserved target.
+- On a computer with a reserved target, run `setup-mixxx-musicindex` only
+  with `--units-only`, and only from a package that holds task 003.
 - In `v4vmm`, do not use Attach, Retry, Replace or `broadcast events forget`
   for the Mixxx target.

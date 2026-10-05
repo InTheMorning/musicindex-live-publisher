@@ -1,6 +1,6 @@
 # Reserved Safety Task 004: The Setup Helper Writes The Display Output
 
-Status: Ready - 2026-10-04. Do after task 002 and task 003.
+Status: Implemented - 2026-10-05.
 
 Every criterion is mechanical.
 
@@ -105,3 +105,27 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 - `config show --json` has no `display_dir` (task 002 is not done).
 - A rule here conflicts with ADR 0008.
+
+## Review Result
+
+Reviewed 2026-10-05. The full gate passes. `Cargo.lock` did not change. No
+file in `src/**`, `systemd/**` or `docs/adr/**` changed.
+
+The helper reads `display_dir` from `config show --json` with no `jq`. The
+package does not depend on `jq`. The parse uses the exact indent of the
+output of the publisher. It stops for each value that it cannot read with
+certainty. The test stub sends `config show` to the real built binary, so a
+change of the output format makes a test fail.
+
+The review accepts these changes to present tests:
+
+- `units_only_writes_the_units_and_nothing_else` now expects one publisher
+  call, `config show`. This task adds that call.
+- The other edits to the test file add test support and keep each present
+  check.
+
+Open items:
+
+- The start test runs the real `pgrep` of the host. It only reads.
+- The rule against a write of an unchanged file covers the units only.
+- `shellcheck` is not installed, so it did not run.

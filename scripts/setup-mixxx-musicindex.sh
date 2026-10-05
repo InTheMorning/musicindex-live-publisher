@@ -9,6 +9,7 @@ mode=permanent
 start_services=1
 force=0
 units_only=0
+display=0
 placeholder_event_id=replace-with-provisioned-event-guid
 
 publisher_bin=${MUSICINDEX_LIVE_PUBLISHER_BIN:-/usr/bin/musicindex-live-publisher}
@@ -46,16 +47,27 @@ Options:
   --units-only         Write the two user units again. Use this to upgrade.
                        The config must exist. The script reads no token,
                        changes no config or token, and sends no relay request.
+  --display            Turn on the display output of ADR 0008. The script
+                       writes display_dir in a new config. The producer then
+                       writes the display directory. The display path needs
+                       a reserved event, and this script provisions an
+                       ephemeral event. With --units-only, the config must
+                       already have display_dir.
   --no-start           Write files but do not run systemctl.
   -h, --help           Show this help.
 
 A config that names a real event stops the script before the relay request,
 unless you give --force.
 
+A unit with the same content is not written again and gets no backup.
+With --units-only, a config with display_dir keeps the display output in the
+producer unit. The --display option is then not necessary.
+
 Examples:
   setup-mixxx-musicindex
   setup-mixxx-musicindex --temporary
   setup-mixxx-musicindex --units-only
+  setup-mixxx-musicindex --units-only --display
 USAGE
 }
 
@@ -95,6 +107,10 @@ while (($#)); do
       ;;
     --units-only)
       units_only=1
+      shift
+      ;;
+    --display)
+      display=1
       shift
       ;;
     --no-start)
@@ -189,6 +205,9 @@ runtime_root=${XDG_RUNTIME_DIR:-/run/user/$uid}
 config_home=${XDG_CONFIG_HOME:-$HOME/.config}
 watch_dir=$runtime_root/musicindex-live-publisher/$instance/nowplaying
 txt_file=$watch_dir/now-playing.txt
+# ADR 0008 §The Producer Output: the display directory is never the drop
+# directory.
+display_dir=$runtime_root/musicindex-live-publisher/$instance/display
 unit_dir=$config_home/systemd/user
 
 case "$mode" in
@@ -222,7 +241,7 @@ reject_systemd_arg() {
   esac
 }
 
-for name in publisher_bin producer_bin config_file watch_dir txt_file; do
+for name in publisher_bin producer_bin config_file watch_dir txt_file display_dir; do
   reject_systemd_arg "$name" "${!name}"
 done
 
@@ -307,11 +326,120 @@ write_generated_file() {
   mv "$tmp" "$path"
 }
 
+same_file_content() {
+  local first=$1
+  local second=$2
+  local first_text=
+  local second_text=
+  [[ -f "$first" && ! -L "$first" && -f "$second" && ! -L "$second" ]] || return 1
+  [[ "$(wc -c < "$first")" == "$(wc -c < "$second")" ]] || return 1
+  IFS= read -r -d '' first_text < "$first" || true
+  IFS= read -r -d '' second_text < "$second" || true
+  [[ "$first_text" == "$second_text" ]]
+}
+
+# AGENTS.md §6: do not rewrite a file when the content did not change. A unit
+# with the same content gets no write and no backup. The function prints the
+# result line for the unit.
+write_generated_unit() {
+  local path=$1
+  local tmp
+  tmp=$(mktemp "$path.tmp.XXXXXX")
+  cat > "$tmp"
+  if same_file_content "$tmp" "$path"; then
+    rm -f "$tmp"
+    printf 'Unit not changed: %s\n' "$path"
+    return 0
+  fi
+  chmod 0644 "$tmp"
+  backup_file "$path"
+  mv "$tmp" "$path"
+  printf 'Wrote unit: %s\n' "$path"
+}
+
+# Reserved safety task 004: read display_dir of the target "$target" from
+# "config show --json". The publisher prints that JSON with serde_json pretty
+# output: each target is an object at four spaces, and each field of a target
+# is one line at six spaces. A JSON string cannot hold a raw newline, so a
+# field value cannot make a second line. The function accepts only a JSON
+# string with no escape character, or null. Any other form stops the script.
+# The result goes into config_display_dir. An empty result means null.
+read_config_display_dir() {
+  local json
+  local line
+  local in_target=0
+  local name=
+  local raw=
+  local has_raw=0
+  local found=0
+  local found_raw=
+  local found_has_raw=0
+  local object_open='^    \{$'
+  local object_close='^    \},?$'
+  local name_line='^      "name": "([^"\\]*)",?$'
+  local display_line='^      "display_dir": (.*[^,]),?$'
+  local plain_string='^"([^"\\]*)"$'
+
+  json=$("$publisher_bin" config show --config "$config_file" --json) \
+    || die "could not read $config_file with \"config show --json\". No file changed."
+
+  while IFS= read -r line; do
+    if [[ "$line" =~ $object_open ]]; then
+      in_target=1
+      name=
+      raw=
+      has_raw=0
+    elif [[ "$in_target" -eq 1 && "$line" =~ $object_close ]]; then
+      in_target=0
+      if [[ "$name" == "$target" ]]; then
+        found=$((found + 1))
+        found_raw=$raw
+        found_has_raw=$has_raw
+      fi
+    elif [[ "$in_target" -eq 1 && "$line" =~ $name_line ]]; then
+      name=${BASH_REMATCH[1]}
+    elif [[ "$in_target" -eq 1 && "$line" =~ $display_line ]]; then
+      raw=${BASH_REMATCH[1]}
+      has_raw=1
+    fi
+  done <<< "$json"
+
+  [[ "$found" -eq 1 ]] \
+    || die "$config_file must have exactly one target named $target, but \"config show --json\" shows $found. No file changed."
+  [[ "$found_has_raw" -eq 1 ]] \
+    || die "\"config show --json\" of $publisher_bin shows no display_dir. Install a newer musicindex-live-publisher. No file changed."
+
+  if [[ "$found_raw" == null ]]; then
+    config_display_dir=
+  elif [[ "$found_raw" =~ $plain_string ]]; then
+    config_display_dir=${BASH_REMATCH[1]}
+    [[ -n "$config_display_dir" ]] \
+      || die "the display_dir of target $target in $config_file is empty. No file changed."
+  else
+    die "could not read the display_dir of target $target in $config_file exactly: $found_raw. No file changed."
+  fi
+}
+
 if [[ "$units_only" -eq 1 ]]; then
   # --units-only reads no token and writes no config and no token. It needs
   # the config that an earlier run wrote, because the units name it.
   [[ -e "$config_file" ]] \
     || die "--units-only needs an existing config, but $config_file does not exist. Run the script without --units-only first."
+
+  # Reserved safety task 004: the producer unit keeps the display output of
+  # the config. A config display_dir must be the display directory of this
+  # script, because the producer unit names that directory in
+  # RuntimeDirectory=.
+  read_config_display_dir
+  if [[ -n "$config_display_dir" ]]; then
+    [[ "$config_display_dir" != "$watch_dir" ]] \
+      || die "the display_dir of target $target in $config_file is the drop directory $watch_dir (ADR 0008). No file changed."
+    [[ "$config_display_dir" == "$display_dir" ]] \
+      || die "the display_dir of target $target in $config_file is $config_display_dir, but this script writes $display_dir. Change the config line to: display_dir = \"$display_dir\". No file changed."
+    display=1
+  elif [[ "$display" -eq 1 ]]; then
+    die "--display needs display_dir in $config_file, but target $target has none. Add this line to the [[target]] stanza of $target: display_dir = \"$display_dir\". No file changed."
+  fi
 else
   install -d -m 0700 "$state_dir" "$token_dir"
   can_replace_config "$config_file" || refuse_config "$config_file"
@@ -354,14 +482,27 @@ if [[ "$units_only" -eq 0 ]]; then
     printf 'name = %s\n' "$(toml_string "$target")"
     printf 'event_id = %s\n' "$(toml_string "$event_id")"
     printf 'token_file = %s\n' "$(toml_string "$token_file")"
+    if [[ "$display" -eq 1 ]]; then
+      printf '# ADR 0008: the display path needs a reserved event.\n'
+      printf 'display_dir = %s\n' "$(toml_string "$display_dir")"
+    fi
     printf '\n'
     printf '# The publisher uses a fixed dead block while idle or non-V4V (ADR 0005).\n'
     printf '# No configuration changes it.\n'
   } | write_generated_file "$config_file" 0600
 fi
 
-backup_file "$publisher_unit"
-write_generated_file "$publisher_unit" 0644 <<EOF
+producer_exec_start="$producer_bin --format json --target $target --id3-file $watch_dir/$target.json --txt-file $txt_file"
+producer_runtime_dirs=musicindex-live-publisher/$instance/nowplaying
+if [[ "$display" -eq 1 ]]; then
+  # ADR 0008 §The Producer Output. ProtectSystem=strict lets the producer
+  # write only in the paths of RuntimeDirectory=, so that line also names the
+  # display directory.
+  producer_exec_start+=" --display-dir $display_dir"
+  producer_runtime_dirs+=" musicindex-live-publisher/$instance/display"
+fi
+
+write_generated_unit "$publisher_unit" <<EOF
 $generated_marker
 [Unit]
 Description=MusicIndex live publisher for Mixxx
@@ -400,8 +541,7 @@ UMask=0077
 WantedBy=default.target
 EOF
 
-backup_file "$producer_unit"
-write_generated_file "$producer_unit" 0644 <<EOF
+write_generated_unit "$producer_unit" <<EOF
 $generated_marker
 [Unit]
 Description=Mixxx now-playing producer for MusicIndex
@@ -411,7 +551,7 @@ After=$publisher_unit_name
 
 [Service]
 Type=simple
-ExecStart=$producer_bin --format json --target $target --id3-file $watch_dir/$target.json --txt-file $txt_file
+ExecStart=$producer_exec_start
 Restart=always
 RestartSec=10s
 
@@ -419,7 +559,7 @@ NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=read-only
 PrivateTmp=true
-RuntimeDirectory=musicindex-live-publisher/$instance/nowplaying
+RuntimeDirectory=$producer_runtime_dirs
 RuntimeDirectoryMode=0700
 RuntimeDirectoryPreserve=yes
 # ADR 0006: the producer opens the raw MIDI device of the V4V card in /dev/snd.
@@ -438,13 +578,9 @@ EOF
 
 if [[ "$units_only" -eq 1 ]]; then
   printf 'Config not changed: %s\n' "$config_file"
-  printf 'Wrote unit: %s\n' "$publisher_unit"
-  printf 'Wrote unit: %s\n' "$producer_unit"
 else
   printf 'Wrote config: %s\n' "$config_file"
   printf 'Wrote token: %s\n' "$token_file"
-  printf 'Wrote unit: %s\n' "$publisher_unit"
-  printf 'Wrote unit: %s\n' "$producer_unit"
   printf 'Event ID: %s\n' "$event_id"
 fi
 
@@ -510,3 +646,7 @@ fi
 
 printf 'Producer drop file: %s/%s.json\n' "$watch_dir" "$target"
 printf 'Text metadata file: %s\n' "$txt_file"
+if [[ "$display" -eq 1 ]]; then
+  printf 'Display directory: %s\n' "$display_dir"
+  warn "the display path needs a reserved event. For an ephemeral event the relay answers 409 event_not_reserved, and the publisher turns the display path off."
+fi

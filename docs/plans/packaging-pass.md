@@ -106,6 +106,12 @@ Each item needs a decision or a check in the pass.
    directory in `RuntimeDirectory=`. Decide if the packaged unit and the setup
    helper turn on the display output, or if the operator adds it. Found on
    2026-10-04.
+
+   Closed for the setup helper on 2026-10-05 by reserved safety task 004.
+   `setup-mixxx-musicindex --display` writes the display output. A
+   `--units-only` run keeps it when the config has `display_dir`. The
+   packaged unit `systemd/mixxx-now-playing.service` stays without the display
+   output. The packaging pass decides it.
 10. **Before publishing to AUR.** The list in
    `docs/runbooks/musicindex-live-publisher-arch-package.md` §Before
    Publishing To AUR still applies: a license, a public source, a release
