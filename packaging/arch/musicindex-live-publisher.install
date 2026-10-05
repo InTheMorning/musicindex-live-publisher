@@ -15,6 +15,9 @@ The setup command provisions a live item, writes the one-time broadcaster token,
 generates musicindex-live-publisher@mixxx.service and mixxx-now-playing.service,
 then starts the user services.
 
+Upgrade: run "setup-mixxx-musicindex --units-only" to write the two units again.
+It changes no config and no token, and it sends no relay request.
+
 MIDI connector (ADR 0006):
   The package installs the V4V MIDI card files. The V4V card exists after the
   next reboot. This install does not load the kernel module.

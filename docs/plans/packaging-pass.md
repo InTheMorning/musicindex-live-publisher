@@ -87,6 +87,10 @@ Each item needs a decision or a check in the pass.
    logged `history-only mode reason=NoDevice`. A run of the setup helper also
    provisions a new relay event, so it is not a safe upgrade step. The pass
    needs an upgrade path that changes only the unit.
+
+   Closed on 2026-10-05 by reserved safety task 003. The operator runs
+   `setup-mixxx-musicindex --units-only`. That run writes only the two units.
+   The install message and the package runbook give that step.
 6. **The setup helper and `--no-connector`.** The helper stops without the
    card, also for an operator who does not want the connector. The helper
    has no `--connector-card` or `--no-connector` option. ADR 0006 says that

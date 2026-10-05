@@ -1,6 +1,6 @@
 # Reserved Safety Task 003: The Setup Helper Keeps An Existing Event
 
-Status: Ready - 2026-10-04.
+Status: Implemented - 2026-10-05.
 
 Every criterion is mechanical.
 
@@ -109,3 +109,28 @@ cargo clippy --workspace --all-targets -- -D warnings
 - The repository has no test for the setup helper, and a new test needs a
   new dependency.
 - A change here conflicts with ADR 0006 §Card Setup.
+
+## Review Result
+
+Reviewed 2026-10-05. The full gate passes. `Cargo.lock` did not change. Each
+helper test clears the environment, uses temporary directories and stubs,
+and passes `--no-start`. No test touches the real configuration or the real
+systemd user manager.
+
+The review accepts these deviations:
+
+- With `--no-start`, `--units-only` runs no `systemctl` command. It prints
+  the `daemon-reload` and `restart` commands. The packet asked for a
+  `daemon-reload` in each case. The reviewer note asked for no `systemctl`
+  call with `--no-start`, and the note wins.
+- A config with a placeholder target and a real target is refused. The old
+  rule accepted it.
+
+Open items:
+
+- No test runs `--units-only` without `--no-start`. Task 004 adds that test
+  with a stub `systemctl`.
+- `--units-only` writes the units and their backups also when nothing
+  changed. `AGENTS.md` §6 says not to rewrite an unchanged file. The packet
+  kept the present write.
+- `shellcheck` is not installed, so it did not run.

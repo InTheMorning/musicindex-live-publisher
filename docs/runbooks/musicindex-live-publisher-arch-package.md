@@ -79,6 +79,10 @@ pipeline. The publisher uses a fixed dead block for idle or non-V4V playback
 setup-mixxx-musicindex
 ```
 
+The helper stops when the config names a real event ID. It then sends no
+relay request and changes no file. Only `--force` replaces that config. See
+[Upgrade](#upgrade).
+
 Use temporary mode for a current-login rehearsal:
 
 ```bash
@@ -187,9 +191,36 @@ mixxx-now-playing \
 
 ## Upgrade
 
+Build and install the new package:
+
 ```bash
 cd path/to/musicindex-live-publisher/packaging/arch
 makepkg -Csi
+```
+
+A package upgrade does not change a unit that the setup helper wrote. Write
+the two units again with the new helper:
+
+```bash
+setup-mixxx-musicindex --units-only
+```
+
+This command writes `musicindex-live-publisher@mixxx.service` and
+`mixxx-now-playing.service` again, with a backup of each. It reads no token.
+It does not change the config or a token, and it sends no relay request. It
+needs the config of an earlier run.
+
+Then the helper reloads the user manager and restarts the two units. With
+`--no-start`, it runs no `systemctl` command. It prints the commands instead.
+
+Do not use the helper without `--units-only` for an upgrade. When the config
+names a real event ID, the helper stops before the relay request. With
+`--force`, it backs up the config and provisions a new live item. The old
+event then leaves the config.
+
+If you did not use the setup helper, restart the services:
+
+```bash
 systemctl --user restart musicindex-live-publisher@mixxx.service
 systemctl --user restart mixxx-now-playing.service
 ```

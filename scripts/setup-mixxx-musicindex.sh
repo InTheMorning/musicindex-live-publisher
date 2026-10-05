@@ -8,6 +8,8 @@ endpoint=${MUSICINDEX_ENDPOINT:-https://api.musicindex.org}
 mode=permanent
 start_services=1
 force=0
+units_only=0
+placeholder_event_id=replace-with-provisioned-event-guid
 
 publisher_bin=${MUSICINDEX_LIVE_PUBLISHER_BIN:-/usr/bin/musicindex-live-publisher}
 producer_bin=${MIXXX_NOW_PLAYING_BIN:-/usr/bin/mixxx-now-playing}
@@ -39,12 +41,21 @@ Options:
   --endpoint URL       MusicIndex relay endpoint.
                        Default: https://api.musicindex.org
   --force              Replace existing generated files and back up conflicts.
-  --no-start           Write files but do not start services.
+                       Only this option replaces a config with a real event
+                       ID. The script then provisions a new live item.
+  --units-only         Write the two user units again. Use this to upgrade.
+                       The config must exist. The script reads no token,
+                       changes no config or token, and sends no relay request.
+  --no-start           Write files but do not run systemctl.
   -h, --help           Show this help.
+
+A config that names a real event stops the script before the relay request,
+unless you give --force.
 
 Examples:
   setup-mixxx-musicindex
   setup-mixxx-musicindex --temporary
+  setup-mixxx-musicindex --units-only
 USAGE
 }
 
@@ -80,6 +91,10 @@ while (($#)); do
       ;;
     --force)
       force=1
+      shift
+      ;;
+    --units-only)
+      units_only=1
       shift
       ;;
     --no-start)
@@ -223,12 +238,48 @@ file_has_marker() {
   [[ -e "$path" ]] && grep -Fq "$generated_marker" "$path"
 }
 
+config_event_ids() {
+  local path=$1
+  sed -n 's/^[[:space:]]*event_id[[:space:]]*=[[:space:]]*"\([^"]*\)".*$/\1/p' "$path"
+}
+
+# Reserved safety task 003: the generated marker does not allow a replace. A
+# config may be replaced without --force only when each event ID in it is the
+# placeholder. A real event ID can be a reserved event with a one-time token.
+config_has_only_placeholder() {
+  local path=$1
+  local ids
+  local id
+  ids=$(config_event_ids "$path") || return 1
+  [[ -n "$ids" ]] || return 1
+  while IFS= read -r id; do
+    [[ "$id" == "$placeholder_event_id" ]] || return 1
+  done <<< "$ids"
+}
+
 can_replace_config() {
   local path=$1
   [[ ! -e "$path" ]] && return 0
-  file_has_marker "$path" && return 0
-  grep -Fq "replace-with-provisioned-event-guid" "$path" && return 0
+  config_has_only_placeholder "$path" && return 0
   [[ "$force" -eq 1 ]]
+}
+
+refuse_config() {
+  local path=$1
+  local ids
+  ids=$(config_event_ids "$path" 2>/dev/null | tr '\n' ' ') || ids=
+  ids=${ids% }
+  printf '%s: refusing to replace existing config %s.\n' "$program" "$path" >&2
+  if [[ -n "$ids" ]]; then
+    printf '%s: The config names the event ID %s.\n' "$program" "$ids" >&2
+  else
+    printf '%s: The config names no event ID.\n' "$program" >&2
+  fi
+  printf '%s: No relay request ran. The config and the token did not change.\n' "$program" >&2
+  printf '%s: To write only the two units, run again with --units-only.\n' "$program" >&2
+  printf '%s: To back up the config and provision a new live item, run again with --force.\n' \
+    "$program" >&2
+  exit 1
 }
 
 can_replace_generated_file() {
@@ -256,48 +307,58 @@ write_generated_file() {
   mv "$tmp" "$path"
 }
 
-install -d -m 0700 "$state_dir" "$token_dir"
+if [[ "$units_only" -eq 1 ]]; then
+  # --units-only reads no token and writes no config and no token. It needs
+  # the config that an earlier run wrote, because the units name it.
+  [[ -e "$config_file" ]] \
+    || die "--units-only needs an existing config, but $config_file does not exist. Run the script without --units-only first."
+else
+  install -d -m 0700 "$state_dir" "$token_dir"
+  can_replace_config "$config_file" || refuse_config "$config_file"
+fi
 install -d -m 0755 "$unit_dir"
 
-can_replace_config "$config_file" \
-  || die "refusing to replace existing config $config_file; rerun with --force or edit it manually"
 can_replace_generated_file "$publisher_unit" \
   || die "refusing to replace existing unit $publisher_unit; rerun with --force or edit it manually"
 can_replace_generated_file "$producer_unit" \
   || die "refusing to replace existing unit $producer_unit; rerun with --force or edit it manually"
 
-if [[ -e "$token_file" ]]; then
-  [[ "$force" -eq 1 ]] \
-    || die "refusing to replace existing token $token_file; rerun with --force to provision a new live item"
-  mv "$token_file" "$token_file.bak.$stamp"
-  warn "backed up $token_file to $token_file.bak.$stamp"
+if [[ "$units_only" -eq 0 ]]; then
+  # Reserved safety task 001 review: -e does not see a symbolic link that points
+  # nowhere. Check -L too.
+  if [[ -e "$token_file" || -L "$token_file" ]]; then
+    [[ "$force" -eq 1 ]] \
+      || die "refusing to replace existing token $token_file; rerun with --force to provision a new live item"
+    mv "$token_file" "$token_file.bak.$stamp"
+    warn "backed up $token_file to $token_file.bak.$stamp"
+  fi
+
+  printf 'Provisioning MusicIndex live item at %s...\n' "$endpoint"
+  provision_output=$("$publisher_bin" provision \
+    --endpoint "$endpoint" \
+    --target "$target" \
+    --token-file "$token_file")
+  printf '%s\n' "$provision_output"
+  event_id=$(printf '%s\n' "$provision_output" | sed -n 's/^event_id = "\(.*\)"$/\1/p' | tail -n 1)
+  [[ -n "$event_id" ]] || die "could not parse event_id from provision output"
+
+  backup_file "$config_file"
+  {
+    printf '%s\n' "$generated_marker"
+    printf '# Mode: %s\n' "$mode"
+    printf '# The %s unit overrides watch_dir with --watch-dir.\n' "$publisher_unit_name"
+    printf 'watch_dir = %s\n' "$(toml_string "$watch_dir")"
+    printf 'endpoint = %s\n' "$(toml_string "$endpoint")"
+    printf '\n'
+    printf '[[target]]\n'
+    printf 'name = %s\n' "$(toml_string "$target")"
+    printf 'event_id = %s\n' "$(toml_string "$event_id")"
+    printf 'token_file = %s\n' "$(toml_string "$token_file")"
+    printf '\n'
+    printf '# The publisher uses a fixed dead block while idle or non-V4V (ADR 0005).\n'
+    printf '# No configuration changes it.\n'
+  } | write_generated_file "$config_file" 0600
 fi
-
-printf 'Provisioning MusicIndex live item at %s...\n' "$endpoint"
-provision_output=$("$publisher_bin" provision \
-  --endpoint "$endpoint" \
-  --target "$target" \
-  --token-file "$token_file")
-printf '%s\n' "$provision_output"
-event_id=$(printf '%s\n' "$provision_output" | sed -n 's/^event_id = "\(.*\)"$/\1/p' | tail -n 1)
-[[ -n "$event_id" ]] || die "could not parse event_id from provision output"
-
-backup_file "$config_file"
-{
-  printf '%s\n' "$generated_marker"
-  printf '# Mode: %s\n' "$mode"
-  printf '# The %s unit overrides watch_dir with --watch-dir.\n' "$publisher_unit_name"
-  printf 'watch_dir = %s\n' "$(toml_string "$watch_dir")"
-  printf 'endpoint = %s\n' "$(toml_string "$endpoint")"
-  printf '\n'
-  printf '[[target]]\n'
-  printf 'name = %s\n' "$(toml_string "$target")"
-  printf 'event_id = %s\n' "$(toml_string "$event_id")"
-  printf 'token_file = %s\n' "$(toml_string "$token_file")"
-  printf '\n'
-  printf '# The publisher uses a fixed dead block while idle or non-V4V (ADR 0005).\n'
-  printf '# No configuration changes it.\n'
-} | write_generated_file "$config_file" 0600
 
 backup_file "$publisher_unit"
 write_generated_file "$publisher_unit" 0644 <<EOF
@@ -375,11 +436,17 @@ LockPersonality=true
 WantedBy=default.target
 EOF
 
-printf 'Wrote config: %s\n' "$config_file"
-printf 'Wrote token: %s\n' "$token_file"
-printf 'Wrote unit: %s\n' "$publisher_unit"
-printf 'Wrote unit: %s\n' "$producer_unit"
-printf 'Event ID: %s\n' "$event_id"
+if [[ "$units_only" -eq 1 ]]; then
+  printf 'Config not changed: %s\n' "$config_file"
+  printf 'Wrote unit: %s\n' "$publisher_unit"
+  printf 'Wrote unit: %s\n' "$producer_unit"
+else
+  printf 'Wrote config: %s\n' "$config_file"
+  printf 'Wrote token: %s\n' "$token_file"
+  printf 'Wrote unit: %s\n' "$publisher_unit"
+  printf 'Wrote unit: %s\n' "$producer_unit"
+  printf 'Event ID: %s\n' "$event_id"
+fi
 
 mixxx_running=unknown
 if command -v pgrep >/dev/null 2>&1; then
@@ -394,7 +461,9 @@ if [[ "$start_services" -eq 1 ]]; then
   systemctl --user daemon-reload
   systemctl --user reset-failed "$publisher_unit_name" "$producer_unit_name" >/dev/null 2>&1 || true
 
-  if [[ "$mode" == permanent ]]; then
+  if [[ "$units_only" -eq 1 ]]; then
+    systemctl --user restart "$publisher_unit_name" "$producer_unit_name"
+  elif [[ "$mode" == permanent ]]; then
     systemctl --user enable --now "$publisher_unit_name" "$producer_unit_name"
   else
     systemctl --user start "$publisher_unit_name" "$producer_unit_name"
@@ -420,6 +489,11 @@ if [[ "$start_services" -eq 1 ]]; then
 
   printf 'Started: %s\n' "$publisher_unit_name"
   printf 'Started: %s\n' "$producer_unit_name"
+elif [[ "$units_only" -eq 1 ]]; then
+  # --no-start runs no systemctl command, also with --units-only.
+  printf 'Load and restart the units with:\n'
+  printf '  systemctl --user daemon-reload\n'
+  printf '  systemctl --user restart %s %s\n' "$publisher_unit_name" "$producer_unit_name"
 else
   printf 'Start with:\n'
   if [[ "$mode" == permanent ]]; then

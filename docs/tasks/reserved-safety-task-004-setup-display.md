@@ -61,6 +61,12 @@ provisions an ephemeral event. Thus the display output stays off by default.
   helper. The message says to add the line, and the helper changes no file.
 - A `display_dir` that is not the expected directory stops the helper, with
   the two paths in the message.
+- Added 2026-10-05 by the review of task 003:
+  - A unit with the same content is not written again, and gets no backup
+    (`AGENTS.md` §6).
+  - Add a test of `--units-only` without `--no-start`. A stub `systemctl` on
+    `PATH` records the calls. The test checks `daemon-reload`, then the
+    restart of both units.
 
 ## Implementation Steps
 
