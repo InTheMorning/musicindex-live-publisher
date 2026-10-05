@@ -69,6 +69,9 @@ the next priority. Confirm that logging works before the show.
   ADR 0008
 - [Packaging pass plan](plans/packaging-pass.md) — deferred. The intended
   package behavior, the open packaging gates and the open decisions
+- [Reserved event safety plan](plans/reserved-event-safety.md) — the four
+  packets that keep a reserved event and its token safe, and the interim rules
+  for the operator
 
 ## Tasks
 
@@ -163,6 +166,15 @@ needs relay ADR 0003 for a live test.
 Tag read packets. The review of display task 003 found the defect.
 
 - [001 — The producer reads the image tag](tasks/tag-read-task-001-image-tag.md)
+
+Reserved event safety packets. The
+[reserved event safety plan](plans/reserved-event-safety.md) registers them.
+Do task 001 and task 002 first. Task 004 needs task 002.
+
+- [001 — `provision` never replaces a token](tasks/reserved-safety-task-001-provision-token.md)
+- [002 — `target add --replace` keeps the fields it was not given](tasks/reserved-safety-task-002-target-replace.md)
+- [003 — The setup helper keeps an existing event](tasks/reserved-safety-task-003-setup-keeps-event.md)
+- [004 — The setup helper writes the display output](tasks/reserved-safety-task-004-setup-display.md)
 
 ## Reviews
 
