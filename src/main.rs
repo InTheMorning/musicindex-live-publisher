@@ -1115,9 +1115,16 @@ fn emit_items(
 }
 
 fn provision(endpoint: &str, token_file: &Path, target: &str, json: bool) -> Result<()> {
+    ensure_token_path_is_free(token_file)?;
     let client = RelayClient::new(musicindex_live_publisher::DEFAULT_REQUEST_TIMEOUT)?;
     let item = client.provision(endpoint)?;
-    write_token_file(token_file, &item.broadcaster_token)?;
+    write_token_file(token_file, &item.broadcaster_token).with_context(|| {
+        format!(
+            "the relay provisioned event_id {}, but the token file {} was not written",
+            item.event_id,
+            token_file.display()
+        )
+    })?;
 
     if json {
         println!("{}", render_provision_json(&item, token_file, target)?);
@@ -1126,6 +1133,27 @@ fn provision(endpoint: &str, token_file: &Path, target: &str, json: bool) -> Res
 
     print_provision_text(&item, token_file, target);
     Ok(())
+}
+
+/// Stops `provision` before the relay request when the token path is in use.
+///
+/// `symlink_metadata` does not follow a symbolic link, so a dangling link also
+/// counts as an existing path.
+fn ensure_token_path_is_free(token_file: &Path) -> Result<()> {
+    match std::fs::symlink_metadata(token_file) {
+        Ok(_) => Err(anyhow!(
+            "token file {} already exists; provision sent no relay request. \
+             Move the old token file to a different path first",
+            token_file.display()
+        )),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error).with_context(|| {
+            format!(
+                "check token file {}; provision sent no relay request",
+                token_file.display()
+            )
+        }),
+    }
 }
 
 fn print_provision_text(

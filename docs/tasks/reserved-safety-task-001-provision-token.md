@@ -1,6 +1,6 @@
 # Reserved Safety Task 001: `provision` Never Replaces A Token
 
-Status: Ready - 2026-10-04.
+Status: Implemented - 2026-10-04.
 
 Every criterion is mechanical.
 
@@ -104,3 +104,30 @@ cargo clippy --workspace --all-targets -- -D warnings
 - No call in the standard library or the present dependencies fails when the
   target exists.
 - A present test expects `provision` to replace a file.
+
+## Review Result
+
+Reviewed 2026-10-04. The full gate passes. No present test changed.
+`Cargo.lock` did not change. No error text holds the token.
+
+The write uses the standard library only. It writes a temporary file with
+`create_new` and mode `0600`, syncs it, and then links it with `hard_link`.
+That call fails when the path exists. Each failure after the token is in the
+temporary file keeps that file and names it.
+
+The review accepts these deviations:
+
+- The error tells the operator to move the old token file first.
+- The function syncs the directory after the link.
+- One more test covers a directory at the path.
+
+Two mutations did not fail a test, and the review accepts both:
+
+- A mode of `0644` at the open survives, because `set_permissions` sets
+  `0600` after it.
+- `truncate` in place of `create_new` for the temporary file survives,
+  because the process ID and a counter make the name unique.
+
+The setup helper tests for an old token with `-e`, which does not see a
+symbolic link that points nowhere. `provision` now refuses that path, so no
+token is lost. Task 003 changes the helper and gets this item.

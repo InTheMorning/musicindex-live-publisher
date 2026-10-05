@@ -345,6 +345,20 @@ Provisioning writes the broadcaster token with mode `0600`, prints the
 provisioned `event_id`, and does not print the token. `--target` defaults to
 `default` when omitted.
 
+`provision` does not replace a token file. If a file, a directory or a symbolic
+link exists at the `--token-file` path, the command stops before it sends a
+relay request. The command then exits with status 1, and the existing file does
+not change. To provision a new live item, do these steps:
+
+1. Move the existing token file to a different path.
+2. Start `provision` again.
+
+The command writes the token to a temporary file in the same directory. Then
+it links the temporary file to the token path. If a file appears at that path
+during the write, the link fails. The error then gives the `event_id` and the
+path of the temporary file. That temporary file holds the only copy of the
+token. Move it to a safe token path before you do other work.
+
 Add `--json` when another program calls `provision`. The JSON object contains
 `event_id`, `token_file`, `target`, `metadata_url`, `remote_value_url`,
 `events_url`, and `socket_io_url`. It does not contain the token.

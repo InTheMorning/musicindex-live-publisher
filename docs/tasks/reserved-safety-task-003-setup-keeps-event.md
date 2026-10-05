@@ -57,6 +57,8 @@ only the units. The review of 2026-10-04 found the replace path. See
   `--units-only`.
 - Do the config check and the token check before the relay request, as
   today.
+- The token check also stops for a symbolic link that points nowhere. Use
+  `[[ -e PATH || -L PATH ]]`. Added 2026-10-04 by the review of task 001.
 - `--units-only`:
   - It writes the publisher unit and the producer unit, with a backup of
     each, as today.

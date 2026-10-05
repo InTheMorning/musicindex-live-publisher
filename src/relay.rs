@@ -5,6 +5,7 @@ use std::fmt;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -380,33 +381,83 @@ impl RelayClient {
     }
 }
 
-/// Writes a broadcaster token file with private permissions where supported.
+/// Counts temporary token files so that each one in a process has its own name.
+static TOKEN_TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+/// Writes a new broadcaster token file and never replaces an existing path.
+///
+/// The token goes to a new temporary file with mode `0600` in the same
+/// directory. The function then hard links that file to `path` and removes the
+/// temporary name. A hard link fails when `path` exists, so an existing token
+/// file, directory or symbolic link stays as it is.
 ///
 /// # Errors
 ///
-/// Returns an error when the token file cannot be created or written.
+/// Returns an error when the temporary file cannot be created or written, or
+/// when the link to `path` fails. After the temporary file holds the token, the
+/// function keeps it and the error names it, because it can be the only copy
+/// of a one-time token.
 pub fn write_token_file(path: &Path, token: &str) -> Result<()> {
+    let file_name = path
+        .file_name()
+        .ok_or_else(|| anyhow!("token file {} has no file name", path.display()))?;
+    let directory = match path.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => parent,
+        _ => Path::new("."),
+    };
+    let counter = TOKEN_TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let mut temp_name = std::ffi::OsString::from(".");
+    temp_name.push(file_name);
+    temp_name.push(format!(".tmp.{}.{counter}", std::process::id()));
+    let temp_path = directory.join(temp_name);
+
     let mut options = OpenOptions::new();
-    options.write(true).create(true).truncate(true);
+    options.write(true).create_new(true);
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;
         options.mode(0o600);
     }
-
     let mut file = options
-        .open(path)
-        .with_context(|| format!("create token file {}", path.display()))?;
-    file.write_all(token.as_bytes())
-        .with_context(|| format!("write token file {}", path.display()))?;
-    file.write_all(b"\n")
-        .with_context(|| format!("finish token file {}", path.display()))?;
+        .open(&temp_path)
+        .with_context(|| format!("create temporary token file {}", temp_path.display()))?;
 
+    let keep_temp = |action: &str| {
+        format!(
+            "{action}; the token stays in the temporary token file {}",
+            temp_path.display()
+        )
+    };
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(path, fs::Permissions::from_mode(0o600))
-            .with_context(|| format!("set token file permissions {}", path.display()))?;
+        file.set_permissions(fs::Permissions::from_mode(0o600))
+            .with_context(|| keep_temp("set temporary token file permissions"))?;
+    }
+    file.write_all(token.as_bytes())
+        .and_then(|()| file.write_all(b"\n"))
+        .with_context(|| keep_temp("write temporary token file"))?;
+    file.sync_all()
+        .with_context(|| keep_temp("sync temporary token file"))?;
+    drop(file);
+
+    fs::hard_link(&temp_path, path).with_context(|| {
+        keep_temp(&format!(
+            "link token file {} without replacing an existing path",
+            path.display()
+        ))
+    })?;
+
+    if let Err(error) = fs::remove_file(&temp_path) {
+        tracing::warn!(
+            temp_file = %temp_path.display(),
+            token_file = %path.display(),
+            %error,
+            "token file written, but the temporary token file was not removed"
+        );
+    }
+    if let Ok(directory) = fs::File::open(directory) {
+        let _ignored = directory.sync_all();
     }
 
     Ok(())
