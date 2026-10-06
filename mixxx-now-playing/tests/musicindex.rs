@@ -119,6 +119,8 @@ fn musicindex_api_track_routes_are_authoritative() -> Result<()> {
         TrackDisplay {
             artist: "Artist",
             title: "Title",
+            album: None,
+            play_id: None,
             tags: &updated,
         },
         resolution.source,
@@ -216,6 +218,8 @@ fn musicindex_no_embedded_frame_and_no_api_routes_omits_value_routes_line() -> R
         TrackDisplay {
             artist: "Artist",
             title: "Title",
+            album: None,
+            play_id: None,
             tags: &updated,
         },
         resolution.source,
@@ -244,6 +248,8 @@ fn musicindex_empty_or_missing_api_routes_are_not_rendered_as_authoritative() ->
             TrackDisplay {
                 artist: "Artist",
                 title: "Title",
+                album: None,
+                play_id: None,
                 tags: &updated,
             },
             resolution.source,
@@ -270,7 +276,7 @@ fn musicindex_once_mode_waits_for_api_routes_before_exit() -> Result<()> {
     fs::copy(fixture("musicindex-tagged.mp3"), &track)?;
 
     let mut db = SyntheticMixxxDb::new()?;
-    db.append_history_row_with_metadata(Some("Once Artist"), Some("Once Title"), &track)?;
+    db.append_history_row_with_metadata(Some("Once Artist"), Some("Once Title"), None, &track)?;
     let txt_file = temp.path().join("now-playing.txt");
     let metadata_file = temp.path().join("metadata.txt");
     let xdg_config = temp.path().join("xdg-config");

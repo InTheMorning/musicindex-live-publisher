@@ -236,12 +236,16 @@ fn render_metadata_content(
     cli: &cli::Cli,
     artist: &str,
     title: &str,
+    album: Option<&str>,
+    play_id: Option<i64>,
     tags: &mixxx_now_playing::tags::TrackTags,
     value_routes_source: ValueRoutesSource,
 ) -> Result<String> {
     let display = TrackDisplay {
         artist,
         title,
+        album,
+        play_id,
         tags,
     };
     match cli.format {
@@ -275,6 +279,7 @@ struct CurrentTrack {
     hist_id: i64,
     artist: String,
     title: String,
+    album: Option<String>,
     tags: mixxx_now_playing::tags::TrackTags,
     routes_source: ValueRoutesSource,
 }
@@ -471,10 +476,14 @@ impl<'a> Runtime<'a> {
         };
         match self.coordinator.display_state() {
             DisplayState::Track { artist, title, .. } => {
+                let song_line = render_now_playing_line(&artist, &title, self.cli.strip_hyphens);
+                let play_id = self.state.current.as_ref().map(|current| current.hist_id);
                 let track = ShownTrack {
                     artist: &artist,
                     title: &title,
                     artwork: self.row_artwork.as_ref(),
+                    song_line: &song_line,
+                    play_id,
                 };
                 write_display(display, Some(track));
             }
@@ -546,6 +555,8 @@ impl<'a> Runtime<'a> {
             self.cli,
             &current.artist,
             &current.title,
+            current.album.as_deref(),
+            Some(current.hist_id),
             &tags,
             current.routes_source,
         )?;
@@ -598,6 +609,7 @@ impl<'a> Runtime<'a> {
             hist_id: row.hist_id,
             artist: row.artist.clone(),
             title: row.title.clone(),
+            album: row.album.clone(),
             tags,
             routes_source: ValueRoutesSource::EmbeddedId3,
         });
@@ -843,7 +855,7 @@ mod tests {
         fs::create_dir_all(&display_dir)?;
         fs::write(
             display_dir.join("display.json"),
-            r#"{"schema": "musicindex.display/1", "track": {"artist": "A", "title": "T", "artwork": null}}"#,
+            r#"{"schema": "musicindex.display/2", "track": {"artist": "A", "title": "T", "artwork": null, "song_line": "A - T", "play_id": "1"}}"#,
         )?;
 
         drop(ShutdownCleanup::new(
@@ -856,7 +868,7 @@ mod tests {
             serde_json::from_str(&fs::read_to_string(display_dir.join("display.json"))?)?;
         assert_eq!(
             display,
-            serde_json::json!({"schema": "musicindex.display/1", "track": null})
+            serde_json::json!({"schema": "musicindex.display/2", "track": null})
         );
         Ok(())
     }

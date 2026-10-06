@@ -147,7 +147,7 @@ fn target_edit(name: &str, event_id: &str, token_file: &Path) -> TargetConfigEdi
 
 fn dropfile(target: &str, title: &str) -> String {
     json!({
-        "schema": "musicindex.nowplaying/1",
+        "schema": "musicindex.nowplaying/2",
         "target": target,
         "artist": "Alice",
         "title": title,
@@ -155,6 +155,8 @@ fn dropfile(target: &str, title: &str) -> String {
         "image": null,
         "feed_guid": null,
         "track_guid": null,
+        "album": null,
+        "play_id": null,
         "value_routes": [{
             "recipient_name": "Alice",
             "route_type": "node",

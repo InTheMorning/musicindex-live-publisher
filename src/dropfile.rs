@@ -4,7 +4,7 @@ use anyhow::{Context, Result, anyhow};
 use serde::{Deserialize, Serialize};
 
 /// Supported now-playing drop-file schema version.
-pub const SCHEMA_VERSION: &str = "musicindex.nowplaying/1";
+pub const SCHEMA_VERSION: &str = "musicindex.nowplaying/2";
 
 /// A MusicIndex now-playing drop file.
 ///
@@ -20,6 +20,8 @@ pub struct DropFile {
     pub image: Option<String>,
     pub feed_guid: Option<String>,
     pub track_guid: Option<String>,
+    pub album: Option<String>,
+    pub play_id: Option<String>,
     pub value_routes: Vec<PaymentRoute>,
     pub value_routes_source: Option<String>,
 }
@@ -41,13 +43,14 @@ pub struct PaymentRoute {
 
 /// Parses a now-playing drop file.
 ///
-/// Unknown schema versions are ignored with `Ok(None)`. Valid version 1 files
-/// are returned as `Ok(Some(_))`.
+/// Unknown schema versions are ignored with `Ok(None)`. Valid version 2 files
+/// are returned as `Ok(Some(_))`. Version 1 files are ignored with `Ok(None)`
+/// and a warning.
 ///
 /// # Errors
 ///
 /// Returns an error when the bytes are not valid JSON, the `schema` field is
-/// missing or not a string, or a version 1 file does not match the contract.
+/// missing or not a string, or a version 2 file does not match the contract.
 pub fn parse(bytes: &[u8]) -> Result<Option<DropFile>> {
     let value: serde_json::Value =
         serde_json::from_slice(bytes).context("failed to parse drop file JSON")?;
@@ -57,6 +60,11 @@ pub fn parse(bytes: &[u8]) -> Result<Option<DropFile>> {
         .and_then(serde_json::Value::as_str)
         .ok_or_else(|| anyhow!("drop file is missing a string schema field"))?;
 
+    if schema == "musicindex.nowplaying/1" {
+        tracing::warn!("ignoring now-playing drop-file schema version 1");
+        return Ok(None);
+    }
+
     if schema != SCHEMA_VERSION {
         tracing::warn!(schema, "ignoring unknown now-playing drop-file schema");
         return Ok(None);
@@ -64,7 +72,7 @@ pub fn parse(bytes: &[u8]) -> Result<Option<DropFile>> {
 
     serde_json::from_value(value)
         .map(Some)
-        .context("drop file does not match musicindex.nowplaying/1")
+        .context("drop file does not match musicindex.nowplaying/2")
 }
 
 #[cfg(test)]
@@ -73,7 +81,7 @@ mod tests {
 
     fn valid_dropfile_json() -> &'static str {
         r#"{
-          "schema": "musicindex.nowplaying/1",
+          "schema": "musicindex.nowplaying/2",
           "target": "default",
           "artist": "Alice",
           "title": "Some Track",
@@ -81,6 +89,8 @@ mod tests {
           "image": "https://example.com/art.png",
           "feed_guid": "1c7a-feed",
           "track_guid": "9f3e-track",
+          "album": "Test Album",
+          "play_id": "42",
           "value_routes": [
             {
               "recipient_name": "Alice",
@@ -110,7 +120,16 @@ mod tests {
     #[test]
     fn dropfile_unknown_schema_returns_none() -> Result<()> {
         let input =
-            valid_dropfile_json().replace("musicindex.nowplaying/1", "musicindex.nowplaying/2");
+            valid_dropfile_json().replace("musicindex.nowplaying/2", "musicindex.nowplaying/3");
+
+        assert_eq!(parse(input.as_bytes())?, None);
+        Ok(())
+    }
+
+    #[test]
+    fn dropfile_version_1_returns_none() -> Result<()> {
+        let input =
+            valid_dropfile_json().replace("musicindex.nowplaying/2", "musicindex.nowplaying/1");
 
         assert_eq!(parse(input.as_bytes())?, None);
         Ok(())
@@ -126,7 +145,7 @@ mod tests {
     #[test]
     fn dropfile_missing_optional_fields_parse() -> Result<()> {
         let input = r#"{
-          "schema": "musicindex.nowplaying/1",
+          "schema": "musicindex.nowplaying/2",
           "target": "default",
           "artist": "Alice",
           "title": "Some Track",
@@ -141,6 +160,8 @@ mod tests {
         assert_eq!(parsed.image, None);
         assert_eq!(parsed.feed_guid, None);
         assert_eq!(parsed.track_guid, None);
+        assert_eq!(parsed.album, None);
+        assert_eq!(parsed.play_id, None);
         assert!(parsed.value_routes.is_empty());
         Ok(())
     }
@@ -166,6 +187,8 @@ mod tests {
             parse(input.as_bytes())?.ok_or_else(|| anyhow!("expected known schema to parse"))?;
 
         assert!(parsed.value_routes.is_empty());
+        assert_eq!(parsed.album, Some("Test Album".to_string()));
+        assert_eq!(parsed.play_id, Some("42".to_string()));
         Ok(())
     }
 }

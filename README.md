@@ -2,9 +2,9 @@
 
 This repository contains two Rust binaries:
 
-- `musicindex-live-publisher` watches a local now-playing drop directory, turns
-  `musicindex.nowplaying/1` JSON files into direct Podcasting 2.0 live value
-  payloads, and publishes them to a MusicIndex live relay.
+- `musicindex-live-publisher` watches a local now-playing drop directory and publishes
+  `musicindex.nowplaying/2` JSON files to a MusicIndex live relay.
+  It transforms them into direct Podcasting 2.0 live value payloads.
 - `mixxx-now-playing` watches the Mixxx history database, writes icecast-friendly
   text output (for use with eg. Butt), and can write publisher drop files for V4V tracks.
 
@@ -198,3 +198,49 @@ musicindex-live-publisher \
 
 See the deployment runbook for full install and verification steps:
 `docs/runbooks/musicindex-live-publisher-deploy.md`.
+
+## Payload Shape
+
+The publisher sends a direct live value payload for each V4V track. This is
+an example:
+
+```json
+{
+  "title": "Makin' Beans",
+  "image": "https://example.com/album-art.jpg",
+  "description": "",
+  "type": "music",
+  "startTime": 0,
+  "duration": 187.326,
+  "eventGuid": "1873a383-d918-44e1-b6ff-c3598189dab6",
+  "blockGuid": "477583d6-747d-40eb-a927-ee5d9622ebe8",
+  "feedGuid": "acddbb03-064b-5098-87ca-9b146beb12e8",
+  "itemGuid": "c7003607-233e-40e8-b2fa-6465127d0076",
+  "line": ["Stay Awhile", "Able and The Wolf"],
+  "author": "Able and The Wolf",
+  "podcastName": "Stay Awhile",
+  "value": {
+    "model": { "type": "lightning", "method": "keysend" },
+    "destinations": [
+      {
+        "type": "node",
+        "name": "Artist Node",
+        "address": "0368fed1c2fc35...",
+        "split": "100"
+      }
+    ]
+  }
+}
+```
+
+ADR 0010 owns `line`, `author` and `podcastName`:
+
+- `line` is `[album, artist]`, the form that the model server sends. When the
+  drop file has no album, `line` is `[title, artist]`.
+- `author` is the artist.
+- `podcastName` is the album. When the drop file has no album, the payload
+  has no `podcastName`.
+- The payload has no `link`.
+
+The dead block has none of these three fields. Its JSON did not change
+(ADR 0005).

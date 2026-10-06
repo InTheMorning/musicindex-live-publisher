@@ -1,7 +1,12 @@
 # ADR 0010: The Live Value Payload Follows The Model Server
 
-Status: Proposed
+Status: Accepted
 Date: 2026-10-06
+
+Accepted 2026-10-06 by the operator. Items 2 and 3 of §Before Acceptance
+stay open. Reference shape task 001 reads the album column, and its tests
+check item 2. Item 3, the app check, is an open item of the review
+checklist.
 
 Amended 2026-10-06. The operator decided that `link` stays absent until a
 source for it exists, so this ADR no longer adds `link`, `link_url` or

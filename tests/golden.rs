@@ -15,12 +15,17 @@ fn dropfile_from_reference(reference: &Value) -> Result<DropFile> {
         .map(payment_route_from_destination)
         .collect::<Result<Vec<_>>>()?;
 
+    let line = reference["line"]
+        .as_array()
+        .ok_or_else(|| anyhow!("reference line should be an array"))?;
+
+    let album = line.first().and_then(Value::as_str).map(str::to_owned);
+
     Ok(DropFile {
         schema: SCHEMA_VERSION.to_owned(),
         target: "default".to_owned(),
-        artist: reference["line"]
-            .as_array()
-            .and_then(|line| line.last())
+        artist: line
+            .last()
             .and_then(Value::as_str)
             .unwrap_or_default()
             .to_owned(),
@@ -38,6 +43,8 @@ fn dropfile_from_reference(reference: &Value) -> Result<DropFile> {
             .get("itemGuid")
             .and_then(Value::as_str)
             .map(str::to_owned),
+        album,
+        play_id: None,
         value_routes,
         value_routes_source: Some("golden-reference".to_owned()),
     })
@@ -82,7 +89,7 @@ fn required_string<'a>(value: &'a Value, key: &str) -> Result<&'a str> {
 }
 
 fn expected_sourceable_payload(reference: &Value) -> Result<Value> {
-    Ok(json!({
+    let mut payload = json!({
         "title": required_string(reference, "title")?,
         "image": required_string(reference, "image")?,
         "description": "",
@@ -93,6 +100,11 @@ fn expected_sourceable_payload(reference: &Value) -> Result<Value> {
         "blockGuid": required_string(reference, "blockGuid")?,
         "feedGuid": required_string(reference, "feedGuid")?,
         "itemGuid": required_string(reference, "itemGuid")?,
+        "line": reference["line"].clone(),
+        "author": reference["line"]
+            .as_array()
+            .and_then(|line| line.last())
+            .and_then(Value::as_str),
         "value": {
             "model": {
                 "type": required_string(&reference["value"]["model"], "type")?,
@@ -100,7 +112,18 @@ fn expected_sourceable_payload(reference: &Value) -> Result<Value> {
             },
             "destinations": reference["value"]["destinations"].clone()
         }
-    }))
+    });
+
+    if let Some(album_str) = reference["line"]
+        .as_array()
+        .and_then(|arr| arr.first())
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+    {
+        payload["podcastName"] = json!(album_str);
+    }
+
+    Ok(payload)
 }
 
 fn assert_payload_matches_sourceable_reference(reference_json: &str) -> Result<()> {

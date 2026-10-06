@@ -28,7 +28,17 @@ pub struct LiveValuePayload {
     pub feed_guid: Option<String>,
     #[serde(rename = "itemGuid", skip_serializing_if = "Option::is_none")]
     pub item_guid: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub line: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
+    #[serde(rename = "podcastName", skip_serializing_if = "Option::is_none")]
+    pub podcast_name: Option<String>,
     pub value: LiveValue,
+    /// The ID of the Mixxx history row for this play (ADR 0010, ADR 0012).
+    /// This field is not serialized; it is used only for pairing with display state.
+    #[serde(skip)]
+    pub play_id: Option<String>,
 }
 
 /// Live value payment routing information.
@@ -77,6 +87,14 @@ pub fn payload_from_dropfile(
     event_guid: &str,
     block_guid: &str,
 ) -> LiveValuePayload {
+    // ADR 0010: `line` is `[album, artist]`, as the model server sends it.
+    // With no album, the title takes the place of the album.
+    let album = dropfile.album.as_deref().filter(|album| !album.is_empty());
+    let line = vec![
+        album.unwrap_or(&dropfile.title).to_owned(),
+        dropfile.artist.clone(),
+    ];
+
     LiveValuePayload {
         title: dropfile.title.clone(),
         image: dropfile.image.clone(),
@@ -88,7 +106,11 @@ pub fn payload_from_dropfile(
         block_guid: block_guid.to_owned(),
         feed_guid: dropfile.feed_guid.clone(),
         item_guid: dropfile.track_guid.clone(),
+        line: Some(line),
+        author: Some(dropfile.artist.clone()),
+        podcast_name: album.map(str::to_owned),
         value: live_value_from_routes(&dropfile.value_routes),
+        play_id: dropfile.play_id.clone(),
     }
 }
 
@@ -124,6 +146,9 @@ pub fn dead_payload(event_guid: &str, block_guid: &str) -> LiveValuePayload {
         block_guid: block_guid.to_owned(),
         feed_guid: None,
         item_guid: None,
+        line: None,
+        author: None,
+        podcast_name: None,
         value: LiveValue {
             model: LiveValueModel {
                 kind: "lightning".to_owned(),
@@ -140,6 +165,7 @@ pub fn dead_payload(event_guid: &str, block_guid: &str) -> LiveValuePayload {
                 fee: None,
             }],
         },
+        play_id: None,
     }
 }
 
@@ -202,6 +228,8 @@ mod tests {
             image: Some("https://example.com/art.png".to_owned()),
             feed_guid: Some("feed-guid".to_owned()),
             track_guid: Some("track-guid".to_owned()),
+            album: None,
+            play_id: None,
             value_routes: vec![route(Some(90.0))],
             value_routes_source: Some("musicindex-api".to_owned()),
         }
@@ -354,6 +382,92 @@ mod tests {
         second_without_block["blockGuid"] = Value::Null;
 
         assert_eq!(first_without_block, second_without_block);
+        Ok(())
+    }
+
+    #[test]
+    fn livevalue_with_album_gives_line_album_artist_and_podcast_name() -> Result<()> {
+        let mut dropfile = dropfile();
+        dropfile.album = Some("Test Album".to_owned());
+
+        let payload = payload_from_dropfile(&dropfile, "event-guid", "block-guid");
+        let value = serde_json::to_value(payload)?;
+
+        assert_eq!(value["line"], json!(["Test Album", "Alice"]));
+        assert_eq!(value["author"], "Alice");
+        assert_eq!(value["podcastName"], "Test Album");
+        Ok(())
+    }
+
+    #[test]
+    fn livevalue_without_album_gives_line_title_artist_and_no_podcast_name() -> Result<()> {
+        let dropfile = dropfile();
+
+        let payload = payload_from_dropfile(&dropfile, "event-guid", "block-guid");
+        let value = serde_json::to_value(payload)?;
+
+        assert_eq!(value["line"], json!(["Some Track", "Alice"]));
+        assert_eq!(value["author"], "Alice");
+        assert!(value.get("podcastName").is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn livevalue_with_empty_album_gives_line_title_artist_and_no_podcast_name() -> Result<()> {
+        let mut dropfile = dropfile();
+        dropfile.album = Some(String::new());
+
+        let payload = payload_from_dropfile(&dropfile, "event-guid", "block-guid");
+        let value = serde_json::to_value(payload)?;
+
+        assert_eq!(value["line"], json!(["Some Track", "Alice"]));
+        assert_eq!(value["author"], "Alice");
+        assert!(value.get("podcastName").is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn livevalue_payload_never_has_link_key() -> Result<()> {
+        let dropfile = dropfile();
+        let payload = payload_from_dropfile(&dropfile, "event-guid", "block-guid");
+        let value = serde_json::to_value(payload)?;
+
+        assert!(value.get("link").is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn livevalue_dead_payload_never_has_link_key() -> Result<()> {
+        let payload = dead_payload("event-guid", "block-guid");
+        let value = serde_json::to_value(payload)?;
+
+        assert!(value.get("link").is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn livevalue_dead_payload_has_no_new_fields() -> Result<()> {
+        let payload = dead_payload("event-guid", "block-guid");
+        let value = serde_json::to_value(&payload)?;
+
+        let mut keys: Vec<&str> = value
+            .as_object()
+            .map(|object| object.keys().map(String::as_str).collect())
+            .unwrap_or_default();
+        keys.sort_unstable();
+        // The key set of the dead block before ADR 0010.
+        assert_eq!(
+            keys,
+            [
+                "blockGuid",
+                "description",
+                "eventGuid",
+                "startTime",
+                "title",
+                "type",
+                "value"
+            ]
+        );
         Ok(())
     }
 }

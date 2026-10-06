@@ -1,7 +1,6 @@
 # Reference Shape Task 001: The Drop File Version 2
 
-Status: Ready after the operator accepts ADR 0010. Ship it in one release
-with task 002.
+Status: Implemented - 2026-10-06. Ship it in one release with task 002.
 
 Every criterion is mechanical.
 
@@ -146,3 +145,22 @@ At the end, report:
 3. behavior changed
 4. deviations from task
 5. unresolved concerns
+
+## Review Result
+
+Reviewed 2026-10-06. `Cargo.lock` did not change. The full gate passes with
+459 tests.
+
+The first implementation was not complete. The review sent it back for three
+tests, the document step and one simplification. Then the review made one
+more change: a test that gave the values 1 and 2 to the renderer did not
+prove the source of `play_id`. The lifecycle test
+`lifecycle_two_plays_of_one_track_give_two_play_ids` replaces it. It runs the
+producer two times on one track and reads the two drop files.
+
+`src/livevalue.rs` and `tests/golden.rs` changed only in a `DropFile`
+literal, so that they compile. The payload JSON did not change.
+
+Item 2 of ADR 0010 §Before Acceptance stays open. This machine has no Mixxx
+database. The operator runs the check of §Escalation Triggers on the Mixxx
+host.

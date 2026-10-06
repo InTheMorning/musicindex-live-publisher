@@ -21,8 +21,22 @@ use std::sync::Arc;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
+/// The pairing of a display state with a live value payload (ADR 0012).
+///
+/// This holds the identity of the newest payload for a target, used to pair
+/// display states with their payloads.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Pairing {
+    /// The play_id of the payload.
+    pub play_id: String,
+    /// The eventGuid of the payload.
+    pub event_guid: String,
+    /// The blockGuid of the payload.
+    pub block_guid: String,
+}
+
 /// The schema of `display.json` that this publisher reads.
-pub const DISPLAY_SCHEMA: &str = "musicindex.display/1";
+pub const DISPLAY_SCHEMA: &str = "musicindex.display/2";
 
 /// The file name of the display state in a display directory.
 pub const DISPLAY_FILE_NAME: &str = "display.json";
@@ -150,6 +164,10 @@ pub struct DisplayTrack {
     pub artist: String,
     pub title: String,
     pub artwork: Option<Artwork>,
+    /// The song line from `display.json` version 2 (ADR 0009 §The Song Line).
+    pub song_line: String,
+    /// The play ID from `display.json` version 2 (ADR 0010, ADR 0012).
+    pub play_id: Option<String>,
 }
 
 /// The display state of one target: `null` or one track.
@@ -164,11 +182,23 @@ impl DisplayState {
         Self { track: None }
     }
 
+    /// Tells if this state is the play of `pairing`: the track has a
+    /// `play_id`, and it is the `play_id` of the payload (ADR 0012). Only
+    /// then does the body get `value`.
+    pub fn pairs_with(&self, pairing: &Pairing) -> bool {
+        self.track
+            .as_ref()
+            .and_then(|track| track.play_id.as_deref())
+            .is_some_and(|play_id| play_id == pairing.play_id)
+    }
+
     /// The body of `POST /v1/liveitems/{event_id}/display`.
     ///
     /// The body holds only the key `track` (relay ADR 0003). It never holds
-    /// the `schema` key of `display.json`.
-    pub fn body(&self) -> Value {
+    /// the `schema` key of `display.json`. If pairing is supplied and the
+    /// track's play_id matches, the track also includes `value: {eventGuid,
+    /// blockGuid}` (ADR 0012).
+    pub fn body_with_pairing(&self, pairing: Option<&Pairing>) -> Value {
         let track = self.track.as_ref().map(|track| {
             let artwork = match &track.artwork {
                 None => Value::Null,
@@ -177,9 +207,35 @@ impl DisplayState {
                 }
                 Some(Artwork::Url(url)) => json!({ "url": url }),
             };
-            json!({ "artist": track.artist, "title": track.title, "artwork": artwork })
+
+            let mut track_obj = json!({
+                "artist": track.artist,
+                "title": track.title,
+                "artwork": artwork,
+                "songLine": track.song_line,
+            });
+
+            if let Some(pairing) = pairing.filter(|pairing| self.pairs_with(pairing))
+                && let Some(obj) = track_obj.as_object_mut()
+            {
+                obj.insert(
+                    "value".to_owned(),
+                    json!({
+                        "eventGuid": pairing.event_guid,
+                        "blockGuid": pairing.block_guid,
+                    }),
+                );
+            }
+
+            track_obj
         });
         json!({ "track": track })
+    }
+
+    /// The body with no `value`. The display log and the tests use it. The
+    /// relay request uses [`DisplayState::body_with_pairing`].
+    pub fn body(&self) -> Value {
+        self.body_with_pairing(None)
     }
 
     /// The embedded image of this state, if it has one.
@@ -214,9 +270,11 @@ pub struct DisplayEntry {
 /// Reads `DIR/display.json` and the image that it names.
 ///
 /// Gives `None` when the file is absent, cannot be read, is not JSON, has an
-/// unknown schema, or does not have the shape of `musicindex.display/1`. The
+/// unknown schema, or does not have the shape of `musicindex.display/2`. The
 /// caller then ignores the file. Each case other than an absent file gives a
 /// warning.
+///
+/// Version 1 files give `Ok(None)` with a warning.
 ///
 /// An embedded image that is missing, larger than [`MAX_IMAGE_BYTES`], has a
 /// SHA-256 different from its file name, or does not start with the bytes of
@@ -242,6 +300,13 @@ pub fn read_display_state(dir: &Path) -> Option<DisplayState> {
         }
     };
     let schema = value.get("schema").and_then(Value::as_str);
+    if schema == Some("musicindex.display/1") {
+        tracing::warn!(
+            path = %path.display(),
+            "display.json version 1 is not supported; ignoring it"
+        );
+        return None;
+    }
     if schema != Some(DISPLAY_SCHEMA) {
         tracing::warn!(
             path = %path.display(),
@@ -268,14 +333,24 @@ fn parse_track(dir: &Path, path: &Path, track: &Value) -> Option<DisplayTrack> {
         tracing::warn!(path = %path.display(), "display.json track has no artist or title; ignoring it");
         return None;
     };
+    let Some(song_line) = track.get("song_line").and_then(Value::as_str) else {
+        tracing::warn!(path = %path.display(), "display.json track has no song_line; ignoring it");
+        return None;
+    };
     let artwork = match track.get("artwork") {
         None | Some(Value::Null) => None,
         Some(artwork) => parse_artwork(dir, artwork),
     };
+    let play_id = track
+        .get("play_id")
+        .and_then(Value::as_str)
+        .map(String::from);
     Some(DisplayTrack {
         artist: artist.to_owned(),
         title: title.to_owned(),
         artwork,
+        song_line: song_line.to_owned(),
+        play_id,
     })
 }
 

@@ -47,8 +47,9 @@ falls back to flags, environment variables, and `~/V4Vmusic`.
 
 ### The drop file
 
-`musicindex.nowplaying/1`. ADR 0002 defines it. This repository owns the
-contract.
+`musicindex.nowplaying/2`. ADR 0002 defines version 1, and ADR 0010 adds
+`album` and `play_id` in version 2. The publisher reads version 2 only. This
+repository owns the contract.
 
 Every producer targets this contract. `mixxx-now-playing` writes it today.
 `v4vmm` writes it later for its built-in `mpv` player. A liquidsoap producer

@@ -141,6 +141,10 @@ fn run_cli(cli: Cli) -> Result<()> {
 /// this enum lets `emit_items` send a batch of each kind, in the order the
 /// caller built it, with no delay.
 #[derive(Debug, Clone, PartialEq)]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "a batch holds a few items, so a box gives no gain"
+)]
 enum EmitItem {
     /// A live value payload for the payload worker of its target.
     Payload(LiveValuePayload),
@@ -1429,7 +1433,7 @@ mod tests {
         std::fs::write(
             &path,
             serde_json::json!({
-                "schema": "musicindex.nowplaying/1",
+                "schema": "musicindex.nowplaying/2",
                 "target": "default",
                 "artist": "Alice",
                 "title": "Track One",
@@ -1437,6 +1441,8 @@ mod tests {
                 "image": null,
                 "feed_guid": "feed-guid",
                 "track_guid": "track-1",
+                "album": null,
+                "play_id": null,
                 "value_routes": [{
                     "recipient_name": "Alice",
                     "route_type": "node",
@@ -1487,7 +1493,13 @@ mod tests {
             dir.path().join(DISPLAY_FILE_NAME),
             serde_json::json!({
                 "schema": musicindex_live_publisher::DISPLAY_SCHEMA,
-                "track": { "artist": "Alice", "title": "Track One", "artwork": null }
+                "track": {
+                    "artist": "Alice",
+                    "title": "Track One",
+                    "artwork": null,
+                    "song_line": "Alice - Track One",
+                    "play_id": "1"
+                }
             })
             .to_string(),
         )?;
@@ -1504,6 +1516,8 @@ mod tests {
                         artist: "Alice".to_owned(),
                         title: "Track One".to_owned(),
                         artwork: None,
+                        song_line: "Alice - Track One".to_owned(),
+                        play_id: Some("1".to_owned()),
                     }),
                 },
             })]

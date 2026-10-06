@@ -1,7 +1,10 @@
 # ADR 0012: Pair The Display State With Its Value Block
 
-Status: Proposed
+Status: Accepted
 Date: 2026-10-06
+
+Accepted 2026-10-06 by the operator. The two items of §Before Acceptance
+are done: relay ADR 0005 and ADR 0010 are accepted.
 
 Class: situational. Supersede this record when the tagger of ADR 0009 gets
 its pairing from a different source.

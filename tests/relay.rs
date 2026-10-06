@@ -238,6 +238,9 @@ fn payload(title: &str) -> LiveValuePayload {
         block_guid: format!("block-{title}"),
         feed_guid: None,
         item_guid: None,
+        line: Some(vec![title.to_owned(), "Alice".to_owned()]),
+        author: Some("Alice".to_owned()),
+        podcast_name: None,
         value: LiveValue {
             model: LiveValueModel {
                 kind: "lightning".to_owned(),
@@ -254,6 +257,7 @@ fn payload(title: &str) -> LiveValuePayload {
                 fee: None,
             }],
         },
+        play_id: None,
     }
 }
 
@@ -811,6 +815,7 @@ fn relay_display_request_has_no_listener_delay_header() -> Result<()> {
     client.publish_display(
         &target_with_delay(&server.endpoint, 12),
         &DisplayState::null(),
+        None,
     )?;
 
     server.wait_for_requests(1)?;

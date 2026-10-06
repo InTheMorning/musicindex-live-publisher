@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 use anyhow::{Result, anyhow};
 use musicindex_live_publisher::{
     Artwork, ArtworkImage, DISPLAY_FILE_NAME, DisplayEntry, DisplayOutcome, DisplayState,
-    DisplayTrack, ImageMime, LiveValue, LiveValueModel, LiveValuePayload, MAX_IMAGE_BYTES,
+    DisplayTrack, ImageMime, LiveValue, LiveValueModel, LiveValuePayload, MAX_IMAGE_BYTES, Pairing,
     ProducerState, PublisherConfig, PublisherTarget, RelayClient, RelayPublisher, RelayTarget,
     read_display_state,
 };
@@ -321,6 +321,8 @@ fn track_state(title: &str, artwork: Option<Artwork>) -> DisplayState {
             artist: "Artist".to_owned(),
             title: title.to_owned(),
             artwork,
+            song_line: format!("Artist - {title}"),
+            play_id: Some("1".to_owned()),
         }),
     }
 }
@@ -344,6 +346,9 @@ fn payload(title: &str) -> LiveValuePayload {
         block_guid: format!("block-{title}"),
         feed_guid: None,
         item_guid: None,
+        line: Some(vec![title.to_owned(), "Artist".to_owned()]),
+        author: Some("Artist".to_owned()),
+        podcast_name: None,
         value: LiveValue {
             model: LiveValueModel {
                 kind: "lightning".to_owned(),
@@ -352,6 +357,7 @@ fn payload(title: &str) -> LiveValuePayload {
             },
             destinations: Vec::new(),
         },
+        play_id: None,
     }
 }
 
@@ -397,7 +403,7 @@ fn display_publish_body_holds_only_track_and_no_schema_key() -> Result<()> {
     let image = jpeg("cover");
     let state = track_state("Title", Some(Artwork::Image(image.clone())));
 
-    let outcome = client.publish_display(&relay_target(&stub.endpoint), &state)?;
+    let outcome = client.publish_display(&relay_target(&stub.endpoint), &state, None)?;
 
     assert_eq!(outcome, DisplayOutcome::Accepted);
     let request = &stub.of(Route::Display)[0];
@@ -413,7 +419,8 @@ fn display_publish_body_holds_only_track_and_no_schema_key() -> Result<()> {
             "track": {
                 "artist": "Artist",
                 "title": "Title",
-                "artwork": { "sha256": image.sha256(), "mime": "image/jpeg" }
+                "artwork": { "sha256": image.sha256(), "mime": "image/jpeg" },
+                "songLine": "Artist - Title"
             }
         })
     );
@@ -427,13 +434,14 @@ fn display_publish_body_of_a_null_state_and_of_a_url() -> Result<()> {
     let client = RelayClient::new(Duration::from_secs(1))?;
     let target = relay_target(&stub.endpoint);
 
-    client.publish_display(&target, &DisplayState::null())?;
+    client.publish_display(&target, &DisplayState::null(), None)?;
     client.publish_display(
         &target,
         &track_state(
             "Url",
             Some(Artwork::Url("https://img.example/a.gif".to_owned())),
         ),
+        None,
     )?;
 
     let requests = stub.of(Route::Display);
@@ -486,7 +494,7 @@ fn display_status_codes_map_to_their_outcomes() -> Result<()> {
         let stub = Stub::start(vec![(Route::Display, answer)], false)?;
         let client = RelayClient::new(Duration::from_secs(1))?;
         let outcome =
-            client.publish_display(&relay_target(&stub.endpoint), &DisplayState::null())?;
+            client.publish_display(&relay_target(&stub.endpoint), &DisplayState::null(), None)?;
         let kind = match outcome {
             DisplayOutcome::Accepted => "accepted",
             DisplayOutcome::ArtworkMissing => "missing",
@@ -941,7 +949,7 @@ fn sha256_of(bytes: &[u8]) -> String {
 fn write_display_json(dir: &Path, track: Value) -> Result<()> {
     fs::write(
         dir.join(DISPLAY_FILE_NAME),
-        json!({ "schema": "musicindex.display/1", "track": track }).to_string(),
+        json!({ "schema": "musicindex.display/2", "track": track }).to_string(),
     )?;
     Ok(())
 }
@@ -956,7 +964,9 @@ fn image_track(sha256: &str, mime: &str) -> Value {
     json!({
         "artist": "Artist",
         "title": "Title",
-        "artwork": { "sha256": sha256, "mime": mime }
+        "artwork": { "sha256": sha256, "mime": mime },
+        "song_line": "Artist - Title",
+        "play_id": "1"
     })
 }
 
@@ -1068,7 +1078,13 @@ fn read_gives_a_url_artwork() -> Result<()> {
     let temp = TempDir::new()?;
     write_display_json(
         temp.path(),
-        json!({"artist": "A", "title": "T", "artwork": {"url": "https://img.example/a.gif"}}),
+        json!({
+            "artist": "A",
+            "title": "T",
+            "artwork": {"url": "https://img.example/a.gif"},
+            "song_line": "A - T",
+            "play_id": "1"
+        }),
     )?;
 
     let state = read_display_state(temp.path()).ok_or_else(|| anyhow!("no state"))?;
@@ -1090,11 +1106,88 @@ fn read_gives_the_null_state() -> Result<()> {
 }
 
 #[test]
+fn read_parses_version_2_with_song_line_and_play_id() -> Result<()> {
+    let temp = TempDir::new()?;
+    write_display_json(
+        temp.path(),
+        json!({
+            "artist": "Artist",
+            "title": "Title",
+            "artwork": null,
+            "song_line": "Artist - Title",
+            "play_id": "42"
+        }),
+    )?;
+
+    let state = read_display_state(temp.path()).ok_or_else(|| anyhow!("no state"))?;
+
+    assert_eq!(
+        state.track,
+        Some(DisplayTrack {
+            artist: "Artist".to_owned(),
+            title: "Title".to_owned(),
+            artwork: None,
+            song_line: "Artist - Title".to_owned(),
+            play_id: Some("42".to_owned()),
+        })
+    );
+    Ok(())
+}
+
+#[test]
+fn read_parses_version_2_with_null_play_id() -> Result<()> {
+    let temp = TempDir::new()?;
+    write_display_json(
+        temp.path(),
+        json!({
+            "artist": "Artist",
+            "title": "Title",
+            "artwork": null,
+            "song_line": "Artist - Title",
+            "play_id": null
+        }),
+    )?;
+
+    let state = read_display_state(temp.path()).ok_or_else(|| anyhow!("no state"))?;
+
+    assert_eq!(state.track.as_ref().map(|t| &t.play_id), Some(&None));
+    Ok(())
+}
+
+#[test]
+fn read_ignores_version_2_track_without_song_line() -> Result<()> {
+    let temp = TempDir::new()?;
+    write_display_json(
+        temp.path(),
+        json!({
+            "artist": "Artist",
+            "title": "Title",
+            "artwork": null
+        }),
+    )?;
+
+    assert_eq!(read_display_state(temp.path()), None);
+    Ok(())
+}
+
+#[test]
+fn read_ignores_version_1_with_a_warning() -> Result<()> {
+    let temp = TempDir::new()?;
+    fs::write(
+        temp.path().join(DISPLAY_FILE_NAME),
+        json!({ "schema": "musicindex.display/1", "track": null }).to_string(),
+    )?;
+
+    assert_eq!(read_display_state(temp.path()), None);
+    Ok(())
+}
+
+#[test]
 fn read_ignores_a_file_with_an_unknown_schema() -> Result<()> {
     let temp = TempDir::new()?;
     fs::write(
         temp.path().join(DISPLAY_FILE_NAME),
-        json!({ "schema": "musicindex.display/2", "track": null }).to_string(),
+        json!({ "schema": "musicindex.display/3", "track": null }).to_string(),
     )?;
 
     assert_eq!(read_display_state(temp.path()), None);
@@ -1194,5 +1287,367 @@ fn no_display_log_line_holds_the_token() -> Result<()> {
     );
     assert!(text.contains("network error"), "{text}");
     assert!(!text.contains(TOKEN), "a log line holds the token");
+    Ok(())
+}
+
+// Pairing tests (ADR 0012)
+
+#[test]
+fn display_state_with_matching_play_id_includes_value() -> Result<()> {
+    let state = DisplayState {
+        track: Some(DisplayTrack {
+            artist: "Artist".to_owned(),
+            title: "Title".to_owned(),
+            artwork: None,
+            song_line: "Artist - Title".to_owned(),
+            play_id: Some("play-1".to_owned()),
+        }),
+    };
+
+    let pairing = Pairing {
+        play_id: "play-1".to_owned(),
+        event_guid: "event-guid".to_owned(),
+        block_guid: "block-guid".to_owned(),
+    };
+    let body = state.body_with_pairing(Some(&pairing));
+
+    assert_eq!(
+        body,
+        json!({
+            "track": {
+                "artist": "Artist",
+                "title": "Title",
+                "artwork": Value::Null,
+                "songLine": "Artist - Title",
+                "value": {
+                    "eventGuid": "event-guid",
+                    "blockGuid": "block-guid"
+                }
+            }
+        })
+    );
+    Ok(())
+}
+
+#[test]
+fn display_state_with_mismatched_play_id_omits_value() -> Result<()> {
+    let state = DisplayState {
+        track: Some(DisplayTrack {
+            artist: "Artist".to_owned(),
+            title: "Title".to_owned(),
+            artwork: None,
+            song_line: "Artist - Title".to_owned(),
+            play_id: Some("play-1".to_owned()),
+        }),
+    };
+
+    let pairing = Pairing {
+        play_id: "play-2".to_owned(),
+        event_guid: "event-guid".to_owned(),
+        block_guid: "block-guid".to_owned(),
+    };
+    let body = state.body_with_pairing(Some(&pairing));
+
+    assert_eq!(
+        body.get("track").and_then(|t| t.get("value")),
+        None,
+        "value should not be present for mismatched play_id"
+    );
+    assert_eq!(
+        body["track"]["songLine"], "Artist - Title",
+        "songLine should always be present"
+    );
+    Ok(())
+}
+
+#[test]
+fn display_state_without_play_id_has_no_value() -> Result<()> {
+    let state = DisplayState {
+        track: Some(DisplayTrack {
+            artist: "Artist".to_owned(),
+            title: "Title".to_owned(),
+            artwork: None,
+            song_line: "Artist - Title".to_owned(),
+            play_id: None,
+        }),
+    };
+
+    let pairing = Pairing {
+        play_id: "play-1".to_owned(),
+        event_guid: "event-guid".to_owned(),
+        block_guid: "block-guid".to_owned(),
+    };
+    let body = state.body_with_pairing(Some(&pairing));
+
+    assert_eq!(
+        body.get("track").and_then(|t| t.get("value")),
+        None,
+        "value should not be present when track has no play_id"
+    );
+    Ok(())
+}
+
+#[test]
+fn null_state_always_has_no_value() -> Result<()> {
+    let state = DisplayState::null();
+
+    let pairing = Pairing {
+        play_id: "play-1".to_owned(),
+        event_guid: "event-guid".to_owned(),
+        block_guid: "block-guid".to_owned(),
+    };
+    let body = state.body_with_pairing(Some(&pairing));
+
+    assert_eq!(body, json!({ "track": null }));
+    Ok(())
+}
+
+// Worker integration tests (ADR 0012 task 002)
+#[test]
+fn pairing_track_without_drop_file_has_no_value() -> Result<()> {
+    // Criterion c: no drop file means no value
+    let stub = Stub::start(Vec::new(), false)?;
+    let publisher = start(&stub)?;
+
+    let state = DisplayState {
+        track: Some(DisplayTrack {
+            artist: "Artist".to_owned(),
+            title: "Track".to_owned(),
+            artwork: None,
+            song_line: "Artist - Track".to_owned(),
+            play_id: None,
+        }),
+    };
+
+    publisher.publish_display(DisplayEntry {
+        event_id: "event-guid".to_owned(),
+        state,
+    });
+
+    stub.wait_for(Route::Display, 1)?;
+    let display_requests = stub.of(Route::Display);
+    assert_eq!(
+        display_requests[0].json()["track"]["songLine"],
+        "Artist - Track"
+    );
+    assert!(display_requests[0].json()["track"].get("value").is_none());
+    Ok(())
+}
+
+#[test]
+fn pairing_after_dead_block_has_no_value() -> Result<()> {
+    // Criterion d: display state always has songLine; after dead block no value
+    let stub = Stub::start(Vec::new(), false)?;
+    let publisher = start(&stub)?;
+
+    let state = DisplayState {
+        track: Some(DisplayTrack {
+            artist: "Artist".to_owned(),
+            title: "Track".to_owned(),
+            artwork: None,
+            song_line: "Artist - Track".to_owned(),
+            play_id: Some("play-1".to_owned()),
+        }),
+    };
+
+    // Send after dead block (no payload): should have songLine, no value
+    let dead = LiveValuePayload {
+        title: "No V4V".to_owned(),
+        image: None,
+        description: String::new(),
+        kind: "music".to_owned(),
+        start_time: 0,
+        duration: None,
+        event_guid: "event-guid".to_owned(),
+        block_guid: "block-dead".to_owned(),
+        feed_guid: None,
+        item_guid: None,
+        line: None,
+        author: None,
+        podcast_name: None,
+        value: LiveValue {
+            model: LiveValueModel {
+                kind: "lightning".to_owned(),
+                method: "lnaddress".to_owned(),
+                suggested: None,
+            },
+            destinations: vec![],
+        },
+        play_id: None,
+    };
+    publisher.publish(dead)?;
+
+    publisher.publish_display(DisplayEntry {
+        event_id: "event-guid".to_owned(),
+        state,
+    });
+
+    stub.wait_for(Route::Display, 1)?;
+    let display = stub.of(Route::Display)[0].json();
+    assert_eq!(display["track"]["songLine"], "Artist - Track");
+    assert!(display["track"].get("value").is_none());
+    Ok(())
+}
+
+fn paired_track(song_line: &str, play_id: &str, artwork: Option<Artwork>) -> DisplayState {
+    DisplayState {
+        track: Some(DisplayTrack {
+            artist: "Artist".to_owned(),
+            title: "Track".to_owned(),
+            artwork,
+            song_line: song_line.to_owned(),
+            play_id: Some(play_id.to_owned()),
+        }),
+    }
+}
+
+fn paired_payload(play_id: &str, block_guid: &str) -> LiveValuePayload {
+    let mut payload = payload("Track");
+    payload.play_id = Some(play_id.to_owned());
+    payload.block_guid = block_guid.to_owned();
+    payload
+}
+
+/// Waits for a display request whose `track.value.blockGuid` is `block_guid`.
+fn wait_for_paired_display(stub: &Stub, block_guid: &str) -> Result<()> {
+    stub.wait_until(&format!("a display paired with {block_guid}"), |requests| {
+        requests.iter().any(|request| {
+            request.route == Route::Display
+                && request.json()["track"]["value"]["blockGuid"] == block_guid
+        })
+    })
+}
+
+#[test]
+fn pairing_display_after_payload_includes_value() -> Result<()> {
+    // Criterion a: a display state after its payload names that payload.
+    let stub = Stub::start(Vec::new(), false)?;
+    let publisher = start(&stub)?;
+
+    publisher.publish(paired_payload("play-1", "block-1"))?;
+    stub.wait_for(Route::Metadata, 1)?;
+    publisher.publish_display(DisplayEntry {
+        event_id: "event-guid".to_owned(),
+        state: paired_track("Artist - Track", "play-1", None),
+    });
+
+    wait_for_paired_display(&stub, "block-1")?;
+    let displays = stub.of(Route::Display);
+    let body = displays[displays.len() - 1].json();
+    assert_eq!(body["track"]["songLine"], "Artist - Track");
+    assert_eq!(
+        body["track"]["value"],
+        json!({ "eventGuid": "event-guid", "blockGuid": "block-1" })
+    );
+    Ok(())
+}
+
+#[test]
+fn pairing_display_before_payload_resends_with_value() -> Result<()> {
+    // Criterion b: a display state before its payload goes out without
+    // `value`, then one more time with `value`. The image goes up one time.
+    let stub = Stub::start(Vec::new(), false)?;
+    let publisher = start(&stub)?;
+    let state = paired_track(
+        "Artist - Track",
+        "play-1",
+        Some(Artwork::Image(jpeg("cover"))),
+    );
+
+    publisher.publish_display(DisplayEntry {
+        event_id: "event-guid".to_owned(),
+        state,
+    });
+    stub.wait_for(Route::Display, 1)?;
+    let first = stub.of(Route::Display)[0].json();
+    assert_eq!(first["track"]["songLine"], "Artist - Track");
+    assert!(first["track"].get("value").is_none(), "{first}");
+
+    publisher.publish(paired_payload("play-1", "block-1"))?;
+    wait_for_paired_display(&stub, "block-1")?;
+    stub.expect_quiet(Duration::from_millis(300))?;
+
+    let displays = stub.of(Route::Display);
+    assert_eq!(displays.len(), 2, "one resend only");
+    let second = displays[1].json();
+    assert_eq!(second["track"]["songLine"], "Artist - Track");
+    assert_eq!(
+        second["track"]["value"],
+        json!({ "eventGuid": "event-guid", "blockGuid": "block-1" })
+    );
+    assert_eq!(stub.of(Route::Artwork).len(), 1, "no second upload");
+    Ok(())
+}
+
+#[test]
+fn pairing_two_plays_of_one_track_name_the_second_block() -> Result<()> {
+    // Criterion e: two plays of the same track. The second display state
+    // names the second block, never the first.
+    let stub = Stub::start(Vec::new(), false)?;
+    let publisher = start(&stub)?;
+
+    publisher.publish(paired_payload("play-1", "block-1"))?;
+    stub.wait_for(Route::Metadata, 1)?;
+    publisher.publish_display(DisplayEntry {
+        event_id: "event-guid".to_owned(),
+        state: paired_track("Artist - Track", "play-1", None),
+    });
+    wait_for_paired_display(&stub, "block-1")?;
+
+    publisher.publish(paired_payload("play-2", "block-2"))?;
+    stub.wait_for(Route::Metadata, 2)?;
+    publisher.publish_display(DisplayEntry {
+        event_id: "event-guid".to_owned(),
+        state: paired_track("Artist - Track", "play-2", None),
+    });
+    wait_for_paired_display(&stub, "block-2")?;
+    stub.expect_quiet(Duration::from_millis(300))?;
+
+    let displays = stub.of(Route::Display);
+    let last = displays[displays.len() - 1].json();
+    assert_eq!(last["track"]["value"]["blockGuid"], "block-2");
+    // No request after the first block-2 display names block-1.
+    let first_block_2 = displays
+        .iter()
+        .position(|request| request.json()["track"]["value"]["blockGuid"] == "block-2")
+        .ok_or_else(|| anyhow!("no block-2 display"))?;
+    assert!(
+        displays[first_block_2..]
+            .iter()
+            .all(|request| request.json()["track"]["value"]["blockGuid"] == "block-2")
+    );
+    Ok(())
+}
+
+#[test]
+fn pairing_second_play_before_its_payload_resends_with_the_second_block() -> Result<()> {
+    // The pairing of the first play exists when the display state of the
+    // second play goes out. That state has no `value`, so it goes out again
+    // when the second payload arrives.
+    let stub = Stub::start(Vec::new(), false)?;
+    let publisher = start(&stub)?;
+
+    publisher.publish(paired_payload("play-1", "block-1"))?;
+    stub.wait_for(Route::Metadata, 1)?;
+    publisher.publish_display(DisplayEntry {
+        event_id: "event-guid".to_owned(),
+        state: paired_track("Artist - Track", "play-1", None),
+    });
+    wait_for_paired_display(&stub, "block-1")?;
+    stub.expect_quiet(Duration::from_millis(300))?;
+    let before = stub.of(Route::Display).len();
+
+    publisher.publish_display(DisplayEntry {
+        event_id: "event-guid".to_owned(),
+        state: paired_track("Artist - Track", "play-2", None),
+    });
+    stub.wait_for(Route::Display, before + 1)?;
+    let unpaired = stub.of(Route::Display)[before].json();
+    assert!(unpaired["track"].get("value").is_none(), "{unpaired}");
+
+    publisher.publish(paired_payload("play-2", "block-2"))?;
+    wait_for_paired_display(&stub, "block-2")?;
+    stub.expect_quiet(Duration::from_millis(300))?;
+    assert_eq!(stub.of(Route::Display).len(), before + 2, "one resend only");
     Ok(())
 }

@@ -13,10 +13,10 @@ use rusqlite::ffi;
 // but one: on a 30k-track library that measured 10.9 ms per poll versus 2.8 ms
 // here, for identical results.
 const HISTORY_QUERY: &str = "\
-SELECT pt_id, artist, title,
+SELECT pt_id, artist, title, album,
        (SELECT tl.location FROM track_locations tl WHERE tl.id = loc)
 FROM (
-  SELECT pt.id AS pt_id, l.artist AS artist, l.title AS title, l.location AS loc
+  SELECT pt.id AS pt_id, l.artist AS artist, l.title AS title, l.album AS album, l.location AS loc
   FROM PlaylistTracks pt
   JOIN Playlists p  ON p.id = pt.playlist_id
   JOIN library l    ON l.id = pt.track_id
@@ -36,6 +36,7 @@ pub struct TrackRow {
     pub hist_id: i64,
     pub artist: String,
     pub title: String,
+    pub album: Option<String>,
     pub path: PathBuf,
 }
 
@@ -138,11 +139,13 @@ impl HistoryWatcher {
     }
 
     fn read_current_row(&self) -> Result<TrackRow> {
+        let album = self.statement.column_text_or_empty(3);
         Ok(TrackRow {
             hist_id: self.statement.column_i64(0),
             artist: self.statement.column_text_or_empty(1),
             title: self.statement.column_text_or_empty(2),
-            path: PathBuf::from(self.statement.column_text_or_empty(3)),
+            album: if album.is_empty() { None } else { Some(album) },
+            path: PathBuf::from(self.statement.column_text_or_empty(4)),
         })
     }
 }

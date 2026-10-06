@@ -13,6 +13,7 @@ CREATE TABLE library (
     id INTEGER PRIMARY KEY,
     artist TEXT,
     title TEXT,
+    album TEXT,
     location INTEGER
 );
 CREATE TABLE Playlists (
@@ -59,6 +60,7 @@ impl SyntheticMixxxDb {
         &mut self,
         artist: Option<&str>,
         title: Option<&str>,
+        album: Option<&str>,
         path: &Path,
     ) -> Result<i64> {
         let tx = self.conn.transaction()?;
@@ -69,8 +71,8 @@ impl SyntheticMixxxDb {
         )?;
         let location_id = tx.last_insert_rowid();
         tx.execute(
-            "INSERT INTO library (artist, title, location) VALUES (?1, ?2, ?3)",
-            params![artist, title, location_id],
+            "INSERT INTO library (artist, title, album, location) VALUES (?1, ?2, ?3, ?4)",
+            params![artist, title, album, location_id],
         )?;
         let track_id = tx.last_insert_rowid();
         let timestamp = format!("{:020}", self.next_timestamp);

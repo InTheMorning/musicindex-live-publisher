@@ -53,16 +53,15 @@ the next priority. Confirm that logging works before the show.
   as the compatibility path. The tagger reads the instant relay routes, and a
   new repository holds it. Two device checks and one repository remain
 - [ADR 0010: The live value payload follows the model server](adr/0010-live-value-payload-reference-shape.md)
-  — Proposed. Adds `line`, `author` and `podcastName` to the payload, as
+  — Accepted. Adds `line`, `author` and `podcastName` to the payload, as
   CurioHoster sends them, and a drop file version 2 with the album and
-  `play_id`. No `link` until a source exists. Two checks remain before
-  acceptance
+  `play_id`. No `link` until a source exists. The app check is open
 - [ADR 0011: The relay applies the stream delay](adr/0011-relay-applies-stream-delay.md)
   — Accepted. The publisher sends each block and display state at once, with
   the delay in a header. Relay ADR 0004 delays Socket.IO only. Replaces the
   schedule rules of ADR 0005 and ADR 0008 at its implementation review
 - [ADR 0012: Pair the display state with its value block](adr/0012-pair-display-state-with-value-block.md)
-  — Proposed. `display.json` version 2 with the exact song line and
+  — Accepted. `display.json` version 2 with the exact song line and
   `play_id`. The publisher adds `songLine` and the block identity to the
   display state (relay ADR 0005)
 
@@ -93,8 +92,8 @@ the next priority. Confirm that logging works before the show.
 - [HLS track metadata plan](plans/hls-track-metadata.md) — Proposed. The five
   gates of ADR 0009 and the packets that follow them. No packet exists yet
 - [Live value reference shape plan](plans/live-value-reference-shape.md) —
-  Proposed. Two packets for ADR 0010
-- [Display pairing plan](plans/display-pairing.md) — Proposed. Two packets
+  Ready. Two packets for ADR 0010
+- [Display pairing plan](plans/display-pairing.md) — Ready. Two packets
   for ADR 0012, in one release, after relay ADR 0005
 - [Relay applies the stream delay plan](plans/relay-applies-stream-delay.md)
   — Ready. Two packets for ADR 0011, in one release, after relay ADR 0004
@@ -202,11 +201,13 @@ Do task 001 and task 002 first. Task 004 needs task 002.
 - [003 — The setup helper keeps an existing event](tasks/reserved-safety-task-003-setup-keeps-event.md)
 - [004 — The setup helper writes the display output](tasks/reserved-safety-task-004-setup-display.md)
 
-Packets for the live value reference shape plan. ADR 0010 governs them. They
-start after the operator accepts ADR 0010. Ship both in one release.
+Packets for the live value reference shape plan. ADR 0010 governs them.
+Ready - 2026-10-06. Ship both in one release.
 
 - [001 — The drop file version 2](tasks/reference-shape-task-001-dropfile-v2.md)
+  — Implemented - 2026-10-06
 - [002 — The payload fields](tasks/reference-shape-task-002-payload-fields.md)
+  — Implemented - 2026-10-06
 
 Packets for the relay delay plan. ADR 0011 governs them. Ready - 2026-10-06.
 Ship both in one release, after the relay of ADR 0004 is deployed.
@@ -215,11 +216,13 @@ Ship both in one release, after the relay of ADR 0004 is deployed.
 - [002 — Send at once](tasks/relay-delay-task-002-send-at-once.md)
 
 Packets for the display pairing plan. ADR 0012 governs them. They start after
-the operator accepts ADR 0012 and relay ADR 0005, and after ADR 0010 task 001
-and ADR 0011 task 002. Ship both in one release.
+ADR 0010 task 001 and ADR 0011 task 002. Ship both in one release, after the
+relay of ADR 0005 is deployed.
 
 - [001 — The display file version 2](tasks/display-pairing-task-001-display-json-v2.md)
+  — Implemented - 2026-10-06
 - [002 — The pairing](tasks/display-pairing-task-002-pairing.md)
+  — Implemented - 2026-10-06
 
 ## Reviews
 

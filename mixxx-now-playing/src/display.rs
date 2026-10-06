@@ -18,7 +18,7 @@ use sha2::{Digest, Sha256};
 use crate::tags::read_tags_with_picture;
 
 /// The schema of `display.json`.
-pub const DISPLAY_SCHEMA: &str = "musicindex.display/1";
+pub const DISPLAY_SCHEMA: &str = "musicindex.display/2";
 /// The file name of the display state in `DIR`.
 pub const DISPLAY_FILE_NAME: &str = "display.json";
 /// The producer rejects picture data larger than this value, in bytes.
@@ -282,6 +282,10 @@ pub struct ShownTrack<'a> {
     pub title: &'a str,
     /// The artwork, or `None` for the `null` artwork.
     pub artwork: Option<&'a Artwork>,
+    /// The first line of `now-playing.txt` for this track (ADR 0009 §The Song Line).
+    pub song_line: &'a str,
+    /// The history row ID of this play (ADR 0010, ADR 0012).
+    pub play_id: Option<i64>,
 }
 
 #[derive(Serialize)]
@@ -295,6 +299,8 @@ struct TrackJson<'a> {
     artist: &'a str,
     title: &'a str,
     artwork: Option<ArtworkJson<'a>>,
+    song_line: &'a str,
+    play_id: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -322,6 +328,8 @@ pub fn render_display_json(track: Option<ShownTrack<'_>>) -> Result<String> {
                     mime: image.mime().mime(),
                 },
             }),
+            song_line: track.song_line,
+            play_id: track.play_id.map(|id| id.to_string()),
         }),
     };
     let mut json = serde_json::to_string_pretty(&document).context("render display.json")?;
@@ -571,6 +579,8 @@ mod tests {
             artist: name,
             title: name,
             artwork,
+            song_line: name,
+            play_id: None,
         }
     }
 
@@ -815,22 +825,26 @@ mod tests {
         let null: serde_json::Value = serde_json::from_str(&render_display_json(None)?)?;
         assert_eq!(
             null,
-            serde_json::json!({"schema": "musicindex.display/1", "track": null})
+            serde_json::json!({"schema": "musicindex.display/2", "track": null})
         );
         let embedded: serde_json::Value =
             serde_json::from_str(&render_display_json(Some(ShownTrack {
                 artist: "A - B",
                 title: "T",
                 artwork: Some(&image),
+                song_line: "A - B - T",
+                play_id: Some(42),
             }))?)?;
         assert_eq!(
             embedded,
             serde_json::json!({
-                "schema": "musicindex.display/1",
+                "schema": "musicindex.display/2",
                 "track": {
                     "artist": "A - B",
                     "title": "T",
-                    "artwork": {"sha256": sha256_hex(&jpeg), "mime": "image/jpeg"}
+                    "artwork": {"sha256": sha256_hex(&jpeg), "mime": "image/jpeg"},
+                    "song_line": "A - B - T",
+                    "play_id": "42"
                 }
             })
         );
@@ -995,7 +1009,7 @@ mod tests {
 
         assert_eq!(
             display_json(temp.path()),
-            serde_json::json!({"schema": "musicindex.display/1", "track": null})
+            serde_json::json!({"schema": "musicindex.display/2", "track": null})
         );
         Ok(())
     }

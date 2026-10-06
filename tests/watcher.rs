@@ -18,7 +18,7 @@ fn target() -> WatchTarget {
 
 fn dropfile(title: &str) -> String {
     json!({
-        "schema": "musicindex.nowplaying/1",
+        "schema": "musicindex.nowplaying/2",
         "target": "default",
         "artist": "Alice",
         "title": title,
@@ -26,6 +26,8 @@ fn dropfile(title: &str) -> String {
         "image": "https://example.com/art.png",
         "feed_guid": "feed-guid",
         "track_guid": "track-guid",
+        "album": null,
+        "play_id": null,
         "value_routes": [{
             "recipient_name": "Alice",
             "route_type": "node",
@@ -177,7 +179,7 @@ fn watcher_unknown_schema_is_skipped_without_dead_block() -> Result<()> {
 
     write(
         &path,
-        dropfile("Future Track").replace("musicindex.nowplaying/1", "musicindex.nowplaying/2"),
+        dropfile("Future Track").replace("musicindex.nowplaying/2", "musicindex.nowplaying/3"),
     )?;
     let payloads = watcher.process_event(upsert(&path), Instant::now())?;
 

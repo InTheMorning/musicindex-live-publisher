@@ -8,6 +8,8 @@ use crate::tags::{TagText, TrackTags};
 pub struct TrackDisplay<'a> {
     pub artist: &'a str,
     pub title: &'a str,
+    pub album: Option<&'a str>,
+    pub play_id: Option<i64>,
     pub tags: &'a TrackTags,
 }
 
@@ -62,6 +64,8 @@ pub fn render_metadata_json_with_routes(
         image: Option<&'a str>,
         feed_guid: Option<&'a str>,
         track_guid: Option<&'a str>,
+        album: Option<&'a str>,
+        play_id: Option<String>,
         value_routes: Vec<PaymentRoute>,
         value_routes_source: Option<&'static str>,
     }
@@ -73,7 +77,7 @@ pub fn render_metadata_json_with_routes(
         .unwrap_or_default();
 
     Ok(serde_json::to_string_pretty(&DropFile {
-        schema: "musicindex.nowplaying/1",
+        schema: "musicindex.nowplaying/2",
         target,
         artist: display.artist,
         title: display.title,
@@ -85,6 +89,8 @@ pub fn render_metadata_json_with_routes(
             .filter(|image| !image.is_empty()),
         feed_guid: display.tags.musicindex_value("Feed Guid"),
         track_guid: display.tags.musicindex_value("Track Guid"),
+        album: display.album,
+        play_id: display.play_id.map(|id| id.to_string()),
         value_routes,
         value_routes_source: value_routes_json.map(|_| value_routes_source.as_str()),
     })?)
@@ -140,6 +146,8 @@ mod tests {
         let rendered = render_metadata_text(TrackDisplay {
             artist: "Artist",
             title: "Title",
+            album: None,
+            play_id: None,
             tags: &tags,
         });
 
@@ -165,6 +173,8 @@ mod tests {
         let rendered = render_metadata_text(TrackDisplay {
             artist: "Artist",
             title: "Title",
+            album: None,
+            play_id: None,
             tags: &tags,
         });
 
@@ -183,6 +193,8 @@ mod tests {
             TrackDisplay {
                 artist: "Artist",
                 title: "Title",
+                album: None,
+                play_id: None,
                 tags: &tags,
             },
             ValueRoutesSource::MusicIndexApi,
@@ -210,6 +222,8 @@ mod tests {
             TrackDisplay {
                 artist: "Artist",
                 title: "Title",
+                album: Some("Test Album"),
+                play_id: Some(42),
                 tags: &tags,
             },
             "stream-a",
@@ -225,10 +239,12 @@ mod tests {
         assert_eq!(
             keys,
             vec![
+                "album",
                 "artist",
                 "duration_secs",
                 "feed_guid",
                 "image",
+                "play_id",
                 "schema",
                 "target",
                 "title",
@@ -237,12 +253,14 @@ mod tests {
                 "value_routes_source",
             ]
         );
-        assert_eq!(value["schema"], "musicindex.nowplaying/1");
+        assert_eq!(value["schema"], "musicindex.nowplaying/2");
         assert_eq!(value["target"], "stream-a");
         assert_eq!(value["duration_secs"], 187.326);
         assert_eq!(value["image"], serde_json::Value::Null);
         assert_eq!(value["feed_guid"], "feed-guid");
         assert_eq!(value["track_guid"], "track-guid");
+        assert_eq!(value["album"], "Test Album");
+        assert_eq!(value["play_id"], "42");
         assert_eq!(value["value_routes"][0]["recipient_name"], "Alice");
         assert_eq!(value["value_routes_source"], "musicindex-api");
         Ok(())
@@ -255,6 +273,8 @@ mod tests {
         let rendered = render_metadata_json(TrackDisplay {
             artist: "Artist",
             title: "Title",
+            album: None,
+            play_id: None,
             tags: &tags,
         })?;
         let value: serde_json::Value = serde_json::from_str(&rendered)?;
@@ -262,6 +282,7 @@ mod tests {
         assert_eq!(value["target"], "default");
         assert_eq!(value["value_routes"], serde_json::json!([]));
         assert_eq!(value["value_routes_source"], serde_json::Value::Null);
+        assert_eq!(value["schema"], "musicindex.nowplaying/2");
         Ok(())
     }
 

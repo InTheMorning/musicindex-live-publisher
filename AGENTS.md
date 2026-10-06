@@ -37,9 +37,11 @@ packet.
   (a new repository, not made yet) and its pairing (ADR 0012). Two device
   checks are open. No implementation exists.
 - ADR 0010, the live value payload of the model server, has the status
-  `Proposed`. It adds `line`, `author` and `podcastName` to the payload, and a
-  drop file version 2 with the album and `play_id`. It adds no `link`. Two
-  items in its §Before Acceptance are open. No implementation exists.
+  `Accepted`. It adds `line`, `author` and `podcastName` to the payload, and a
+  drop file version 2 with the album and `play_id`. It adds no `link`. Its
+  two packets are implemented. The producer writes version 2, and the
+  publisher reads version 2 only. The app check and the album column check
+  on the Mixxx host are open.
 - ADR 0011, the relay applies the stream delay, has the status `Accepted`. Its
   two packets are implemented. The publisher sends each block and display
   state at once, with `Listener-Delay-Secs`. Its review checklist is open.
@@ -47,8 +49,13 @@ packet.
   ADR 0004 runs.** An older relay ignores the header, and podcast apps then
   get no delay.
 - ADR 0012, the pairing of the display state with its value block, has the
-  status `Proposed`. It needs relay ADR 0005, ADR 0010 and ADR 0011. No
-  implementation exists.
+  status `Accepted`. Its two packets are implemented. The producer writes
+  `display.json` version 2 with `song_line` and `play_id`. Each display body
+  has `songLine`. A display state of the same play as the newest payload also
+  has `value` with the `eventGuid` and the `blockGuid` of that payload.
+- **Do not deploy this publisher before the relay of `musicindex-live-relay`
+  ADR 0005 runs.** An older relay gives `400 invalid_display` for each
+  display state with `songLine`.
 - These items need a new ADR before work starts:
   - the talk break block from `v4vmm`,
   - a track identity source that is earlier than the Mixxx history row.

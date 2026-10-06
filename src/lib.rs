@@ -19,7 +19,7 @@ pub use config::{
 };
 pub use display::{
     Artwork, ArtworkImage, DISPLAY_FILE_NAME, DISPLAY_SCHEMA, DisplayEntry, DisplayState,
-    DisplayTrack, ImageMime, MAX_IMAGE_BYTES, read_display_state,
+    DisplayTrack, ImageMime, MAX_IMAGE_BYTES, Pairing, read_display_state,
 };
 pub use dropfile::{DropFile, PaymentRoute, SCHEMA_VERSION, parse};
 pub use liveness::{LOCK_FILE_NAME, ProducerState, probe_producer};

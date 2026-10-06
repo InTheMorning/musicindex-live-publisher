@@ -1,32 +1,33 @@
 # The Live Value Payload Follows The Model Server: Review Checklist
 
-Status: open. Use this checklist after reference shape task 002. ADR 0010
-becomes `Implemented` only when each item passes.
+Status: open - 2026-10-06. Tasks 001 and 002 are done, and each mechanical
+item passes. The app check and the visual items are open. ADR 0010 becomes
+`Implemented` only when each item passes.
 
 ## Invariants Of ADR 0010
 
-- [ ] Each field that the publisher sent before ADR 0010 keeps its name, its
+- [x] Each field that the publisher sent before ADR 0010 keeps its name, its
   form and its meaning. The golden test shows it.
-- [ ] `line` is present in each payload of a V4V track and has two strings.
-- [ ] A missing album gives no `podcastName`. No payload has `link`.
-- [ ] `value` keeps the nested `model` form.
+- [x] `line` is present in each payload of a V4V track and has two strings.
+- [x] A missing album gives no `podcastName`. No payload has `link`.
+- [x] `value` keeps the nested `model` form.
 
 ## Code
 
-- [ ] The dead block JSON did not change.
-- [ ] The history query is still one query with the `LIMIT 1` subquery.
-- [ ] The producer and the publisher use the same schema version. The
+- [x] The dead block JSON did not change.
+- [x] The history query is still one query with the `LIMIT 1` subquery.
+- [x] The producer and the publisher use the same schema version. The
   contract test covers it.
-- [ ] The payload never has exactly the keys `event_id` and `metadata`.
+- [x] The payload never has exactly the keys `event_id` and `metadata`.
 
 ## Documents
 
-- [ ] `README.md` and the configuration runbook describe the drop file
+- [x] `README.md` and the configuration runbook describe the drop file
   version 2 and name ADR 0010 as its owner.
-- [ ] The payload example in `README.md` has the new fields.
-- [ ] ADR 0002 has a dated sentence that version 2 exists and that ADR 0010
+- [x] The payload example in `README.md` has the new fields.
+- [x] ADR 0002 has a dated sentence that version 2 exists and that ADR 0010
   owns it.
-- [ ] `AGENTS.md` §Current State and
+- [x] `AGENTS.md` §Current State and
   `docs/architecture/broadcast-chain-boundaries.md` describe the present.
 
 ## Open Decisions Of ADR 0010

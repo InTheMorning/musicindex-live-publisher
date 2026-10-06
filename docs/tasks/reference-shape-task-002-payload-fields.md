@@ -1,6 +1,6 @@
 # Reference Shape Task 002: The Payload Fields
 
-Status: Ready after task 001. Ship it in one release with task 001.
+Status: Implemented - 2026-10-06. Ship it in one release with task 001.
 
 The acceptance criteria are mechanical. The visual checks are in a separate
 list.
@@ -139,3 +139,25 @@ At the end, report:
 3. behavior changed
 4. deviations from task
 5. unresolved concerns
+
+## Review Result
+
+Reviewed 2026-10-06. `Cargo.lock` did not change. The full gate passes with
+465 tests.
+
+The review made these changes:
+
+- `payload_from_dropfile` gets the album one time and uses it for `line` and
+  `podcastName`.
+- `livevalue_dead_payload_has_no_new_fields` compares the full key set of the
+  dead block, not only the three new keys.
+- The `README.md` example gives the keys in the order that the publisher
+  sends them. The text names ADR 0010 and the dead block.
+- The `clippy::large_enum_variant` exception on `EmitItem` has a reason.
+
+The golden test changed as §Constraints says: `album` comes from `line[0]`,
+and `line` is compared with the reference. The two CurioHoster references
+have no `author` and no `podcastName`. The test thus compares those two
+fields with values from `line`, not with a reference value.
+
+The visual items stay open.

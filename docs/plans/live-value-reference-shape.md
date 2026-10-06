@@ -1,7 +1,7 @@
 # The Live Value Payload Follows The Model Server: Phase Plan
 
-Status: Proposed 2026-10-06. This plan does not make rules. ADR 0010 owns
-them. The packets start after the operator accepts ADR 0010.
+Status: Ready 2026-10-06. This plan does not make rules. ADR 0010 owns
+them. The operator accepted ADR 0010 on 2026-10-06.
 
 ## Goal
 

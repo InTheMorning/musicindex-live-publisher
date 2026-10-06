@@ -46,6 +46,8 @@ fn render_mp3_fixture_excludes_transcripts_and_binary_payloads() -> Result<()> {
     let rendered = render_metadata_text(TrackDisplay {
         artist: "Fixture Artist",
         title: "Fixture Title",
+        album: None,
+        play_id: None,
         tags: &tags,
     });
 
@@ -67,6 +69,8 @@ fn render_flac_fixture_uses_same_musicindex_labels() -> Result<()> {
     let rendered = render_metadata_text(TrackDisplay {
         artist: "Fixture Artist",
         title: "Fixture Title",
+        album: None,
+        play_id: None,
         tags: &tags,
     });
 
@@ -89,6 +93,8 @@ fn render_drop_file_holds_the_image_tag_value() -> Result<()> {
     let rendered = render_metadata_json(TrackDisplay {
         artist: "Fixture Artist",
         title: "Fixture Title",
+        album: None,
+        play_id: None,
         tags: &tags,
     })?;
     let value: serde_json::Value = serde_json::from_str(&rendered)?;
@@ -105,6 +111,8 @@ fn render_drop_file_gives_null_image_when_no_such_tag() -> Result<()> {
     let rendered = render_metadata_json(TrackDisplay {
         artist: "Fixture Artist",
         title: "Fixture Title",
+        album: None,
+        play_id: None,
         tags: &tags,
     })?;
     let value: serde_json::Value = serde_json::from_str(&rendered)?;
@@ -123,6 +131,8 @@ fn render_drop_file_gives_null_image_when_the_tag_is_empty() -> Result<()> {
     let rendered = render_metadata_json(TrackDisplay {
         artist: "Fixture Artist",
         title: "Fixture Title",
+        album: None,
+        play_id: None,
         tags: &tags,
     })?;
     let value: serde_json::Value = serde_json::from_str(&rendered)?;

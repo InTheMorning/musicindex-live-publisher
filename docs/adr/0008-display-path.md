@@ -6,6 +6,10 @@ Date: 2026-10-04
 Accepted 2026-10-04 by the operator. The items in §Before Acceptance are
 done.
 
+Amended 2026-10-06: version 2 of `display.json`, `musicindex.display/2`,
+exists. ADR 0012 owns it. It adds `song_line` and `play_id`, and the display
+body adds `songLine` and `value`. The publisher reads version 2 only.
+
 `musicindex-live-relay` ADR 0003 owns the relay routes, their limits and their
 storage. This ADR decides what the producer and the publisher send.
 

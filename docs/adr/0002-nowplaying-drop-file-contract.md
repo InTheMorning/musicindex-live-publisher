@@ -10,6 +10,10 @@ crates. The status was corrected on 2026-09-30.
 
 Accepted 2026-09-04.
 
+Amended 2026-10-06: version 2 of the drop file, `musicindex.nowplaying/2`,
+exists. ADR 0010 owns it. It adds `album` and `play_id`. The publisher reads
+version 2 only. This ADR still owns each version 1 field.
+
 Amended 2026-09-06: `v4vmm` accepted its ADR 0059 and became the control
 surface for this chain. Two statements below now have a known outcome. The
 `v4vmm` live client loses its publish half, and `v4vmm` becomes a producer for

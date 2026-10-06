@@ -1,7 +1,6 @@
 # Display Pairing Task 001: The Display File Version 2
 
-Status: Ready after the operator accepts ADR 0012 and ADR 0010 task 001 is
-done. Ship it in one release with task 002.
+Status: Implemented - 2026-10-06. Ship it in one release with task 002. Ship it in one release with task 002.
 
 Every criterion is mechanical.
 
@@ -132,3 +131,25 @@ At the end, report:
 3. behavior changed
 4. deviations from task
 5. unresolved concerns
+
+## Review Result
+
+Reviewed 2026-10-06. `Cargo.lock` did not change. The full gate passes.
+
+The producer takes `play_id` from the present V4V row. A row that is not V4V
+clears that row, so its display state has `play_id` `null`. The producer thus
+never gives a display state the play ID of an earlier track.
+
+The review made these changes:
+
+- The lifecycle test
+  `lifecycle_display_pairs_with_the_song_file_and_the_drop_file` runs the
+  producer on a track with hyphens. It compares `song_line` with the first
+  line of `now-playing.txt`, and `play_id` with the drop file of the same
+  play. The tests of the first implementation compared each value with a
+  literal only.
+- `parse_track` uses `let ... else` in place of `unwrap`.
+- The configuration runbook says that a track that is not V4V has
+  `play_id` `null`.
+
+`README.md` does not describe `display.json`, so it did not change.

@@ -1,7 +1,6 @@
 # Display Pairing Task 002: The Pairing
 
-Status: Ready after task 001, ADR 0010 task 001 and ADR 0011 task 002. Ship
-it after relay ADR 0005 is deployed.
+Status: Implemented - 2026-10-06. Ship it after relay ADR 0005 is deployed.
 
 Every criterion is mechanical.
 
@@ -141,3 +140,39 @@ At the end, report:
 3. behavior changed
 4. deviations from task
 5. unresolved concerns
+
+## Review Result
+
+Reviewed 2026-10-06. `Cargo.lock` did not change. The full gate passes with
+480 tests. The six pairing tests passed in five more runs.
+
+The first implementation failed the review:
+
+- The resend of a display state that went out before its payload never
+  occurred. After a send, `pending` is empty, and the rule needed `pending`
+  to equal `last_sent`.
+- A dead block kept its `eventGuid` and `blockGuid`.
+- The tests examined only the body helper, with literal values. No test
+  drove the workers.
+
+The second implementation corrected the resend and the dead block. Then the
+review found one more defect and corrected it. `last_sent_paired` was true
+when any pairing existed, not only when the sent body had `value`. A display
+state of a second play that went out before its payload was then never sent
+again. `DisplayState::pairs_with` now holds the pairing rule. The body and the
+resend both use it.
+
+The review wrote these worker tests again or added them. Each one sends
+through the real workers to the stub relay:
+
+- `pairing_display_after_payload_includes_value`
+- `pairing_display_before_payload_resends_with_value`
+- `pairing_two_plays_of_one_track_name_the_second_block`
+- `pairing_second_play_before_its_payload_resends_with_the_second_block`
+
+Two mutation checks show that the tests find the defects. The test of the
+resend fails when the resend line is removed. The test of the second play
+fails with the earlier `last_sent_paired` rule.
+
+The configuration runbook gives the display body with `songLine` and `value`.
+`README.md` does not describe `display.json`.

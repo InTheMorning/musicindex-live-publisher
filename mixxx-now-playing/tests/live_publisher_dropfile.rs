@@ -24,6 +24,8 @@ fn json_output_parses_as_live_publisher_dropfile_and_transforms() -> Result<()> 
         TrackDisplay {
             artist: "Alice",
             title: "Some Track",
+            album: Some("Test Album"),
+            play_id: Some(42),
             tags: &tags,
         },
         "default",
@@ -34,9 +36,11 @@ fn json_output_parses_as_live_publisher_dropfile_and_transforms() -> Result<()> 
         parse(json.as_bytes())?.ok_or_else(|| anyhow!("known now-playing schema should parse"))?;
     let payload = payload_from_dropfile(&dropfile, "event-guid", "block-guid");
 
-    assert_eq!(dropfile.schema, "musicindex.nowplaying/1");
+    assert_eq!(dropfile.schema, "musicindex.nowplaying/2");
     assert_eq!(dropfile.target, "default");
     assert_eq!(dropfile.duration_secs, Some(187.326));
+    assert_eq!(dropfile.album, Some("Test Album".to_string()));
+    assert_eq!(dropfile.play_id, Some("42".to_string()));
     assert_eq!(payload.title, "Some Track");
     assert_eq!(payload.event_guid, "event-guid");
     assert_eq!(payload.feed_guid.as_deref(), Some("feed-guid"));

@@ -17,8 +17,8 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use crate::{
-    ArtworkImage, DisplayEntry, DisplayState, LiveValuePayload, ProducerState, PublisherConfig,
-    PublisherTarget,
+    ArtworkImage, DisplayEntry, DisplayState, LiveValuePayload, Pairing, ProducerState,
+    PublisherConfig, PublisherTarget,
 };
 
 /// Default per-request timeout for relay calls.
@@ -332,8 +332,9 @@ impl RelayClient {
     /// Publishes one display state (relay ADR 0003).
     ///
     /// `POST {endpoint}/v1/liveitems/{event_id}/display` with the bearer
-    /// token. The body is [`DisplayState::body`], which holds only `track`.
-    /// The request carries no `Listener-Delay-Secs` header (ADR 0011).
+    /// token. The body includes `songLine` and optionally `value` when the
+    /// pairing information matches (ADR 0012). The request carries no
+    /// `Listener-Delay-Secs` header (ADR 0011).
     ///
     /// # Errors
     ///
@@ -343,6 +344,7 @@ impl RelayClient {
         &self,
         target: &RelayTarget,
         state: &DisplayState,
+        pairing: Option<&Pairing>,
     ) -> Result<DisplayOutcome> {
         validate_bearer_token(&target.token)?;
         let url = build_url(
@@ -353,7 +355,7 @@ impl RelayClient {
             .client
             .post(url)
             .bearer_auth(&target.token)
-            .json(&state.body());
+            .json(&state.body_with_pairing(pairing));
         Ok(display_outcome(request.send()))
     }
 
@@ -561,6 +563,15 @@ enum DisplayCommand {
     /// again. The lease end cleared the display state and the images in the
     /// relay, so the display worker sends its latest state again.
     Resend { event_id: String },
+    /// A live value payload was published with pairing information. If a
+    /// display state with matching play_id is waiting, it should be resent
+    /// with the value (ADR 0012).
+    UpdatePayloadPairing {
+        event_id: String,
+        play_id: Option<String>,
+        event_guid: String,
+        block_guid: String,
+    },
 }
 
 /// Coordinates per-target relay workers.
@@ -1098,6 +1109,16 @@ fn publish_worker(
                         payload,
                         keepalive_interval: interval,
                     } => {
+                        // Notify the display worker about the new payload's pairing info
+                        // so it can pair display states with their payloads (ADR 0012).
+                        if let Some(display) = ctx.display {
+                            let _ignored = display.send(DisplayCommand::UpdatePayloadPairing {
+                                event_id: target.event_id.clone(),
+                                play_id: payload.play_id.clone(),
+                                event_guid: payload.event_guid.clone(),
+                                block_guid: payload.block_guid.clone(),
+                            });
+                        }
                         last_accepted = Some(*payload);
                         keepalive_interval = interval;
                     }
@@ -1164,6 +1185,11 @@ struct DisplaySlot {
     pending: Option<DisplayState>,
     /// The last state that the relay accepted, for a resend.
     last_sent: Option<DisplayState>,
+    /// True if last_sent included value with its pairing (ADR 0012).
+    ///
+    /// When a payload arrives after a display state, the state is resent with
+    /// value only one time. This flag ensures it happens only once.
+    last_sent_paired: bool,
     /// The SHA-256 of each image that this process uploaded to this target.
     uploaded: HashSet<String>,
     /// True after `404` or `409 event_not_reserved`, until the next start.
@@ -1171,6 +1197,9 @@ struct DisplaySlot {
     backoff: Duration,
     /// The earliest time of the next attempt after a retryable failure.
     retry_at: Option<Instant>,
+    /// The pairing of the newest track payload (ADR 0012): play_id, event_guid,
+    /// and block_guid. None for dead blocks or tracks with no drop file.
+    current_pairing: Option<Pairing>,
 }
 
 impl DisplaySlot {
@@ -1179,10 +1208,12 @@ impl DisplaySlot {
             target,
             pending: None,
             last_sent: None,
+            last_sent_paired: false,
             uploaded: HashSet::new(),
             disabled: false,
             backoff: initial_backoff,
             retry_at: None,
+            current_pairing: None,
         }
     }
 
@@ -1295,6 +1326,41 @@ impl DisplayWorker {
                     slot.pending = slot.last_sent.clone();
                 }
             }
+            DisplayCommand::UpdatePayloadPairing {
+                event_id,
+                play_id,
+                event_guid,
+                block_guid,
+            } => {
+                let Some(slot) = self.slots.get_mut(&event_id) else {
+                    return;
+                };
+
+                // Update the current pairing only for payloads with play_id.
+                // A dead block (play_id None) clears the pairing.
+                slot.current_pairing = play_id.as_ref().map(|id| Pairing {
+                    play_id: id.clone(),
+                    event_guid,
+                    block_guid,
+                });
+
+                // If pending is waiting (not sent yet), it will go out with the
+                // new pairing on the next attempt. Do nothing.
+                //
+                // If pending is None but last_sent has a track with matching
+                // play_id and last_sent was not already paired, resend it with
+                // value. This handles the case where a display state went out
+                // before its payload arrived.
+                if slot.pending.is_none()
+                    && !slot.last_sent_paired
+                    && let Some(last_sent) = slot.last_sent.as_ref()
+                    && let Some(pairing) = slot.current_pairing.as_ref()
+                    && last_sent.pairs_with(pairing)
+                {
+                    // Resend the last state with value, one time only
+                    slot.pending = Some(last_sent.clone());
+                }
+            }
         }
     }
 
@@ -1391,8 +1457,15 @@ fn send_display(client: &RelayClient, slot: &mut DisplaySlot, state: &DisplaySta
             }
         }
 
-        match client.publish_display(&slot.target, &state) {
-            Ok(DisplayOutcome::Accepted) => return DisplayStep::Done,
+        match client.publish_display(&slot.target, &state, slot.current_pairing.as_ref()) {
+            Ok(DisplayOutcome::Accepted) => {
+                // True only when the sent body had `value`.
+                slot.last_sent_paired = slot
+                    .current_pairing
+                    .as_ref()
+                    .is_some_and(|pairing| state.pairs_with(pairing));
+                return DisplayStep::Done;
+            }
             Ok(DisplayOutcome::ArtworkMissing) => {
                 let Some(image) = state.image() else {
                     return DisplayStep::Drop(
