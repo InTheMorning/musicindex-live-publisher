@@ -32,6 +32,16 @@ packet.
   the display state and the image to the relay through its stream delay. Its
   relay side is relay ADR 0003. The review of task 004 and the visual check
   are open.
+- ADR 0009, track metadata in the HLS stream, has the status `Proposed`. It
+  owns the song line that `butt` sends. Five items in its §Before Acceptance
+  are open. No implementation exists.
+- ADR 0010, the live value payload of the model server, has the status
+  `Proposed`. It adds `line`, `author`, `podcastName` and `link` to the
+  payload and a drop file version 2. Three items in its §Before Acceptance are
+  open. No implementation exists.
+- ADR 0011, the relay applies the stream delay, has the status `Proposed`. It
+  needs relay ADR 0004. Until both are implemented, the publisher holds each
+  block and display state for the stream delay (ADR 0005, ADR 0008).
 - These items need a new ADR before work starts:
   - the talk break block from `v4vmm`,
   - a track identity source that is earlier than the Mixxx history row.

@@ -47,6 +47,19 @@ the next priority. Confirm that logging works before the show.
 - [ADR 0008: An optional display path for artwork](adr/0008-display-path.md)
   — Accepted. Artwork and track text for every track, through the stream delay,
   to the display routes of the relay. A paused stream clears the `butt` title
+- [ADR 0009: Track metadata in the HLS stream](adr/0009-hls-track-metadata.md)
+  — Proposed. The song line, and a MusicIndex ID3 frame that a tagger on the
+  VPS releases at the ICY title. The Socket.IO live value and its `image` stay
+  as the compatibility path. The tagger reads the instant relay routes. Five
+  checks remain before acceptance
+- [ADR 0010: The live value payload follows the model server](adr/0010-live-value-payload-reference-shape.md)
+  — Proposed. Adds `line`, `author`, `podcastName` and `link` to the payload,
+  as CurioHoster sends them, and a drop file version 2 with the album and a
+  link. Three checks remain before acceptance
+- [ADR 0011: The relay applies the stream delay](adr/0011-relay-applies-stream-delay.md)
+  — Proposed. The publisher sends each block and display state at once, with
+  the delay in a header. Relay ADR 0004 delays Socket.IO only. Replaces the
+  schedule rules of ADR 0005 and ADR 0008 at acceptance
 
 ## Plans
 

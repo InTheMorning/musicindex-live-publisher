@@ -129,6 +129,19 @@ the exit codes and the output.
 - The drop-file contract has no pause state. A producer reports play or stop.
 - This service has no remote control API. Remote control uses `ssh` today.
 
+## Proposed Changes
+
+These ADRs are `Proposed`. Until the operator accepts them, the sections above
+describe the chain.
+
+- ADR 0009: this repository owns the song line that `butt` sends. A tagger on
+  the VPS writes track metadata into the HLS stream at the ICY title.
+- ADR 0010: the live value payload adds `line`, `author`, `podcastName` and
+  `link`. The drop file goes to version 2.
+- ADR 0011: the publisher sends each block at once, with the header
+  `Listener-Delay-Secs`. `musicindex-live-relay` ADR 0004 owns that header and
+  delays Socket.IO only.
+
 ## Future Work
 
 - A remote control API for this service. The liquidsoap work needs more than
@@ -139,6 +152,9 @@ the exit codes and the output.
 
 - `docs/adr/0001-rust-now-playing-lifecycle.md`
 - `docs/adr/0002-nowplaying-drop-file-contract.md`
+- `docs/adr/0009-hls-track-metadata.md`
+- `docs/adr/0010-live-value-payload-reference-shape.md`
+- `docs/adr/0011-relay-applies-stream-delay.md`
 - `docs/runbooks/musicindex-live-publisher-configuration.md`
 - `v4vmm`: `docs/architecture/broadcast-chain.md`
 - `v4vmm`: `docs/adr/0059-broadcast-control-surface.md`
