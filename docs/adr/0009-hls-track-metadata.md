@@ -13,6 +13,10 @@ display state arrived late at the tagger, by almost the full delay. §The Join
 Point now requires the instant routes of `musicindex-live-relay` ADR 0004.
 ADR 0011 removes the delay from the publisher.
 
+Amended 2026-10-06 a third time. §Where The Tagger Runs records that the
+tagger serves other broadcasters, and that it can run on any host that reads
+their Icecast mount.
+
 Class: situational. Supersede this record when a different component joins the
 track metadata to the audio, or when the HLS stream stops.
 
@@ -123,6 +127,24 @@ read a route that does not wait for the listener delay. The same rule applies
 to the app. It reads the display states and the live value from the instant
 SSE routes, not from Socket.IO.
 
+### Where The Tagger Runs
+
+Other broadcasters use the public relay and `v4vmm`, each with an own Icecast
+server. The tagger thus serves each broadcaster, not only the operator.
+
+- The tagger reads the Icecast stream of one broadcaster over HTTP. It does
+  not need to run on the Icecast host. The ICY title and the audio travel
+  together, so each frame keeps its position on any network path.
+- It can run on the host of the broadcaster, or on a different host that
+  reads the mount. An example is one stack for each broadcaster on the VPS of
+  the operator.
+- Each instance has two settings: the Icecast mount URL and the relay event
+  of the broadcaster. The event must be reserved, because the display routes
+  need a reserved event (relay ADR 0003).
+- The tagger and liquidsoap ship as one package that a broadcaster can run.
+  A tagger that operates only on the VPS of the operator does not agree with
+  this ADR.
+
 ### The Song Line
 
 The song line is the first line of `now-playing.txt`:
@@ -226,7 +248,8 @@ These rules apply while this decision is current.
    Deploy it, and read the tag header of a segment. Make sure that AVPlayer
    still gives `TIT2` as `commonKeyTitle`.
 3. **The tagger home.** The test stack is in no repository. Select the
-   repository that holds the tagger code before a real show depends on it.
+   repository that holds the tagger code and its package before a real show
+   depends on it. §Where The Tagger Runs gives the requirements.
 4. **The pairing.** The operator accepts §The Value Identity, or selects a
    different source. Relay ADR 0003 and the display schema of ADR 0008 then
    need their own changes.
