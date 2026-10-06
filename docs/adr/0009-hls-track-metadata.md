@@ -13,6 +13,10 @@ display state arrived late at the tagger, by almost the full delay. §The Join
 Point now requires the instant routes of `musicindex-live-relay` ADR 0004.
 ADR 0011 removes the delay from the publisher.
 
+Amended 2026-10-06 a fourth time. The operator decided the tagger home and
+accepted the pairing. §The Value Identity names ADR 0010, ADR 0012 and relay
+ADR 0005.
+
 Amended 2026-10-06 a third time. §Where The Tagger Runs records that the
 tagger serves other broadcasters, and that it can run on any host that reads
 their Icecast mount.
@@ -211,15 +215,15 @@ producer makes the display state and the drop file. The publisher mints the
 
 This ADR selects this source for the pairing:
 
-1. The producer adds the identity of the drop file to the display state of a
-   V4V track, in a new display schema. It also adds the exact song line.
-2. The publisher sends the `eventGuid` and the `blockGuid` of the payload for
-   that drop file with the display state.
-3. Relay ADR 0003 accepts the two optional fields in the display state.
-4. The tagger matches the ICY title to the song line in the state by equality,
-   not by the text rules of ADR 0011. It copies `value` into the frame.
+1. The producer adds `play_id` to the drop file (ADR 0010) and to
+   `display.json`, with the exact song line (ADR 0012).
+2. The publisher adds `songLine` and `value {eventGuid, blockGuid}` to the
+   display state of the same `play_id` (ADR 0012).
+3. The relay accepts and passes through those two keys (relay ADR 0005).
+4. The tagger matches the ICY title to `songLine` by equality, not by the
+   text rules of ADR 0011. It copies `value` into the frame.
 
-Until those three changes exist, the tagger uses the ADR 0011 rules and writes
+Until those changes exist, the tagger uses the ADR 0011 rules and writes
 `value` as `null`.
 
 ## Invariants
@@ -241,19 +245,20 @@ These rules apply while this decision is current.
 
 ## Before Acceptance
 
-1. **The `TXXX` check.** Make sure that liquidsoap writes a valid `TXXX` frame
-   with the description `musicindex` from a metadata value that holds a NUL.
-   Make sure that AVPlayer gives the description and the text.
+1. **The `TXXX` check.** Give liquidsoap a metadata value that holds a NUL.
+   Make sure that it writes a valid `TXXX` frame with the description
+   `musicindex`. Make sure that AVPlayer gives the description and the text.
 2. **The ID3v2.4 check.** `radio.liq` has `id3_version=4` since 2026-10-06.
    Deploy it, and read the tag header of a segment. Make sure that AVPlayer
    still gives `TIT2` as `commonKeyTitle`.
-3. **The tagger home.** The test stack is in no repository. Select the
-   repository that holds the tagger code and its package before a real show
-   depends on it. §Where The Tagger Runs gives the requirements.
-4. **The pairing.** The operator accepts §The Value Identity, or selects a
-   different source. Relay ADR 0003 and the display schema of ADR 0008 then
-   need their own changes.
-5. **The instant routes.** Relay ADR 0004 and ADR 0011 are accepted.
+3. **The tagger home.** Decided 2026-10-06: a new repository holds the tagger
+   code and its package. The operator names it when it is made. This item
+   closes when that repository exists. §Where The Tagger Runs gives the
+   requirements.
+4. **The pairing.** Decided 2026-10-06: the operator accepted §The Value
+   Identity. Relay ADR 0005 and ADR 0012 hold the changes.
+5. **The instant routes.** Done 2026-10-06: relay ADR 0004 and ADR 0011 are
+   accepted.
 
 ## Verification After Implementation
 
@@ -340,6 +345,8 @@ Negative and risks:
 - `docs/adr/0002-nowplaying-drop-file-contract.md`
 - `docs/adr/0008-display-path.md`
 - `docs/adr/0010-live-value-payload-reference-shape.md`
+- `docs/adr/0012-pair-display-state-with-value-block.md`
+- `musicindex-live-relay`: `docs/adr/0005-display-song-line-and-value.md`
 - `musicindex-live-relay`: `docs/adr/0003-display-state-and-artwork.md`
 - `musicindex-live-relay`: `docs/interoperability.md`
 - `citizenradio`: `docs/adr/0011-icy-sync-of-the-relay-display.md`

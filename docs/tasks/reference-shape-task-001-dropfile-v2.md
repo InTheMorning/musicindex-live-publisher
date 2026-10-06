@@ -8,7 +8,7 @@ Every criterion is mechanical.
 ## Goal
 
 The producer writes the drop file `musicindex.nowplaying/2` with the album
-from the Mixxx library. The publisher parses version 2 and ignores version 1.
+from the Mixxx library and the `play_id` of the play. The publisher parses version 2 and ignores version 1.
 The payload does not change in this task.
 
 ## Files To Inspect
@@ -34,7 +34,7 @@ The payload does not change in this task.
 - `mixxx-now-playing/tests/live_publisher_dropfile.rs`
 - `src/dropfile.rs`
 - `tests/watcher.rs`, `tests/config.rs` (fixture schema strings)
-- `tests/golden.rs` (its `DropFile` literal gets the three new fields as
+- `tests/golden.rs` (its `DropFile` literal gets the two new fields as
   `None`)
 - `README.md`, `docs/runbooks/musicindex-live-publisher-configuration.md`
 
@@ -51,14 +51,16 @@ The payload does not change in this task.
 
 - `HISTORY_QUERY` reads `l.album` in the inner query and returns it. A
   `NULL` or an empty album gives `None` in `TrackRow`.
-- `TrackDisplay` gets `album: Option<&str>`.
+- `TrackDisplay` gets `album: Option<&str>` and `play_id: Option<i64>`. The
+  producer sets `play_id` from the history row.
 - The drop file of the producer has `schema: "musicindex.nowplaying/2"`, each
-  version 1 field, `album`, `link_url: null` and `link_text: null`.
+  version 1 field, `album`, and `play_id`. `play_id` is `TrackRow::hist_id`,
+  the ID of the history row, written as a decimal string.
+- The drop file has no `link_url` and no `link_text`. ADR 0010 removed them.
 - In the publisher, `SCHEMA_VERSION` becomes `musicindex.nowplaying/2`.
-  `DropFile` gets `album`, `link_url` and `link_text`, each
-  `Option<String>`, each optional in the JSON. A version 1 file gives
+  `DropFile` gets `album` and `play_id`, each `Option<String>`, each optional
+  in the JSON. A version 1 file gives
   `Ok(None)` with the present warning.
-- The publisher does not validate `link_url` in this task. Task 002 does.
 - Keep the history query a single query with the `LIMIT 1` subquery. Do not
   add a join in the outer query. The comment above the query explains why.
 
@@ -78,9 +80,9 @@ Each item is a test:
 
 - The history query gives the album of the newest history row, and `None`
   for a `NULL` or an empty album.
-- The producer writes version 2 with `album`, `link_url: null` and
-  `link_text: null`.
-- The publisher parses version 2 with all three new fields, and with none of
+- The producer writes version 2 with `album` and `play_id`.
+- Two plays of the same track give two different `play_id` values.
+- The publisher parses version 2 with both new fields, and with neither of
   them.
 - The publisher gives `Ok(None)` for a version 1 file.
 - The contract test parses the producer output as version 2 in the
@@ -121,7 +123,7 @@ Read:
 - README.md, docs/runbooks/musicindex-live-publisher-configuration.md
 
 Goal:
-- The producer writes musicindex.nowplaying/2 with the album. The publisher parses version 2 and ignores version 1. The payload does not change.
+- The producer writes musicindex.nowplaying/2 with the album and play_id. The publisher parses version 2 and ignores version 1. The payload does not change.
 
 Constraints:
 - Follow §Constraints of the packet exactly.

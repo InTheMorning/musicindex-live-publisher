@@ -33,15 +33,20 @@ packet.
   relay side is relay ADR 0003. The review of task 004 and the visual check
   are open.
 - ADR 0009, track metadata in the HLS stream, has the status `Proposed`. It
-  owns the song line that `butt` sends. Five items in its §Before Acceptance
-  are open. No implementation exists.
+  owns the song line that `butt` sends. The operator decided its tagger home
+  (a new repository, not made yet) and its pairing (ADR 0012). Two device
+  checks are open. No implementation exists.
 - ADR 0010, the live value payload of the model server, has the status
-  `Proposed`. It adds `line`, `author`, `podcastName` and `link` to the
-  payload and a drop file version 2. Three items in its §Before Acceptance are
-  open. No implementation exists.
-- ADR 0011, the relay applies the stream delay, has the status `Proposed`. It
-  needs relay ADR 0004. Until both are implemented, the publisher holds each
-  block and display state for the stream delay (ADR 0005, ADR 0008).
+  `Proposed`. It adds `line`, `author` and `podcastName` to the payload, and a
+  drop file version 2 with the album and `play_id`. It adds no `link`. Two
+  items in its §Before Acceptance are open. No implementation exists.
+- ADR 0011, the relay applies the stream delay, has the status `Accepted`. Its
+  two packets are ready. They ship after the relay of ADR 0004 is deployed.
+  Until then, the publisher holds each block and display state for the stream
+  delay (ADR 0005, ADR 0008).
+- ADR 0012, the pairing of the display state with its value block, has the
+  status `Proposed`. It needs relay ADR 0005, ADR 0010 and ADR 0011. No
+  implementation exists.
 - These items need a new ADR before work starts:
   - the talk break block from `v4vmm`,
   - a track identity source that is earlier than the Mixxx history row.

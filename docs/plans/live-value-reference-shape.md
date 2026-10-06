@@ -5,17 +5,18 @@ them. The packets start after the operator accepts ADR 0010.
 
 ## Goal
 
-A V4V track payload carries `line`, `author`, and when known `podcastName`
-and `link`, as CurioHoster sends them. The drop file goes to version 2 and
-carries the album and a link.
+A V4V track payload carries `line`, `author`, and when known `podcastName`,
+as CurioHoster sends them. The drop file goes to version 2 and carries the
+album and `play_id`.
 
 ## Non-Goals
 
 - No change to any field that the payload sends today.
 - No change to the dead block of ADR 0005.
 - No change to the timing. ADR 0011 owns it.
-- No source for the link in this plan. ADR 0010 §Before Acceptance item 1
-  decides it. Until then, the producer writes `null`.
+- No `link`. The operator decided on 2026-10-06 that it stays absent until a
+  source exists.
+- No pairing. ADR 0012 uses `play_id`, and its own plan owns that work.
 
 ## Assumptions
 
@@ -28,11 +29,11 @@ carries the album and a link.
 
 | Module | Change |
 |---|---|
-| `mixxx-now-playing/src/history.rs` | The history query and `TrackRow` read the album |
+| `mixxx-now-playing/src/history.rs` | The history query and `TrackRow` read the album. `TrackRow` already has the history row ID for `play_id`. |
 | `mixxx-now-playing/src/render.rs` | `TrackDisplay` and the drop file version 2 |
 | `mixxx-now-playing/src/main.rs` | Gives the album to `TrackDisplay` |
 | `src/dropfile.rs` | Parses version 2 and ignores version 1 |
-| `src/livevalue.rs` | The four new payload fields |
+| `src/livevalue.rs` | The three new payload fields |
 | `README.md`, the configuration runbook | The drop file version 2 and the payload fields |
 
 ## Sequence
@@ -47,10 +48,9 @@ publisher must agree on the schema version.
 
 ## Schema And API Implications
 
-- Drop file schema `musicindex.nowplaying/2` with `album`, `link_url` and
-  `link_text`.
-- New payload fields: `line`, `author`, `podcastName`, `link`. The relay
-  passes them through.
+- Drop file schema `musicindex.nowplaying/2` with `album` and `play_id`.
+- New payload fields: `line`, `author`, `podcastName`. The relay passes them
+  through.
 
 ## Risk Areas
 

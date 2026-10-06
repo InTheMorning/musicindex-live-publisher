@@ -50,16 +50,21 @@ the next priority. Confirm that logging works before the show.
 - [ADR 0009: Track metadata in the HLS stream](adr/0009-hls-track-metadata.md)
   — Proposed. The song line, and a MusicIndex ID3 frame that a tagger on the
   VPS releases at the ICY title. The Socket.IO live value and its `image` stay
-  as the compatibility path. The tagger reads the instant relay routes. Five
-  checks remain before acceptance
+  as the compatibility path. The tagger reads the instant relay routes, and a
+  new repository holds it. Two device checks and one repository remain
 - [ADR 0010: The live value payload follows the model server](adr/0010-live-value-payload-reference-shape.md)
-  — Proposed. Adds `line`, `author`, `podcastName` and `link` to the payload,
-  as CurioHoster sends them, and a drop file version 2 with the album and a
-  link. Three checks remain before acceptance
+  — Proposed. Adds `line`, `author` and `podcastName` to the payload, as
+  CurioHoster sends them, and a drop file version 2 with the album and
+  `play_id`. No `link` until a source exists. Two checks remain before
+  acceptance
 - [ADR 0011: The relay applies the stream delay](adr/0011-relay-applies-stream-delay.md)
-  — Proposed. The publisher sends each block and display state at once, with
+  — Accepted. The publisher sends each block and display state at once, with
   the delay in a header. Relay ADR 0004 delays Socket.IO only. Replaces the
-  schedule rules of ADR 0005 and ADR 0008 at acceptance
+  schedule rules of ADR 0005 and ADR 0008 at its implementation review
+- [ADR 0012: Pair the display state with its value block](adr/0012-pair-display-state-with-value-block.md)
+  — Proposed. `display.json` version 2 with the exact song line and
+  `play_id`. The publisher adds `songLine` and the block identity to the
+  display state (relay ADR 0005)
 
 ## Plans
 
@@ -89,8 +94,10 @@ the next priority. Confirm that logging works before the show.
   gates of ADR 0009 and the packets that follow them. No packet exists yet
 - [Live value reference shape plan](plans/live-value-reference-shape.md) —
   Proposed. Two packets for ADR 0010
+- [Display pairing plan](plans/display-pairing.md) — Proposed. Two packets
+  for ADR 0012, in one release, after relay ADR 0005
 - [Relay applies the stream delay plan](plans/relay-applies-stream-delay.md)
-  — Proposed. Two packets for ADR 0011, in one release, after relay ADR 0004
+  — Ready. Two packets for ADR 0011, in one release, after relay ADR 0004
 
 ## Tasks
 
@@ -201,11 +208,18 @@ start after the operator accepts ADR 0010. Ship both in one release.
 - [001 — The drop file version 2](tasks/reference-shape-task-001-dropfile-v2.md)
 - [002 — The payload fields](tasks/reference-shape-task-002-payload-fields.md)
 
-Packets for the relay delay plan. ADR 0011 governs them. They start after the
-operator accepts ADR 0011 and relay ADR 0004. Ship both in one release.
+Packets for the relay delay plan. ADR 0011 governs them. Ready - 2026-10-06.
+Ship both in one release, after the relay of ADR 0004 is deployed.
 
 - [001 — The delay header](tasks/relay-delay-task-001-delay-header.md)
 - [002 — Send at once](tasks/relay-delay-task-002-send-at-once.md)
+
+Packets for the display pairing plan. ADR 0012 governs them. They start after
+the operator accepts ADR 0012 and relay ADR 0005, and after ADR 0010 task 001
+and ADR 0011 task 002. Ship both in one release.
+
+- [001 — The display file version 2](tasks/display-pairing-task-001-display-json-v2.md)
+- [002 — The pairing](tasks/display-pairing-task-002-pairing.md)
 
 ## Reviews
 
@@ -218,6 +232,7 @@ operator accepts ADR 0011 and relay ADR 0004. Ship both in one release.
 - [Display path review checklist](reviews/display-path-review-checklist.md)
 - [Live value reference shape review checklist](reviews/live-value-reference-shape-review-checklist.md) — open
 - [Relay applies the stream delay review checklist](reviews/relay-applies-stream-delay-review-checklist.md) — open
+- [Display pairing review checklist](reviews/display-pairing-review-checklist.md) — open
 
 ## Runbooks
 

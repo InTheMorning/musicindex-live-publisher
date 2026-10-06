@@ -1,7 +1,7 @@
 # Relay Delay Task 001: The Delay Header
 
-Status: Ready after the operator accepts ADR 0011 and relay ADR 0004. Ship
-it in one release with task 002.
+Status: Ready - 2026-10-06. ADR 0011 and relay ADR 0004 are accepted. Ship
+it in one release with task 002, after the relay of ADR 0004 is deployed.
 
 Every criterion is mechanical.
 

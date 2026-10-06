@@ -1,7 +1,14 @@
 # ADR 0011: The Relay Applies The Stream Delay
 
-Status: Proposed
+Status: Accepted
 Date: 2026-10-06
+
+Accepted 2026-10-06 by the operator, as written. Item 1 of §Before
+Acceptance is done: relay ADR 0004 is accepted. Items 2 and 3, the `v4vmm`
+view and the app fallback, stay open as requests in those repositories. At
+acceptance, §What This Replaces moved its changes to ADR 0005 and ADR 0008 to
+the implementation review. Before that review, those rules still describe the
+running code.
 
 Class: situational. Supersede this record with `musicindex-live-relay` ADR
 0004.
@@ -77,7 +84,7 @@ deployed first.
 
 ### What This Replaces
 
-When the operator accepts this ADR:
+When the implementation review of this ADR passes:
 
 - ADR 0005 §Invariants loses three rules. This ADR replaces them:
   - a block goes through `PublishSchedule`,

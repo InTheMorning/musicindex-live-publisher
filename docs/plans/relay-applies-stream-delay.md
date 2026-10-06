@@ -1,8 +1,8 @@
 # The Relay Applies The Stream Delay: Phase Plan
 
-Status: Proposed 2026-10-06. This plan does not make rules. ADR 0011 owns
-them. The packets start after the operator accepts ADR 0011 and
-`musicindex-live-relay` ADR 0004.
+Status: Ready - 2026-10-06. This plan does not make rules. ADR 0011 owns
+them. The operator accepted ADR 0011 and `musicindex-live-relay` ADR 0004 on
+2026-10-06.
 
 ## Goal
 

@@ -8,8 +8,7 @@ becomes `Implemented` only when each item passes.
 - [ ] Each field that the publisher sent before ADR 0010 keeps its name, its
   form and its meaning. The golden test shows it.
 - [ ] `line` is present in each payload of a V4V track and has two strings.
-- [ ] A missing album gives no `podcastName`. A missing or invalid link gives
-  no `link`.
+- [ ] A missing album gives no `podcastName`. No payload has `link`.
 - [ ] `value` keeps the nested `model` form.
 
 ## Code
@@ -32,7 +31,7 @@ becomes `Implemented` only when each item passes.
 
 ## Open Decisions Of ADR 0010
 
-- [ ] The link source is selected, or the operator accepts that `link` stays
+- [x] The link source: the operator decided on 2026-10-06 that `link` stays
   absent.
 - [ ] The app check with the CurioCaster test feed is recorded.
 

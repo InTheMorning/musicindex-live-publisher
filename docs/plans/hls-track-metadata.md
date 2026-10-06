@@ -1,8 +1,9 @@
 # Track Metadata In The HLS Stream: Phase Plan
 
 Status: Proposed 2026-10-06. This plan does not make rules. ADR 0009 owns
-them. No task packet exists yet. Each packet waits for the gate that it
-needs, because a packet must not make an architecture decision.
+them. No tagger packet exists yet. Each packet waits for the gate that it
+needs, because a packet must not make an architecture decision. The pairing
+packets of G4 exist under ADR 0012 and relay ADR 0005.
 
 ## Goal
 
@@ -26,9 +27,9 @@ gate starts after the gate closes.
 |---|---|---|---|
 | G1 | 1, the `TXXX` check | A test on the test stack and an iPhone | Liquidsoap writes `TXXX:musicindex` from a value with a NUL, and AVPlayer gives the description and the text |
 | G2 | 2, the ID3v2.4 check | A test on the test stack and an iPhone | The segments have ID3v2.4 tags, and AVPlayer still gives `TIT2` as `commonKeyTitle` |
-| G3 | 3, the tagger home | An operator decision | A repository holds the tagger code and its package (§Where The Tagger Runs) |
-| G4 | 4, the pairing | An operator decision, then ADRs in two repositories | The operator accepts §The Value Identity. Relay ADR 0003 and the display schema of ADR 0008 then change. |
-| G5 | 5, the instant routes | Implementation | Relay ADR 0004 and ADR 0011 are implemented and deployed |
+| G3 | 3, the tagger home | Decided 2026-10-06: a new repository | The new repository exists. The operator names it. |
+| G4 | 4, the pairing | Decided 2026-10-06 | Relay ADR 0005 and ADR 0012 are implemented and deployed |
+| G5 | 5, the instant routes | Accepted 2026-10-06 | Relay ADR 0004 and ADR 0011 are implemented and deployed |
 
 ## Packets After The Gates
 
@@ -40,12 +41,17 @@ provisional.
 | Tagger 001: the state list | G3 | Read `/display/events` with `Last-Event-ID`. Keep the last 4 states. Select by the ICY title with the ADR 0011 rules of `citizenradio`. |
 | Tagger 002: the frame | G1, G2, G3 | Build the `musicindex.hls/1` JSON, at most 4,096 bytes, with `value` as `null`. Give it to liquidsoap for the metadata group of the ICY title. |
 | Tagger 003: the package | G3, tagger 002 | Ship liquidsoap and the tagger as one package with two settings: the mount URL and the relay event. |
-| Pairing 001: the display schema | G4 | The producer adds the drop-file identity and the exact song line to a new display schema. |
-| Pairing 002: the publisher | G4, pairing 001, G5 | The publisher attaches the `eventGuid` and the `blockGuid` to the display state. |
-| Pairing 003: the tagger | G4, pairing 002, tagger 002 | The tagger matches the song line by equality and copies `value`. |
+| Tagger 004: the pairing | G4, tagger 002 | The tagger matches the ICY title to `songLine` by equality and copies `value`. |
 
-The relay change of G4 is a packet in `musicindex-live-relay`, under its own
-ADR change.
+The pairing itself has packets already:
+
+- `musicindex-live-relay`:
+  `docs/tasks/display-pairing-task-001-song-line-and-value.md` (relay ADR
+  0005).
+- [Display pairing task 001](../tasks/display-pairing-task-001-display-json-v2.md)
+  and [task 002](../tasks/display-pairing-task-002-pairing.md) (ADR 0012).
+
+The tagger packets go into the new repository when it exists.
 
 ## Assumptions
 

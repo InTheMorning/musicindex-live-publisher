@@ -3,6 +3,12 @@
 Status: Proposed
 Date: 2026-10-06
 
+Amended 2026-10-06. The operator decided that `link` stays absent until a
+source for it exists, so this ADR no longer adds `link`, `link_url` or
+`link_text`. A later ADR adds them with their source. The drop file version 2
+gets `play_id`, because ADR 0012 pairs a display state with its payload by
+that key. Item 1 of §Before Acceptance is done.
+
 Class: situational. Supersede this record when the namespace specification
 defines the `podcast:liveValue` payload, or when the model server changes its
 payload.
@@ -66,7 +72,6 @@ adds these fields:
 | `line` | `[album, artist]`. When the album is not known, `[title, artist]`. | Always |
 | `author` | The artist | Always |
 | `podcastName` | The album | Only when the album is known |
-| `link` | `{"text": "…", "url": "…"}` | Only when the drop file has a link URL |
 
 - `line` follows the model server. `[title, artist]` without an album follows
   `liquidsoap-vts-relay`.
@@ -76,9 +81,8 @@ adds these fields:
   A flat `type` and `method` adjacent to `destinations` would follow the
   revision, but no deployed server sends it.
 - `title` stays the song. `image` stays the artwork URL of the drop file.
-- The `link` text is `Listen to the track` when the drop file gives no text.
-  The URL must be `http` or `https` and at most 2,048 characters, the same
-  limit as the image URL of ADR 0008.
+- The model server also sends `link {text, url}`. This publisher does not send
+  it, because no source in this chain gives a correct link for a track.
 
 The publisher does not send `chaptersUrl`, `enclosureUrl`, `feedUrl`,
 `medium`, `eventAPI`, `settings` or `eventTimestamp`. They give data about the
@@ -92,13 +96,13 @@ fields:
 | Field | Type | Required | Description |
 |---|---:|---:|---|
 | `album` | string or null | no | The album of the playing track. |
-| `link_url` | string or null | no | An `http` or `https` URL for the track, at most 2,048 characters. |
-| `link_text` | string or null | no | The text for `link_url`. |
+| `play_id` | string or null | no | The identity of this play of the track. The Mixxx producer writes the ID of its history row. |
 
 - The producer reads `album` from the same Mixxx library row as `artist` and
   `title`.
-- The source of `link_url` is open. See §Before Acceptance. Until a source is
-  selected, the producer writes `null`.
+- `play_id` is different for each play, also when the same track plays two
+  times. ADR 0012 uses it. It is in version 2 now, so the pairing needs no
+  version 3.
 - The producer writes version 2 only. The publisher reads version 2 only. No
   one runs the chain in production, so no transition period is necessary.
 
@@ -118,14 +122,13 @@ These rules apply while this decision is current.
   and its meaning.
 - `line` is present in each payload for a V4V track and has two strings.
 - The publisher never sends a field with a value that this chain does not
-  know. A missing album gives no `podcastName`. A missing link gives no
-  `link`.
+  know. A missing album gives no `podcastName`.
 - `value` has the nested `model` form.
 
 ## Before Acceptance
 
-1. **The `link` source.** Select the tag or the source that gives the link
-   URL of a track, or accept that `link` stays absent.
+1. **The `link` source.** Done 2026-10-06. The operator decided that `link`
+   stays absent until a source exists.
 2. **The album column.** Make sure that the Mixxx library row that the
    producer reads has the album.
 3. **The app check.** Play the CurioCaster test feed
@@ -138,13 +141,12 @@ These rules apply while this decision is current.
 Mechanical:
 
 - A payload test for `line` with an album and without one, and for `author`.
-- A payload test that `podcastName` and `link` are not present when the drop
-  file has no value for them.
+- A payload test that `podcastName` is not present when the drop file has no
+  album, and that no payload has `link`.
 - A payload test that each field from before this ADR keeps its name and form.
 - A drop-file test that version 2 parses with and without each new field.
 - A drop-file test that version 1 is ignored.
-- A drop-file test that the publisher does not use a `link_url` that is not
-  `http` or `https`, or that is longer than 2,048 characters.
+- A producer test that `play_id` differs for two plays of the same track.
 - The existing test that the payload never has exactly the keys `event_id`
   and `metadata` stays green.
 

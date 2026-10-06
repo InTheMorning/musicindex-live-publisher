@@ -129,18 +129,23 @@ the exit codes and the output.
 - The drop-file contract has no pause state. A producer reports play or stop.
 - This service has no remote control API. Remote control uses `ssh` today.
 
-## Proposed Changes
+## Changes Not Yet Implemented
 
-These ADRs are `Proposed`. Until the operator accepts them, the sections above
+None of these ADRs is implemented. Until each one is, the sections above
 describe the chain.
 
-- ADR 0009: this repository owns the song line that `butt` sends. A tagger on
-  the VPS writes track metadata into the HLS stream at the ICY title.
-- ADR 0010: the live value payload adds `line`, `author`, `podcastName` and
-  `link`. The drop file goes to version 2.
-- ADR 0011: the publisher sends each block at once, with the header
-  `Listener-Delay-Secs`. `musicindex-live-relay` ADR 0004 owns that header and
-  delays Socket.IO only.
+- ADR 0009 (Proposed): this repository owns the song line that `butt` sends.
+  A tagger on the stream host writes track metadata into the HLS stream at
+  the ICY title. A new repository holds the tagger.
+- ADR 0010 (Proposed): the live value payload adds `line`, `author` and
+  `podcastName`. The drop file goes to version 2, with the album and
+  `play_id`.
+- ADR 0011 (Accepted): the publisher sends each block at once, with the
+  header `Listener-Delay-Secs`. `musicindex-live-relay` ADR 0004 owns that
+  header and delays Socket.IO only.
+- ADR 0012 (Proposed): `display.json` goes to version 2. The display state
+  carries `songLine` and the block identity. `musicindex-live-relay` ADR 0005
+  owns those two keys on the wire.
 
 ## Future Work
 

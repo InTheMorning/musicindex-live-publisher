@@ -8,7 +8,7 @@ list.
 ## Goal
 
 The payload of a V4V track carries `line`, `author`, and when known
-`podcastName` and `link`. Each field that the payload sends today keeps its
+`podcastName`. Each field that the payload sends today keeps its
 name, its form and its meaning.
 
 ## Files To Inspect
@@ -41,15 +41,12 @@ name, its form and its meaning.
   - `line: Option<Vec<String>>`
   - `author: Option<String>`
   - `podcast_name: Option<String>`, serialized as `podcastName`
-  - `link: Option<LiveValueLink>`, with `text: String` and `url: String`
+- Add no `link` field. ADR 0010 decided that `link` stays absent.
 - `payload_from_dropfile` sets:
   - `line` to `[album, artist]` when the drop file has an album that is not
     empty, else `[title, artist]`
   - `author` to the artist
   - `podcast_name` to the album, only when it is not empty
-  - `link` only when `link_url` is an `http` or `https` URL of at most 2,048
-    characters. The text is `link_text` when it is not empty, else
-    `Listen to the track`.
 - `dead_payload` sets each new field to `None`. The dead block JSON does not
   change.
 - The golden test builds its drop files from the CurioHoster payloads
@@ -61,7 +58,7 @@ name, its form and its meaning.
 
 ## Implementation Steps
 
-1. Add the type `LiveValueLink` and the four fields.
+1. Add the three fields.
 2. Fill them in `payload_from_dropfile`.
 3. Set them to `None` in `dead_payload`.
 4. Add the tests, and update the golden fixtures.
@@ -75,10 +72,7 @@ Mechanical. Each item is a test:
   `podcastName`.
 - A drop file with no album gives `line: [title, artist]`, `author`, and no
   `podcastName` key.
-- A drop file with a valid `link_url` and no `link_text` gives
-  `link: {"text": "Listen to the track", "url": …}`.
-- A `link_url` that is `ftp://…`, `data:…`, or longer than 2,048 characters
-  gives no `link` key.
+- No payload has a `link` key.
 - The dead block JSON is equal to its JSON before this task.
 - Each field from before this task keeps its name and its value in the
   golden test.
@@ -122,7 +116,7 @@ Read:
 - README.md
 
 Goal:
-- A V4V track payload carries line, author, and when known podcastName and link. The fields from before keep their names, forms and meanings. The dead block does not change.
+- A V4V track payload carries line, author, and when known podcastName. It has no link. The fields from before keep their names, forms and meanings. The dead block does not change.
 
 Constraints:
 - Follow §Constraints of the packet exactly.
