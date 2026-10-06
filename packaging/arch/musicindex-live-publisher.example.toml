@@ -20,7 +20,5 @@ token_file = "~/.config/musicindex-live-publisher/mixxx/tokens/default.token"
 # delay, which is a different term. Maximum 300.
 # stream_delay_secs = 0
 
-# Optional: add [target.fallback] to receive station fallback payments.
-# If omitted, the publisher logs a warning and uses a dead fallback route:
-#   value.model: type = "lightning", method = "lnaddress"
-#   valueRecipient: type = "lnaddress", address = "no-v4v-track@example.invalid"
+# The publisher uses a fixed dead block while idle or non-V4V (ADR 0005).
+# No configuration changes it.
