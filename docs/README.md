@@ -85,6 +85,12 @@ the next priority. Confirm that logging works before the show.
 - [Reserved event safety plan](plans/reserved-event-safety.md) — the four
   packets that keep a reserved event and its token safe, and the interim rules
   for the operator
+- [HLS track metadata plan](plans/hls-track-metadata.md) — Proposed. The five
+  gates of ADR 0009 and the packets that follow them. No packet exists yet
+- [Live value reference shape plan](plans/live-value-reference-shape.md) —
+  Proposed. Two packets for ADR 0010
+- [Relay applies the stream delay plan](plans/relay-applies-stream-delay.md)
+  — Proposed. Two packets for ADR 0011, in one release, after relay ADR 0004
 
 ## Tasks
 
@@ -189,6 +195,18 @@ Do task 001 and task 002 first. Task 004 needs task 002.
 - [003 — The setup helper keeps an existing event](tasks/reserved-safety-task-003-setup-keeps-event.md)
 - [004 — The setup helper writes the display output](tasks/reserved-safety-task-004-setup-display.md)
 
+Packets for the live value reference shape plan. ADR 0010 governs them. They
+start after the operator accepts ADR 0010. Ship both in one release.
+
+- [001 — The drop file version 2](tasks/reference-shape-task-001-dropfile-v2.md)
+- [002 — The payload fields](tasks/reference-shape-task-002-payload-fields.md)
+
+Packets for the relay delay plan. ADR 0011 governs them. They start after the
+operator accepts ADR 0011 and relay ADR 0004. Ship both in one release.
+
+- [001 — The delay header](tasks/relay-delay-task-001-delay-header.md)
+- [002 — Send at once](tasks/relay-delay-task-002-send-at-once.md)
+
 ## Reviews
 
 - [Rust now-playing review checklist](reviews/rust-now-playing-review-checklist.md)
@@ -198,6 +216,8 @@ Do task 001 and task 002 first. Task 004 needs task 002.
 - [Relay lease review checklist](reviews/relay-lease-review-checklist.md)
 - [Mixxx connector review checklist](reviews/mixxx-connector-review-checklist.md)
 - [Display path review checklist](reviews/display-path-review-checklist.md)
+- [Live value reference shape review checklist](reviews/live-value-reference-shape-review-checklist.md) — open
+- [Relay applies the stream delay review checklist](reviews/relay-applies-stream-delay-review-checklist.md) — open
 
 ## Runbooks
 
