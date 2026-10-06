@@ -4,7 +4,8 @@
 //! `musicindex.display/1`. For an embedded image, it writes the image to
 //! `DIR/<sha256>.jpg` or `DIR/<sha256>.png` before `display.json`. The
 //! publisher reads `display.json` and the image bytes at once, because the
-//! producer can delete the image before the stream delay ends.
+//! producer keeps only two images in `DIR` (ADR 0008) and can delete the
+//! older one at any time.
 //!
 //! The relay owns the wire format (`musicindex-live-relay` ADR 0003). The
 //! display publish body holds only the key `track`. The `schema` key of
@@ -201,7 +202,8 @@ impl DisplayState {
     }
 }
 
-/// A display state for one target, in the stream-delay schedule.
+/// A display state for one target, ready to send through `emit_items`
+/// (ADR 0008, ADR 0011).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DisplayEntry {
     /// The event GUID of the target.

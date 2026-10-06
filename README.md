@@ -84,9 +84,11 @@ Fields:
 - `target.token_file`: broadcaster token path. Keep one private token file per
   target, usually under
   `~/.config/musicindex-live-publisher/<instance>/tokens/`.
-- `target.stream_delay_secs`: seconds to hold each payload so the published
-  value block lines up with what listeners hear. Defaults to `0`. See the
-  configuration runbook for how to measure it.
+- `target.stream_delay_secs`: the delay, in seconds, that a podcast app gets
+  on Socket.IO (`musicindex-live-relay` ADR 0004). The relay applies this
+  delay. The publisher sends it with each publish and does not wait (ADR
+  0011). Defaults to `0`. See the configuration runbook for how to measure
+  it.
 
 When no payable block plays, the publisher publishes the dead block (ADR
 0005). The dead block pays the fixed `lnaddress` recipient

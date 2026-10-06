@@ -75,10 +75,12 @@ Required target fields:
 
 Optional target fields:
 
-- `stream_delay_secs`: seconds to hold every payload for this target before it
-  reaches the relay. Defaults to `0`. Accepts fractional seconds. Values that
-  are negative, not finite, or above 300 are rejected at startup with the target
-  name in the error.
+- `stream_delay_secs`: the delay, in seconds, that a podcast app gets on
+  Socket.IO (`musicindex-live-relay` ADR 0004). The publisher sends this
+  value with each publish, in the `Listener-Delay-Secs` header, and does not
+  wait (ADR 0011). Defaults to `0`. Accepts fractional seconds. Values that
+  are negative, not finite, or above 300 are rejected at startup with the
+  target name in the error.
 
 - `display_dir`: the display directory of the producer of this target. It is
   the `DIR` of `mixxx-now-playing --display-dir DIR`. Without this field, the
@@ -120,8 +122,8 @@ display_dir = "/run/user/1000/musicindex-live-publisher/mixxx/display"
   publisher ignores it. An image that is missing, larger than 524,288 bytes,
   or with a SHA-256 that is not its file name gives `artwork: null` and a
   warning.
-- The display state waits for `stream_delay_secs`, in sequence with the
-  payloads of the target.
+- The display state publishes at once, the same as the payload (ADR 0011).
+  It does not wait for `stream_delay_secs`.
 - One display worker sends the display requests of all targets. A payload or a
   keepalive does not wait for it. It uploads each image one time, then it
   publishes the display state. It sends only the latest state of a target.
@@ -295,36 +297,37 @@ Validation rules:
 
 ## Stream Delay
 
-The publisher sees a track change the instant the producer writes the drop file.
-Listeners hear that track several seconds later, after the encoder, the icecast
-queue, and their own player buffer. The icecast title survives that gap because
-it travels in band with the audio; a relay payload does not. With
-`stream_delay_secs = 0`, the value block therefore flips to the next track while
-listeners still hear the previous one, and a boost sent in that window pays the
-wrong artist. Set the delay to close the gap.
+`stream_delay_secs` is the delay that a podcast app gets on Socket.IO
+(`musicindex-live-relay` ADR 0004). The relay applies the delay. The
+publisher sends `stream_delay_secs` with each publish, in the
+`Listener-Delay-Secs` header, and does not wait (ADR 0011).
 
-What the delay covers:
+The encoder, the icecast queue, and a listener's own player buffer add a
+delay before a listener hears a track change. The icecast title travels in
+band with the audio, so it has the same delay. A relay payload does not
+travel in band, so it has no delay. Without `stream_delay_secs`, a Socket.IO
+client shows the next block before the listener hears the change. A boost
+sent in that window then pays the incorrect artist. `stream_delay_secs`
+closes this gap for a Socket.IO client.
 
-- Track payloads and the dead block that follows a removal are held for the
-  same duration, so a set never has a gap or an overlap.
-- Two tracks changing inside one delay window both publish, in order, each at
-  its own deadline.
-- A producer rewrite of the same track — the MusicIndex value-route upgrade —
-  replaces the pending payload and keeps the original deadline, so it publishes
-  once and on time.
-- Startup is not delayed. Existing drop files are recovered state, not a track
-  change, and holding them would leave the relay serving nothing.
-- `--dry-run` honours the delay, so you can time stdout against the stream
-  without publishing.
+SSE and `GET /remoteValue` have no such gap. The relay serves them at once.
+
+What goes out at once, with no wait:
+
+- A track payload and the dead block that follows a removal.
+- A display state, adjacent to the payload of its target.
+- A producer rewrite of the same track — the MusicIndex value-route upgrade.
+- The startup block and the startup display state. A drop file that exists
+  at startup is recovered state, not a track change.
+- `--dry-run` prints each payload at once, with no delay.
 
 Measuring it:
 
 1. Start playback of a track with an obvious opening.
-2. Note the local wall-clock time at which the publisher logs the track — run
-   with `--verbose` and watch for `holding live value payload for stream delay`
-   and `releasing live value payload after stream delay`.
-3. Note the wall-clock time at which a real listening client, on a normal
-   network, hears that opening.
+2. Note the wall-clock time at which a Socket.IO client, on a normal
+   network, shows the new block.
+3. Note the wall-clock time at which that same client's audio reaches the
+   same opening.
 4. The difference is the delay. Re-measure from a cold client join, because
    icecast's burst buffer affects the first seconds of a connection.
 

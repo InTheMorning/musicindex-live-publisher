@@ -140,9 +140,10 @@ describe the chain.
 - ADR 0010 (Proposed): the live value payload adds `line`, `author` and
   `podcastName`. The drop file goes to version 2, with the album and
   `play_id`.
-- ADR 0011 (Accepted): the publisher sends each block at once, with the
-  header `Listener-Delay-Secs`. `musicindex-live-relay` ADR 0004 owns that
-  header and delays Socket.IO only.
+- ADR 0011 (Accepted, code done, review open): the publisher sends each block
+  at once, with the header `Listener-Delay-Secs`. `musicindex-live-relay` ADR
+  0004 owns that header and delays Socket.IO only. Deploy this publisher only
+  after that relay runs.
 - ADR 0012 (Proposed): `display.json` goes to version 2. The display state
   carries `songLine` and the block identity. `musicindex-live-relay` ADR 0005
   owns those two keys on the wire.

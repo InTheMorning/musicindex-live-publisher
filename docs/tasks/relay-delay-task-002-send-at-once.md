@@ -1,6 +1,7 @@
 # Relay Delay Task 002: Send At Once
 
-Status: Ready after task 001. Ship it in one release with task 001.
+Status: Implemented - 2026-10-06. Deploy it only after the relay of
+`musicindex-live-relay` ADR 0004 runs.
 
 The acceptance criteria are mechanical. The visual checks are in a separate
 list.
@@ -157,3 +158,35 @@ At the end, report:
 3. behavior changed
 4. deviations from task
 5. unresolved concerns
+
+## Review Result
+
+Reviewed 2026-10-06. The full gate passes. `grep -rn PublishSchedule src
+tests` finds nothing.
+
+The review accepts these decisions of the task:
+
+- `ScheduledItem` became the private type `EmitItem` in `src/main.rs`. Only
+  the binary uses it now, so the library exports nothing for it.
+- `update_producer_state` gives its items to `run_watch_loop`, which makes
+  one `emit_items` call for each loop pass. That keeps the function testable
+  without a publisher.
+- `schedule_dir` and `schedule_null` were in `src/main.rs`, not in
+  `src/display.rs` as the packet said. They are now `items_for_dir` and
+  `null_items`.
+- The four tests of the stream-delay schedule in `tests/display.rs` are
+  deleted. They asserted the rule that ADR 0011 replaces.
+
+The keepalive rule: `emit_items` sends every item, then `Producer(Missing)`
+for each target whose dead block it sent. The worker channel keeps that
+order, and `run_publish` retries the dead block until the relay accepts it.
+The keepalive thus stops after the dead block. The existing tests of
+`missing_transitions_for_released` and of the worker cover the two parts.
+
+The review made one change. `AGENTS.md` and
+`docs/architecture/broadcast-chain-boundaries.md` said that the publisher
+holds each block. They now say that it sends at once, and that this publisher
+must not be deployed before the relay of ADR 0004 runs.
+
+Open: the dated sentences in ADR 0005 and ADR 0008 (ADR 0011 §What This
+Replaces) wait for the review checklist, with its visual checks.

@@ -9,7 +9,6 @@ pub mod dropfile;
 pub mod liveness;
 pub mod livevalue;
 pub mod relay;
-pub mod schedule;
 pub mod watcher;
 
 pub use config::{
@@ -33,7 +32,6 @@ pub use relay::{
     ProvisionedLiveItem, PublishOutcome, RelayClient, RelayPublisher, RelayTarget,
     write_token_file,
 };
-pub use schedule::{PublishSchedule, ScheduledItem};
 pub use watcher::{
     DEFAULT_DEBOUNCE_WINDOW, DropEvent, DropEventKind, DropWatcher, WatchTarget, is_final_drop_file,
 };

@@ -41,9 +41,11 @@ packet.
   drop file version 2 with the album and `play_id`. It adds no `link`. Two
   items in its §Before Acceptance are open. No implementation exists.
 - ADR 0011, the relay applies the stream delay, has the status `Accepted`. Its
-  two packets are ready. They ship after the relay of ADR 0004 is deployed.
-  Until then, the publisher holds each block and display state for the stream
-  delay (ADR 0005, ADR 0008).
+  two packets are implemented. The publisher sends each block and display
+  state at once, with `Listener-Delay-Secs`. Its review checklist is open.
+- **Do not deploy this publisher before the relay of `musicindex-live-relay`
+  ADR 0004 runs.** An older relay ignores the header, and podcast apps then
+  get no delay.
 - ADR 0012, the pairing of the display state with its value block, has the
   status `Proposed`. It needs relay ADR 0005, ADR 0010 and ADR 0011. No
   implementation exists.

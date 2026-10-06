@@ -9,9 +9,9 @@ use anyhow::{Context, Result, anyhow};
 use musicindex_live_publisher::{
     ConfigEditError, ConfigOverrides, DEFAULT_CONFIG_PATH, DEFAULT_DEBOUNCE_WINDOW,
     DISPLAY_FILE_NAME, DisplayEntry, DisplayState, DropEvent, DropEventKind, DropWatcher,
-    LiveValuePayload, ProducerState, PublishSchedule, PublisherConfig, RedactedPublisherConfig,
-    RelayClient, RelayPublisher, ScheduledItem, TargetConfigEdit, TargetConfigSummary,
-    add_target_to_config, list_config_targets, load_config, probe_producer, read_display_state,
+    LiveValuePayload, ProducerState, PublisherConfig, RedactedPublisherConfig, RelayClient,
+    RelayPublisher, TargetConfigEdit, TargetConfigSummary, add_target_to_config,
+    list_config_targets, load_config, probe_producer, read_display_state,
     remove_target_from_config, show_config, write_token_file,
 };
 use notify::event::{CreateKind, ModifyKind, RemoveKind, RenameMode};
@@ -93,13 +93,6 @@ fn run_cli(cli: Cli) -> Result<()> {
         .map(|target| target.watch_target())
         .collect();
     let mut processor = DropWatcher::new_targets(targets, DEFAULT_DEBOUNCE_WINDOW);
-    let mut schedule = PublishSchedule::new(
-        config
-            .targets
-            .iter()
-            .map(|target| (target.event_id.clone(), target.stream_delay))
-            .collect(),
-    );
 
     wait_for_watch_dir(&config.watch_dir)?;
     let producer_state = probe_producer(&config.watch_dir)?;
@@ -111,15 +104,14 @@ fn run_cli(cli: Cli) -> Result<()> {
     if let Some(publisher) = publisher.as_ref() {
         publisher.set_producer(producer_state);
     }
-    // Startup state is recovery, not a track change: the drop file may have
-    // been sitting there for most of a song, and holding it would leave the
-    // relay serving nothing for the length of the delay. Emit it directly.
+    // Startup state is recovery, not a track change, so it is sent at once,
+    // the same way every item leaves through `emit_items` (ADR 0011).
     let mut pending_missing = HashMap::new();
     emit_items(
         processor
             .startup_payloads(&config.watch_dir, producer_state)?
             .into_iter()
-            .map(ScheduledItem::Payload)
+            .map(EmitItem::Payload)
             .collect(),
         publisher.as_ref(),
         &mut pending_missing,
@@ -135,12 +127,35 @@ fn run_cli(cli: Cli) -> Result<()> {
     run_watch_loop(
         &config.watch_dir,
         &mut processor,
-        &mut schedule,
         &mut display,
         publisher.as_ref(),
         producer_state,
         pending_missing,
     )
+}
+
+/// One item ready for `emit_items`: a live value payload or a display state
+/// (ADR 0011).
+///
+/// Both kinds share one worker channel for their target (`src/relay.rs`), so
+/// this enum lets `emit_items` send a batch of each kind, in the order the
+/// caller built it, with no delay.
+#[derive(Debug, Clone, PartialEq)]
+enum EmitItem {
+    /// A live value payload for the payload worker of its target.
+    Payload(LiveValuePayload),
+    /// A display state for the display worker (ADR 0008).
+    Display(DisplayEntry),
+}
+
+impl EmitItem {
+    /// The payload, when this item is a payload.
+    fn as_payload(&self) -> Option<&LiveValuePayload> {
+        match self {
+            Self::Payload(payload) => Some(payload),
+            Self::Display(_) => None,
+        }
+    }
 }
 
 /// One display directory (ADR 0008) and the targets that read it.
@@ -152,7 +167,7 @@ struct DisplayDir {
 }
 
 /// The display directories of every target with `display_dir`, and the last
-/// display state that the watch loop scheduled for each target.
+/// display state that the watch loop sent for each target.
 #[derive(Debug, Default)]
 struct DisplayPath {
     dirs: Vec<DisplayDir>,
@@ -188,7 +203,7 @@ impl DisplayPath {
     ///
     /// A running producer gives the state in `display.json`. A missing
     /// producer gives `null`.
-    fn startup_items(&mut self, producer: ProducerState) -> Vec<ScheduledItem> {
+    fn startup_items(&mut self, producer: ProducerState) -> Vec<EmitItem> {
         let mut items = Vec::new();
         for index in 0..self.dirs.len() {
             let state = match producer {
@@ -199,34 +214,41 @@ impl DisplayPath {
                 items.extend(
                     self.changed_entries(index, &state)
                         .into_iter()
-                        .map(ScheduledItem::Display),
+                        .map(EmitItem::Display),
                 );
             }
         }
         items
     }
 
-    /// Reads `display.json` of one directory and schedules its state.
-    fn schedule_dir(&mut self, index: usize, schedule: &mut PublishSchedule, now: Instant) {
+    /// Reads `display.json` of one directory and gives its changed entries,
+    /// ready to send through `emit_items` at once (ADR 0011).
+    fn items_for_dir(&mut self, index: usize) -> Vec<EmitItem> {
         let Some(state) = read_display_state(&self.dirs[index].path) else {
-            return;
+            return Vec::new();
         };
-        for entry in self.changed_entries(index, &state) {
-            schedule.schedule_display(entry, now);
-        }
+        self.changed_entries(index, &state)
+            .into_iter()
+            .map(EmitItem::Display)
+            .collect()
     }
 
-    /// Schedules the display state `null` for each display target (ADR 0008).
-    fn schedule_null(&mut self, schedule: &mut PublishSchedule, now: Instant) {
+    /// Gives the display state `null` for each display target, ready to send
+    /// through `emit_items` at once (ADR 0008, ADR 0011).
+    fn null_items(&mut self) -> Vec<EmitItem> {
+        let mut items = Vec::new();
         for index in 0..self.dirs.len() {
-            for entry in self.changed_entries(index, &DisplayState::null()) {
-                schedule.schedule_display(entry, now);
-            }
+            items.extend(
+                self.changed_entries(index, &DisplayState::null())
+                    .into_iter()
+                    .map(EmitItem::Display),
+            );
         }
+        items
     }
 
-    /// The entries for the targets of one directory whose last scheduled state
-    /// is not `state`. A state that did not change costs no request.
+    /// The entries for the targets of one directory whose last sent state is
+    /// not `state`. A state that did not change costs no request.
     fn changed_entries(&mut self, index: usize, state: &DisplayState) -> Vec<DisplayEntry> {
         let mut entries = Vec::new();
         for event_id in &self.dirs[index].event_ids {
@@ -815,7 +837,6 @@ fn wait_for_watch_dir(watch_dir: &Path) -> Result<()> {
 fn run_watch_loop(
     watch_dir: &Path,
     processor: &mut DropWatcher,
-    schedule: &mut PublishSchedule,
     display: &mut DisplayPath,
     publisher: Option<&RelayPublisher>,
     mut producer_state: ProducerState,
@@ -838,11 +859,9 @@ fn run_watch_loop(
     let mut last_probe = Instant::now();
     loop {
         // Poll rather than block forever so a relay worker that stopped
-        // fatally surfaces within a second, instead of waiting for whenever the
-        // next track happens to change. A pending stream-delay deadline
-        // shortens the wait further, so a held payload is released on time
-        // rather than at the next health check.
-        let events = match receiver.recv_timeout(next_wakeup(schedule, Instant::now())) {
+        // fatally surfaces within a second, instead of waiting for whenever
+        // the next track happens to change.
+        let events = match receiver.recv_timeout(next_wakeup()) {
             Ok(Ok(event)) => normalize_notify_event(event),
             Ok(Err(error)) => return Err(error).context("watch directory event error"),
             Err(mpsc::RecvTimeoutError::Timeout) => Vec::new(),
@@ -853,17 +872,18 @@ fn run_watch_loop(
         let (drop_events, mut display_changes) = split_events(events, display);
 
         let now = Instant::now();
+        let mut items = Vec::new();
         if probe_due(&drop_events, last_probe, now) {
-            producer_state = update_producer_state(
+            let (state, transition_items) = update_producer_state(
                 watch_dir,
                 processor,
-                schedule,
                 display,
                 publisher,
                 &mut pending_missing,
                 producer_state,
-                now,
             )?;
+            producer_state = state;
+            items.extend(transition_items);
             last_probe = now;
             if let Some(publisher) = publisher {
                 publisher.check_health()?;
@@ -879,21 +899,19 @@ fn run_watch_loop(
                 tracing::debug!("discarding drop file event while the producer is missing");
             } else {
                 for drop_event in drop_events {
-                    for payload in processor.process_event(drop_event, now)? {
-                        schedule.schedule(payload, now);
-                    }
+                    items.extend(
+                        processor
+                            .process_event(drop_event, now)?
+                            .into_iter()
+                            .map(EmitItem::Payload),
+                    );
                 }
             }
         }
         for index in display_changes {
-            display.schedule_dir(index, schedule, now);
+            items.extend(display.items_for_dir(index));
         }
-        emit_items(
-            schedule.take_due_items(Instant::now()),
-            publisher,
-            &mut pending_missing,
-            producer_state,
-        )?;
+        emit_items(items, publisher, &mut pending_missing, producer_state)?;
     }
 }
 
@@ -908,49 +926,49 @@ fn probe_due(drop_events: &[DropEvent], last_probe: Instant, now: Instant) -> bo
     !drop_events.is_empty() || now.saturating_duration_since(last_probe) >= HEALTH_CHECK_INTERVAL
 }
 
-/// Probes the producer lock and, on a change, publishes the transition's
-/// block for each affected target (ADR 0005).
+/// Probes the producer lock and, on a change, gives the items of the
+/// transition's block for each affected target (ADR 0005), for the caller to
+/// send through `emit_items` at once.
 ///
-/// A change from running to missing publishes the dead block for each
-/// target through `schedule` and clears the watcher's block identity state.
-/// It also schedules the display state `null` for each display target, next
-/// to the dead block (ADR 0008).
+/// A change from running to missing gives the dead block for each target and
+/// clears the watcher's block identity state. It also gives the display
+/// state `null` for each display target, next to the dead block (ADR 0008).
 /// It also records each target's dead-block `blockGuid` in `pending_missing`,
-/// keyed by `eventGuid`. `emit_payloads` reads that record: only once a
-/// target's own dead block leaves `schedule` does its worker learn the
-/// producer is missing and stop its keepalive (relay-lease-task-004). A
-/// stream delay can outlast the relay lease, so stopping the keepalive any
-/// earlier could let the lease expire before the dead block goes out.
+/// keyed by `eventGuid`. `emit_items` reads that record: only once the
+/// caller sends a target's own dead block does its worker learn the producer
+/// is missing and stop its keepalive (relay-lease-task-004). `run_publish` in
+/// `src/relay.rs` retries the dead block until the relay accepts it, so a
+/// `Producer` command that arrives there while it retries only sets the
+/// worker's state; the keepalive thus stops only after the dead block
+/// publish succeeds, with no new code here (ADR 0011).
 ///
-/// A change from missing to running publishes nothing and does not scan the
-/// drop directory. The producer takes its lock before it removes a stale drop
+/// A change from missing to running gives no item and does not scan the drop
+/// directory. The producer takes its lock before it removes a stale drop
 /// file, so a scan at that moment could publish the stale track. The producer
 /// writes its present track again after it starts, and that event reaches the
 /// watch loop as usual. The dead block stays live until then. This change
 /// also tells every worker `Producer(Running)` at once, and forgets any
 /// `pending_missing` record left over from a dead block that had not yet
-/// been released: a worker must not later be told the producer is missing
-/// when it has since returned.
+/// been sent: a worker must not later be told the producer is missing when it
+/// has since returned.
 ///
 /// # Errors
 ///
 /// Returns an error when the probe fails.
-#[allow(clippy::too_many_arguments)]
 fn update_producer_state(
     watch_dir: &Path,
     processor: &mut DropWatcher,
-    schedule: &mut PublishSchedule,
     display: &mut DisplayPath,
     publisher: Option<&RelayPublisher>,
     pending_missing: &mut HashMap<String, String>,
     previous: ProducerState,
-    now: Instant,
-) -> Result<ProducerState> {
+) -> Result<(ProducerState, Vec<EmitItem>)> {
     let current = probe_producer(watch_dir)?;
     if current == previous {
-        return Ok(current);
+        return Ok((current, Vec::new()));
     }
 
+    let mut items = Vec::new();
     match current {
         ProducerState::Missing => {
             tracing::info!(
@@ -959,9 +977,9 @@ fn update_producer_state(
             );
             for payload in processor.producer_missing_payloads() {
                 pending_missing.insert(payload.event_guid.clone(), payload.block_guid.clone());
-                schedule.schedule(payload, now);
+                items.push(EmitItem::Payload(payload));
             }
-            display.schedule_null(schedule, now);
+            items.extend(display.null_items());
         }
         ProducerState::Running => {
             tracing::info!(
@@ -974,15 +992,15 @@ fn update_producer_state(
             }
         }
     }
-    Ok(current)
+    Ok((current, items))
 }
 
 /// Decides which targets' workers should learn the producer is missing, for
-/// one batch of payloads `PublishSchedule` just released.
+/// one batch of payloads that `emit_items` is about to publish.
 ///
 /// `pending` maps an `eventGuid` to the `blockGuid` `update_producer_state`
 /// recorded for that target's dead block on the last missing-producer
-/// transition. A released payload that matches a recorded pair is that
+/// transition. A payload in this batch that matches a recorded pair is that
 /// transition's dead block reaching the relay: its entry is removed from
 /// `pending` either way, and its `eventGuid` is returned only if
 /// `producer_state` is still [`ProducerState::Missing`]. When the producer
@@ -1012,16 +1030,11 @@ fn missing_transitions_for_released(
 
 /// Returns how long the watch loop may block before it must act again.
 ///
-/// A pending stream-delay deadline takes precedence over the health check
-/// interval, but never lengthens it.
-fn next_wakeup(schedule: &PublishSchedule, now: Instant) -> Duration {
-    schedule
-        .next_deadline()
-        .map_or(HEALTH_CHECK_INTERVAL, |deadline| {
-            deadline
-                .saturating_duration_since(now)
-                .min(HEALTH_CHECK_INTERVAL)
-        })
+/// No deadline ever waits: every item leaves through `emit_items` at once
+/// (ADR 0011). The watch loop thus always waits for the health check
+/// interval.
+fn next_wakeup() -> Duration {
+    HEALTH_CHECK_INTERVAL
 }
 
 fn normalize_notify_event(event: notify::Event) -> Vec<DropEvent> {
@@ -1080,26 +1093,26 @@ fn remove_events(paths: Vec<PathBuf>) -> Vec<DropEvent> {
 /// A display state goes to the display worker. That send never blocks and
 /// never fails, so a display state never delays a payload (ADR 0008).
 fn emit_items(
-    items: Vec<ScheduledItem>,
+    items: Vec<EmitItem>,
     publisher: Option<&RelayPublisher>,
     pending_missing: &mut HashMap<String, String>,
     producer_state: ProducerState,
 ) -> Result<()> {
     let payloads: Vec<LiveValuePayload> = items
         .iter()
-        .filter_map(ScheduledItem::as_payload)
+        .filter_map(EmitItem::as_payload)
         .cloned()
         .collect();
     let missing_targets =
         missing_transitions_for_released(&payloads, pending_missing, producer_state);
     for item in items {
         match (item, publisher) {
-            (ScheduledItem::Payload(payload), Some(publisher)) => publisher.publish(payload)?,
-            (ScheduledItem::Payload(payload), None) => {
+            (EmitItem::Payload(payload), Some(publisher)) => publisher.publish(payload)?,
+            (EmitItem::Payload(payload), None) => {
                 println!("{}", serde_json::to_string_pretty(&payload)?);
             }
-            (ScheduledItem::Display(entry), Some(publisher)) => publisher.publish_display(entry),
-            (ScheduledItem::Display(entry), None) => tracing::info!(
+            (EmitItem::Display(entry), Some(publisher)) => publisher.publish_display(entry),
+            (EmitItem::Display(entry), None) => tracing::info!(
                 event_id = %entry.event_id,
                 body = %entry.state.body(),
                 "dry run: display state"
@@ -1371,10 +1384,9 @@ mod tests {
     }
 
     #[test]
-    fn a_producer_that_becomes_missing_gives_the_display_state_null_after_the_delay() -> Result<()>
-    {
+    fn a_producer_that_becomes_missing_gives_the_dead_block_and_the_display_null_at_once()
+    -> Result<()> {
         let watch = tempfile::TempDir::new()?;
-        let delay = Duration::from_secs(12);
         let mut processor = DropWatcher::new_targets(
             vec![musicindex_live_publisher::WatchTarget {
                 name: "default".to_owned(),
@@ -1382,38 +1394,119 @@ mod tests {
             }],
             Duration::ZERO,
         );
-        let mut schedule = PublishSchedule::new(HashMap::from([("event".to_owned(), delay)]));
         let mut display = display_path(Path::new("/display"), &["event"]);
         let mut pending_missing = HashMap::new();
-        let now = Instant::now();
 
-        // No lock file: the probe gives `Missing`.
-        let state = update_producer_state(
+        // No lock file: the probe gives `Missing`. No delay runs before the
+        // dead block and the display null come back: this is the only call.
+        let (state, items) = update_producer_state(
             watch.path(),
             &mut processor,
-            &mut schedule,
             &mut display,
             None,
             &mut pending_missing,
             ProducerState::Running,
-            now,
         )?;
 
         assert_eq!(state, ProducerState::Missing);
-        assert!(
-            schedule
-                .take_due_items(now + delay - Duration::from_millis(1))
-                .is_empty()
-        );
-        let due = schedule.take_due_items(now + delay);
-        assert_eq!(due.len(), 2);
-        assert!(matches!(&due[0], ScheduledItem::Payload(_)));
+        assert_eq!(items.len(), 2);
+        assert!(matches!(&items[0], EmitItem::Payload(_)));
         assert_eq!(
-            due[1],
-            ScheduledItem::Display(DisplayEntry {
+            items[1],
+            EmitItem::Display(DisplayEntry {
                 event_id: "event".to_owned(),
                 state: DisplayState::null(),
             })
+        );
+        assert_eq!(pending_missing.len(), 1);
+        Ok(())
+    }
+
+    #[test]
+    fn a_drop_file_change_gives_its_payload_at_once() -> Result<()> {
+        let watch = tempfile::TempDir::new()?;
+        let path = watch.path().join("default.json");
+        std::fs::write(
+            &path,
+            serde_json::json!({
+                "schema": "musicindex.nowplaying/1",
+                "target": "default",
+                "artist": "Alice",
+                "title": "Track One",
+                "duration_secs": 187.326,
+                "image": null,
+                "feed_guid": "feed-guid",
+                "track_guid": "track-1",
+                "value_routes": [{
+                    "recipient_name": "Alice",
+                    "route_type": "node",
+                    "address": "03alice",
+                    "split": 90.0,
+                    "fee": false,
+                    "custom_key": null,
+                    "custom_value": null
+                }],
+                "value_routes_source": "embedded-id3"
+            })
+            .to_string(),
+        )?;
+        let mut processor = DropWatcher::new_targets(
+            vec![musicindex_live_publisher::WatchTarget {
+                name: "default".to_owned(),
+                event_guid: "event-default".to_owned(),
+            }],
+            Duration::ZERO,
+        );
+
+        // One `Instant`, used once: nothing here waits for a second one.
+        let now = Instant::now();
+        let items: Vec<EmitItem> = processor
+            .process_event(
+                DropEvent {
+                    kind: DropEventKind::Upsert,
+                    path,
+                },
+                now,
+            )?
+            .into_iter()
+            .map(EmitItem::Payload)
+            .collect();
+
+        assert_eq!(items.len(), 1);
+        let EmitItem::Payload(payload) = &items[0] else {
+            panic!("expected a payload item");
+        };
+        assert_eq!(payload.title, "Track One");
+        Ok(())
+    }
+
+    #[test]
+    fn a_display_json_change_gives_its_state_at_once() -> Result<()> {
+        let dir = tempfile::TempDir::new()?;
+        std::fs::write(
+            dir.path().join(DISPLAY_FILE_NAME),
+            serde_json::json!({
+                "schema": musicindex_live_publisher::DISPLAY_SCHEMA,
+                "track": { "artist": "Alice", "title": "Track One", "artwork": null }
+            })
+            .to_string(),
+        )?;
+        let mut display = display_path(dir.path(), &["event"]);
+
+        let items = display.items_for_dir(0);
+
+        assert_eq!(
+            items,
+            vec![EmitItem::Display(DisplayEntry {
+                event_id: "event".to_owned(),
+                state: DisplayState {
+                    track: Some(musicindex_live_publisher::DisplayTrack {
+                        artist: "Alice".to_owned(),
+                        title: "Track One".to_owned(),
+                        artwork: None,
+                    }),
+                },
+            })]
         );
         Ok(())
     }
@@ -1434,7 +1527,7 @@ mod tests {
 
         assert_eq!(
             items,
-            vec![ScheduledItem::Display(DisplayEntry {
+            vec![EmitItem::Display(DisplayEntry {
                 event_id: "event".to_owned(),
                 state: DisplayState::null(),
             })]

@@ -555,7 +555,7 @@ fn display_outcome(
 /// A command for the display worker (ADR 0008).
 #[derive(Debug)]
 enum DisplayCommand {
-    /// A display state that left the stream-delay schedule.
+    /// A display state, ready to publish at once (ADR 0011).
     Publish(DisplayEntry),
     /// A keepalive got `409` and the payload worker sent its last payload
     /// again. The lease end cleared the display state and the images in the
@@ -708,10 +708,10 @@ impl RelayPublisher {
 
     /// Tells one target's relay worker about a producer liveness change.
     ///
-    /// ADR 0005 and relay-lease-task-004: each target's dead block leaves
-    /// `PublishSchedule` at its own time, so `Producer(Missing)` for a
-    /// missing producer goes to one target at a time, only after that
-    /// target's dead block is released.
+    /// ADR 0005, ADR 0011 and relay-lease-task-004: the main loop sends each
+    /// target's dead block on its own, so `Producer(Missing)` for a missing
+    /// producer goes to one target at a time, only after that target's dead
+    /// block is sent.
     ///
     /// # Errors
     ///

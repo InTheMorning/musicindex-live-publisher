@@ -16,8 +16,8 @@ use anyhow::{Result, anyhow};
 use musicindex_live_publisher::{
     Artwork, ArtworkImage, DISPLAY_FILE_NAME, DisplayEntry, DisplayOutcome, DisplayState,
     DisplayTrack, ImageMime, LiveValue, LiveValueModel, LiveValuePayload, MAX_IMAGE_BYTES,
-    ProducerState, PublishSchedule, PublisherConfig, PublisherTarget, RelayClient, RelayPublisher,
-    RelayTarget, ScheduledItem, read_display_state,
+    ProducerState, PublisherConfig, PublisherTarget, RelayClient, RelayPublisher, RelayTarget,
+    read_display_state,
 };
 use serde_json::{Value, json};
 use tempfile::TempDir;
@@ -928,101 +928,6 @@ fn display_types_debug_has_no_image_bytes() {
 
     assert!(rendered.contains("len: 5"));
     assert!(!rendered.contains("255, 216"));
-}
-
-// The stream-delay schedule.
-
-const DELAY: Duration = Duration::from_secs(12);
-
-fn kinds(items: &[ScheduledItem]) -> Vec<String> {
-    items
-        .iter()
-        .map(|item| match item {
-            ScheduledItem::Payload(payload) => format!("payload:{}", payload.title),
-            ScheduledItem::Display(entry) => format!(
-                "display:{}",
-                entry
-                    .state
-                    .track
-                    .as_ref()
-                    .map_or("null", |track| track.title.as_str())
-            ),
-        })
-        .collect()
-}
-
-fn delayed_schedule() -> PublishSchedule {
-    PublishSchedule::new(HashMap::from([("event-guid".to_owned(), DELAY)]))
-}
-
-#[test]
-fn a_display_entry_is_released_after_the_stream_delay_in_order_with_the_payloads() {
-    let mut schedule = delayed_schedule();
-    let start = Instant::now();
-
-    schedule.schedule(payload("One"), start);
-    schedule.schedule_display(entry(track_state("One", None)), start);
-    let later = start + Duration::from_secs(3);
-    schedule.schedule_display(entry(track_state("Two", None)), later);
-    schedule.schedule(payload("Two"), later);
-
-    assert!(
-        schedule
-            .take_due_items(start + DELAY - Duration::from_millis(1))
-            .is_empty()
-    );
-    assert_eq!(
-        kinds(&schedule.take_due_items(start + DELAY)),
-        vec!["payload:One", "display:One"]
-    );
-    assert!(
-        schedule
-            .take_due_items(later + DELAY - Duration::from_millis(1))
-            .is_empty()
-    );
-    assert_eq!(
-        kinds(&schedule.take_due_items(later + DELAY)),
-        vec!["display:Two", "payload:Two"]
-    );
-    assert!(schedule.is_empty());
-}
-
-#[test]
-fn a_display_entry_sets_the_next_deadline() {
-    let mut schedule = delayed_schedule();
-    let now = Instant::now();
-
-    schedule.schedule_display(entry(DisplayState::null()), now);
-
-    assert_eq!(schedule.next_deadline(), Some(now + DELAY));
-}
-
-#[test]
-fn a_display_entry_never_replaces_a_payload_of_the_same_target() {
-    let mut schedule = delayed_schedule();
-    let now = Instant::now();
-
-    schedule.schedule(payload("One"), now);
-    schedule.schedule_display(entry(DisplayState::null()), now);
-    schedule.schedule(payload("One"), now);
-
-    assert_eq!(
-        kinds(&schedule.take_due_items(now + DELAY)),
-        vec!["payload:One", "display:null"]
-    );
-}
-
-#[test]
-fn take_due_gives_only_the_payloads() {
-    let mut schedule = delayed_schedule();
-    let now = Instant::now();
-
-    schedule.schedule(payload("One"), now);
-    schedule.schedule_display(entry(DisplayState::null()), now);
-
-    let due = schedule.take_due(now + DELAY);
-    assert_eq!(due.len(), 1);
-    assert!(schedule.is_empty());
 }
 
 // The read of the display directory.
