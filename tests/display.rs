@@ -361,6 +361,7 @@ fn relay_target(endpoint: &str) -> RelayTarget {
         endpoint: endpoint.to_owned(),
         event_id: "event-guid".to_owned(),
         token: TOKEN.to_owned(),
+        listener_delay_secs: 0,
     }
 }
 

@@ -1,7 +1,7 @@
 # Relay Delay Task 001: The Delay Header
 
-Status: Ready - 2026-10-06. ADR 0011 and relay ADR 0004 are accepted. Ship
-it in one release with task 002, after the relay of ADR 0004 is deployed.
+Status: Implemented - 2026-10-06. Ship it in one release with task 002,
+after the relay of ADR 0004 is deployed.
 
 Every criterion is mechanical.
 
@@ -117,3 +117,22 @@ At the end, report:
 3. behavior changed
 4. deviations from task
 5. unresolved concerns
+
+## Review Result
+
+Reviewed 2026-10-06. The full gate passes: `cargo fmt`, `cargo build`,
+`cargo test` and `cargo clippy` for the workspace. One test stays ignored,
+because it needs a live relay, as before this task.
+
+The review accepts these items:
+
+- `round_listener_delay_secs` uses whole milliseconds, and a half second
+  rounds up. The tests cover 12.4 seconds, 12.5 seconds and 0 seconds.
+- Only `publish_value` sends the header. The republish after a lease expiry
+  uses the same method, so it also sends the header.
+- `tests/display.rs` has one new field in its `RelayTarget` literal. The
+  build needs it. No assertion changed.
+- The stub relay of `tests/relay.rs` records a body that is not JSON as
+  `null`. The artwork upload test needs it. No earlier assertion changed.
+
+No timing changed. `PublishSchedule` still holds each payload.

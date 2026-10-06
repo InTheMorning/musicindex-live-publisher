@@ -9,9 +9,9 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Result, anyhow};
 use musicindex_live_publisher::{
-    LiveValue, LiveValueDestination, LiveValueModel, LiveValuePayload, ProducerState,
-    PublishOutcome, PublisherConfig, PublisherTarget, RelayClient, RelayPublisher, RelayTarget,
-    write_token_file,
+    ArtworkImage, DisplayState, ImageMime, LiveValue, LiveValueDestination, LiveValueModel,
+    LiveValuePayload, ProducerState, PublishOutcome, PublisherConfig, PublisherTarget, RelayClient,
+    RelayPublisher, RelayTarget, write_token_file,
 };
 use serde_json::{Value, json};
 use tempfile::TempDir;
@@ -26,6 +26,7 @@ struct StubResponse {
 struct StubRequest {
     path: String,
     authorization: Option<String>,
+    listener_delay_secs: Option<String>,
     body: Value,
 }
 
@@ -109,6 +110,7 @@ fn handle_connection(
 
     let mut content_length = 0_usize;
     let mut authorization = None;
+    let mut listener_delay_secs = None;
     loop {
         let mut line = String::new();
         reader.read_line(&mut line)?;
@@ -124,15 +126,20 @@ fn handle_connection(
             if name.eq_ignore_ascii_case("authorization") {
                 authorization = Some(value.to_owned());
             }
+            if name.eq_ignore_ascii_case("listener-delay-secs") {
+                listener_delay_secs = Some(value.to_owned());
+            }
         }
     }
 
     let mut body = vec![0_u8; content_length];
     reader.read_exact(&mut body)?;
+    // An artwork upload body is raw image bytes, not JSON. Fall back to
+    // `Value::Null` for it, the same as for an empty body.
     let body = if body.is_empty() {
         Value::Null
     } else {
-        serde_json::from_slice(&body)?
+        serde_json::from_slice(&body).unwrap_or(Value::Null)
     };
     requests
         .lock()
@@ -140,6 +147,7 @@ fn handle_connection(
         .push(StubRequest {
             path,
             authorization,
+            listener_delay_secs,
             body,
         });
 
@@ -205,11 +213,16 @@ fn keepalive_renewed(keepalive_interval_secs: u64) -> StubResponse {
 }
 
 fn target(endpoint: &str) -> RelayTarget {
+    target_with_delay(endpoint, 0)
+}
+
+fn target_with_delay(endpoint: &str, listener_delay_secs: u64) -> RelayTarget {
     RelayTarget {
         name: "default".to_owned(),
         endpoint: endpoint.to_owned(),
         event_id: "event-guid".to_owned(),
         token: "secret-token".to_owned(),
+        listener_delay_secs,
     }
 }
 
@@ -248,14 +261,18 @@ fn config(endpoint: &str) -> PublisherConfig {
     PublisherConfig {
         watch_dir: Path::new("/tmp").to_path_buf(),
         endpoint: endpoint.to_owned(),
-        targets: vec![PublisherTarget {
-            name: "default".to_owned(),
-            event_id: "event-guid".to_owned(),
-            token_file: Path::new("/tmp/default.token").to_path_buf(),
-            token: "secret-token".to_owned(),
-            stream_delay: Duration::ZERO,
-            display_dir: None,
-        }],
+        targets: vec![publisher_target_with_stream_delay(Duration::ZERO)],
+    }
+}
+
+fn publisher_target_with_stream_delay(stream_delay: Duration) -> PublisherTarget {
+    PublisherTarget {
+        name: "default".to_owned(),
+        event_id: "event-guid".to_owned(),
+        token_file: Path::new("/tmp/default.token").to_path_buf(),
+        token: "secret-token".to_owned(),
+        stream_delay,
+        display_dir: None,
     }
 }
 
@@ -434,6 +451,7 @@ fn relay_integration_round_trips_remote_value_against_local_relay() -> Result<()
         endpoint: endpoint.clone(),
         event_id: item.event_id,
         token: item.broadcaster_token,
+        listener_delay_secs: 0,
     };
     let sent = payload("Integration");
     let sent_value = serde_json::to_value(&sent)?;
@@ -709,4 +727,122 @@ fn relay_producer_missing_stops_a_keepalive_in_retry() -> Result<()> {
 
     server.expect_no_request_within(Duration::from_millis(1500))?;
     Ok(())
+}
+
+// ADR 0011 and relay-delay-task-001: a live value publish carries the
+// rounded stream delay of its target in the `Listener-Delay-Secs` header. A
+// keepalive, a display request, and an artwork upload carry no such header.
+
+#[test]
+fn relay_publish_sends_listener_delay_secs_header_from_target_delay() -> Result<()> {
+    let server = StubServer::start(vec![accepted(1)])?;
+    let client = RelayClient::new(Duration::from_secs(1))?;
+    let relay_target = RelayTarget::from_config(
+        &server.endpoint,
+        &publisher_target_with_stream_delay(Duration::from_secs_f64(12.0)),
+    );
+
+    client.publish(&relay_target, &payload("Delayed"))?;
+
+    server.wait_for_requests(1)?;
+    let requests = server.requests()?;
+    assert_eq!(requests[0].listener_delay_secs.as_deref(), Some("12"));
+    Ok(())
+}
+
+#[test]
+fn relay_publish_rounds_a_half_second_up() -> Result<()> {
+    let server = StubServer::start(vec![accepted(1), accepted(2)])?;
+    let client = RelayClient::new(Duration::from_secs(1))?;
+    let rounds_down = RelayTarget::from_config(
+        &server.endpoint,
+        &publisher_target_with_stream_delay(Duration::from_secs_f64(12.4)),
+    );
+    let rounds_up = RelayTarget::from_config(
+        &server.endpoint,
+        &publisher_target_with_stream_delay(Duration::from_secs_f64(12.5)),
+    );
+
+    client.publish(&rounds_down, &payload("RoundsDown"))?;
+    client.publish(&rounds_up, &payload("RoundsUp"))?;
+
+    server.wait_for_requests(2)?;
+    let requests = server.requests()?;
+    assert_eq!(requests[0].listener_delay_secs.as_deref(), Some("12"));
+    assert_eq!(requests[1].listener_delay_secs.as_deref(), Some("13"));
+    Ok(())
+}
+
+#[test]
+fn relay_publish_with_no_stream_delay_sends_zero_header() -> Result<()> {
+    let server = StubServer::start(vec![accepted(1)])?;
+    let client = RelayClient::new(Duration::from_secs(1))?;
+    let relay_target = RelayTarget::from_config(
+        &server.endpoint,
+        &publisher_target_with_stream_delay(Duration::ZERO),
+    );
+
+    client.publish(&relay_target, &payload("NoDelay"))?;
+
+    server.wait_for_requests(1)?;
+    let requests = server.requests()?;
+    assert_eq!(requests[0].listener_delay_secs.as_deref(), Some("0"));
+    Ok(())
+}
+
+#[test]
+fn relay_keepalive_request_has_no_listener_delay_header() -> Result<()> {
+    let server = StubServer::start(vec![keepalive_renewed(1)])?;
+    let client = RelayClient::new(Duration::from_secs(1))?;
+
+    client.keepalive(&target_with_delay(&server.endpoint, 12))?;
+
+    server.wait_for_requests(1)?;
+    let requests = server.requests()?;
+    assert_eq!(requests[0].listener_delay_secs, None);
+    Ok(())
+}
+
+#[test]
+fn relay_display_request_has_no_listener_delay_header() -> Result<()> {
+    let server = StubServer::start(vec![accepted(1)])?;
+    let client = RelayClient::new(Duration::from_secs(1))?;
+
+    client.publish_display(
+        &target_with_delay(&server.endpoint, 12),
+        &DisplayState::null(),
+    )?;
+
+    server.wait_for_requests(1)?;
+    let requests = server.requests()?;
+    assert_eq!(requests[0].path, "/v1/liveitems/event-guid/display");
+    assert_eq!(requests[0].listener_delay_secs, None);
+    Ok(())
+}
+
+#[test]
+fn relay_artwork_upload_request_has_no_listener_delay_header() -> Result<()> {
+    let server = StubServer::start(vec![accepted(1)])?;
+    let client = RelayClient::new(Duration::from_secs(1))?;
+    let image = ArtworkImage::from_bytes(ImageMime::Jpeg, vec![0xFF, 0xD8, 0xFF, 0x00]);
+
+    client.upload_artwork(&target_with_delay(&server.endpoint, 12), &image)?;
+
+    server.wait_for_requests(1)?;
+    let requests = server.requests()?;
+    assert_eq!(
+        requests[0].path,
+        format!("/v1/liveitems/event-guid/artwork/{}", image.sha256())
+    );
+    assert_eq!(requests[0].listener_delay_secs, None);
+    Ok(())
+}
+
+#[test]
+fn relay_target_debug_shows_listener_delay_secs_and_still_redacts_token() {
+    let rendered = format!("{:?}", target_with_delay("https://relay.example.test", 12));
+
+    assert!(rendered.contains("listener_delay_secs: 12"));
+    assert!(rendered.contains("<redacted>"));
+    assert!(!rendered.contains("secret-token"));
 }

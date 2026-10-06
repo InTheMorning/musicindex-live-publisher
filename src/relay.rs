@@ -35,6 +35,11 @@ pub struct RelayTarget {
     pub endpoint: String,
     pub event_id: String,
     pub token: String,
+    /// The stream delay of this target, rounded to the nearest second.
+    ///
+    /// `publish_value` sends this value in the `Listener-Delay-Secs`
+    /// header of each live value publish. ADR 0011 owns this header.
+    pub listener_delay_secs: u64,
 }
 
 impl fmt::Debug for RelayTarget {
@@ -45,6 +50,7 @@ impl fmt::Debug for RelayTarget {
             .field("endpoint", &self.endpoint)
             .field("event_id", &self.event_id)
             .field("token", &"<redacted>")
+            .field("listener_delay_secs", &self.listener_delay_secs)
             .finish()
     }
 }
@@ -57,8 +63,24 @@ impl RelayTarget {
             endpoint: endpoint.to_owned(),
             event_id: target.event_id.clone(),
             token: target.token.clone(),
+            listener_delay_secs: round_listener_delay_secs(target.stream_delay),
         }
     }
+}
+
+/// The name of the header that carries the rounded stream delay.
+///
+/// ADR 0011 and `musicindex-live-relay` ADR 0004 own this header. Only a
+/// live value publish carries it. A keepalive, a display request, and an
+/// artwork upload carry no header.
+const LISTENER_DELAY_HEADER: &str = "Listener-Delay-Secs";
+
+/// Rounds a stream delay to the nearest second for the header value.
+///
+/// A half second rounds up (ADR 0011 §Send At Once).
+fn round_listener_delay_secs(stream_delay: Duration) -> u64 {
+    let half_up_millis = stream_delay.as_millis().saturating_add(500);
+    u64::try_from(half_up_millis / 1000).unwrap_or(u64::MAX)
 }
 
 /// Result of one publish attempt.
@@ -168,6 +190,9 @@ impl RelayClient {
 
     /// Publishes one direct live value payload to the relay.
     ///
+    /// The request carries the header `Listener-Delay-Secs` with the
+    /// rounded stream delay of `target` (ADR 0011).
+    ///
     /// # Errors
     ///
     /// Returns an error when the target settings or payload shape are invalid.
@@ -183,7 +208,9 @@ impl RelayClient {
     /// Publishes one direct JSON payload to the relay.
     ///
     /// This helper exists so tests can exercise the pre-send wrapped-shape
-    /// rejection without changing task 002's live value structs.
+    /// rejection without changing task 002's live value structs. The request
+    /// carries the header `Listener-Delay-Secs` with the rounded stream
+    /// delay of `target` (ADR 0011).
     ///
     /// # Errors
     ///
@@ -200,6 +227,10 @@ impl RelayClient {
             .client
             .post(url)
             .bearer_auth(&target.token)
+            .header(
+                LISTENER_DELAY_HEADER,
+                target.listener_delay_secs.to_string(),
+            )
             .json(payload)
             .send()
         {
@@ -246,7 +277,8 @@ impl RelayClient {
     ///
     /// `musicindex-live-relay` ADR 0002 owns this route:
     /// `POST {endpoint}/v1/liveitems/{event_id}/keepalive`, with the
-    /// bearer token and no request body.
+    /// bearer token and no request body. The request carries no
+    /// `Listener-Delay-Secs` header (ADR 0011).
     ///
     /// # Errors
     ///
@@ -301,6 +333,7 @@ impl RelayClient {
     ///
     /// `POST {endpoint}/v1/liveitems/{event_id}/display` with the bearer
     /// token. The body is [`DisplayState::body`], which holds only `track`.
+    /// The request carries no `Listener-Delay-Secs` header (ADR 0011).
     ///
     /// # Errors
     ///
@@ -327,7 +360,8 @@ impl RelayClient {
     /// Uploads one image (relay ADR 0003).
     ///
     /// `PUT {endpoint}/v1/liveitems/{event_id}/artwork/{sha256}` with the
-    /// bearer token. The body is the image bytes.
+    /// bearer token. The body is the image bytes. The request carries no
+    /// `Listener-Delay-Secs` header (ADR 0011).
     ///
     /// # Errors
     ///
