@@ -40,8 +40,7 @@ packet.
   `Accepted`. It adds `line`, `author` and `podcastName` to the payload, and a
   drop file version 2 with the album and `play_id`. It adds no `link`. Its
   two packets are implemented. The producer writes version 2, and the
-  publisher reads version 2 only. The app check and the album column check
-  on the Mixxx host are open.
+  publisher reads version 2 only. The app check is open.
 - ADR 0011, the relay applies the stream delay, has the status `Accepted`. Its
   two packets are implemented. The publisher sends each block and display
   state at once, with `Listener-Delay-Secs`. Its review checklist is open.

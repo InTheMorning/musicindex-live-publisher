@@ -161,6 +161,6 @@ producer two times on one track and reads the two drop files.
 `src/livevalue.rs` and `tests/golden.rs` changed only in a `DropFile`
 literal, so that they compile. The payload JSON did not change.
 
-Item 2 of ADR 0010 §Before Acceptance stays open. This machine has no Mixxx
-database. The operator runs the check of §Escalation Triggers on the Mixxx
-host.
+Item 2 of ADR 0010 §Before Acceptance was done on 2026-10-06. The operator
+ran the check of §Escalation Triggers on the Mixxx host. The `library` table
+has the column `album`, so the escalation trigger did not occur.

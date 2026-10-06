@@ -3,10 +3,9 @@
 Status: Accepted
 Date: 2026-10-06
 
-Accepted 2026-10-06 by the operator. Items 2 and 3 of §Before Acceptance
-stay open. Reference shape task 001 reads the album column, and its tests
-check item 2. Item 3, the app check, is an open item of the review
-checklist.
+Accepted 2026-10-06 by the operator. Item 3 of §Before Acceptance, the app
+check, stays open as an item of the review checklist. Item 2 was done on
+2026-10-06 on the Mixxx host.
 
 Amended 2026-10-06. The operator decided that `link` stays absent until a
 source for it exists, so this ADR no longer adds `link`, `link_url` or
@@ -134,8 +133,8 @@ These rules apply while this decision is current.
 
 1. **The `link` source.** Done 2026-10-06. The operator decided that `link`
    stays absent until a source exists.
-2. **The album column.** Make sure that the Mixxx library row that the
-   producer reads has the album.
+2. **The album column.** Done 2026-10-06. The `library` table of the
+   operator's Mixxx database has the column `album`, of type `varchar(64)`.
 3. **The app check.** Play the CurioCaster test feed
    `https://curiocaster.com/rss/feed.xml` in each app that the operator tests.
    Record which payload fields each app shows. If no app shows `line`,
