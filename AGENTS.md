@@ -59,7 +59,7 @@ packet.
 - ADR 0013, the album in the display state, has the status `Accepted`. Its
   packet is implemented. The producer writes `display.json` version 3 with
   the album of the history row, and each display body has `album` when the
-  track has one.
+  track has one. The deployment passed. The app check is open.
 - **Do not deploy this publisher before the relay of `musicindex-live-relay`
   ADR 0006 runs.** An older relay gives `400 invalid_display` for each
   display state with `album`.

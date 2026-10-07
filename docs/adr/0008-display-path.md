@@ -6,6 +6,10 @@ Date: 2026-10-04
 Accepted 2026-10-04 by the operator. The items in §Before Acceptance are
 done.
 
+Amended 2026-10-06: a resume of the display-linked deck shows the track again
+only after the settle time of ADR 0006 §A Resume Settles. The title line and
+the artwork come back 2 seconds after a resume.
+
 Amended 2026-10-06 by ADR 0011, at its implementation review. ADR 0011
 replaces two items:
 

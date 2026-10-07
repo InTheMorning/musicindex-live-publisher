@@ -1,7 +1,6 @@
 # The Album In The Display State: Review Checklist
 
-Status: open - 2026-10-06. Task 001 is done, and each item above
-§Cross-Repository passes. The deployment item and the visual item are open.
+Status: open - 2026-10-06. Each item passes except the visual item.
 ADR 0013 becomes `Implemented` only when each item passes.
 
 ## Invariants Of ADR 0013
@@ -26,7 +25,9 @@ ADR 0013 becomes `Implemented` only when each item passes.
 
 ## Cross-Repository
 
-- [ ] Relay ADR 0006 is deployed before this publisher.
+- [x] Relay ADR 0006 is deployed before this publisher. Done 2026-10-06 on
+  `api.musicindex.org`. `album` came for V4V tracks and for tracks that are
+  not V4V, for example "Magic Numbers" and "1000 Mirrors".
 
 ## Visual
 

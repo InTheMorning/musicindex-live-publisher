@@ -6,6 +6,11 @@ Date: 2026-09-27
 Accepted 2026-09-28 by the operator. The four checks in §Verification Before
 Acceptance are done.
 
+Amended 2026-10-06: a resume of the linked deck takes effect only after the
+deck plays for 2 seconds. §A Resume Settles gives the rule. A load into a
+playing deck sent the old track live again for some milliseconds. The rule
+adds a time to the resume and reverses no decision.
+
 Amended 2026-09-28: the producer links a history row to the loudest deck that
 the mapping reports, not to a deck with the same duration. Check 1 showed that
 the Mixxx library keeps the stream header duration of a new track, so a
@@ -271,7 +276,7 @@ timing.
   removes the drop file. The publisher then publishes the dead block (ADR
   0005).
 - **A resume:** when the linked deck `play` becomes 127 again, the producer
-  writes the drop file again.
+  writes the drop file again after the settle time of §A Resume Settles.
 - **A new load:** when the linked deck `track_loaded`, `duration` or
   `track_samples` changes, the link ends, and the producer removes the drop
   file.
@@ -283,6 +288,27 @@ timing.
   linked deck of the previous track stops at the end of the crossfade, so the
   producer removes the file. The replayed track then pays nobody. That result
   is safe.
+
+### A Resume Settles
+
+When a load into a playing deck starts, Mixxx sets `play` to 0 and then to 1.
+It sets 1 before it changes `duration` and `track_samples`
+(`EngineBuffer::slotTrackLoading`, `src/engine/enginebuffer.cpp:520`, Mixxx
+2.5.6). The mapping cannot see that a load is in progress. For that time, the
+`play` change looks like a resume of the old track.
+
+- A resume of the linked deck starts a settle time of 2 seconds. The producer
+  writes the drop file when the settle time ends, if the link still exists.
+- A stop or a new load in the settle time cancels the resume.
+- The display link uses the same rule. The display state shows the track
+  again when the settle time ends.
+- `RESUME_SETTLE` in `mixxx-now-playing/src/connector/link.rs` holds the
+  time.
+
+On 2026-10-06, before this rule, each load into the playing linked deck sent
+the old track live for some milliseconds. The test
+`a_load_into_the_playing_linked_deck_gives_one_remove_and_no_write` guards
+the rule.
 
 ### When The Connector Is Not Available
 
@@ -363,6 +389,8 @@ improbable. A replay of the same track pays the correct artist.
 - The protocol uses only 3-byte control change messages on channel 16.
 - The producer never keeps a drop file while its linked deck does not play,
   when the connector is available.
+- A `play` change alone never makes the drop file present before the settle
+  time ends.
 - The producer links a history row only to the loudest deck that the mapping
   reported. It never links a row to a deck that does not play.
 - In connector mode, `duration_secs` comes from the linked deck, never from

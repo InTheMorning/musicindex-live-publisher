@@ -24,6 +24,15 @@ use crate::expiry::Expiry;
 /// heartbeat and no device result.
 pub const STARTUP_TIMEOUT: Duration = Duration::from_secs(3);
 
+/// The time that a linked deck must play again before a resume takes
+/// effect (ADR 0006 §A Resume Settles).
+///
+/// Mixxx sets `play` to 1 when a load into a playing deck starts, before it
+/// changes `duration` and `track_samples` (`EngineBuffer::slotTrackLoading`,
+/// Mixxx 2.5.6). Without this time, the old track goes live again until the
+/// load ends the link.
+pub const RESUME_SETTLE: Duration = Duration::from_secs(2);
+
 /// An action that the caller must do for the `Coordinator`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Action {
@@ -185,6 +194,8 @@ struct CurrentRow {
     expired: bool,
     links: RowLink,
     file_duration: Option<Duration>,
+    /// The time when a resume of the linked deck takes effect.
+    resume_at: Option<Instant>,
 }
 
 /// The present history row for the display state, V4V or not.
@@ -195,6 +206,8 @@ struct DisplayRow {
     links: RowLink,
     /// True when the track shows.
     shown: bool,
+    /// The time when a resume of the linked deck shows the track again.
+    resume_at: Option<Instant>,
 }
 
 /// Makes each decision about the drop file and the display state of the
@@ -324,7 +337,8 @@ impl Coordinator {
     pub fn update(&mut self, now: Instant) -> Vec<Action> {
         let mut actions = Vec::new();
         self.apply_mode(now, &mut actions);
-        self.apply_deck_changes(&mut actions);
+        self.apply_deck_changes(now, &mut actions);
+        self.apply_settled_resumes(now, &mut actions);
         self.apply_expiry(now, &mut actions);
         actions
     }
@@ -344,6 +358,7 @@ impl Coordinator {
             v4v: matches!(row, Row::V4v { .. }),
             links: RowLink::at_row(link),
             shown,
+            resume_at: None,
         });
         self.row(row)
     }
@@ -387,6 +402,7 @@ impl Coordinator {
             expired: false,
             links: RowLink::at_row(link),
             file_duration,
+            resume_at: None,
         });
         self.present = write;
         if write {
@@ -479,7 +495,7 @@ impl Coordinator {
         }
     }
 
-    fn apply_deck_changes(&mut self, actions: &mut Vec<Action>) {
+    fn apply_deck_changes(&mut self, now: Instant, actions: &mut Vec<Action>) {
         let events = std::mem::take(&mut self.pending);
         if self.mode != KnownMode::Connector {
             return;
@@ -487,8 +503,8 @@ impl Coordinator {
         for event in events {
             match event {
                 ConnectorEvent::Deck(change) => {
-                    self.apply_display_deck_change(change);
-                    self.apply_deck_change(change, actions);
+                    self.apply_display_deck_change(change, now);
+                    self.apply_deck_change(change, now, actions);
                 }
                 ConnectorEvent::StateEnd => {
                     self.apply_display_state_end();
@@ -498,35 +514,66 @@ impl Coordinator {
         }
     }
 
-    fn apply_deck_change(&mut self, change: DeckChange, actions: &mut Vec<Action>) {
+    fn apply_deck_change(&mut self, change: DeckChange, now: Instant, actions: &mut Vec<Action>) {
         let Some(row) = self.row.as_mut() else {
             return;
         };
         match row.links.deck_change(change) {
             None => {}
             Some(LinkEffect::Stop | LinkEffect::End) => {
+                row.resume_at = None;
                 self.present = false;
                 actions.push(Action::RemoveFile);
             }
+            // A resume takes effect after `RESUME_SETTLE`, in
+            // `apply_settled_resumes`. A load in that time ends the link.
             Some(LinkEffect::Resume) => {
                 if !self.present {
-                    self.present = true;
-                    actions.push(Action::WriteFile {
-                        duration: row.file_duration,
-                    });
+                    row.resume_at = Some(now + RESUME_SETTLE);
                 }
             }
         }
     }
 
-    fn apply_display_deck_change(&mut self, change: DeckChange) {
+    fn apply_display_deck_change(&mut self, change: DeckChange, now: Instant) {
         let Some(display) = self.display_row.as_mut() else {
             return;
         };
         match display.links.deck_change(change) {
             None => {}
-            Some(LinkEffect::Stop | LinkEffect::End) => display.shown = false,
-            Some(LinkEffect::Resume) => display.shown = true,
+            Some(LinkEffect::Stop | LinkEffect::End) => {
+                display.shown = false;
+                display.resume_at = None;
+            }
+            Some(LinkEffect::Resume) => {
+                if !display.shown {
+                    display.resume_at = Some(now + RESUME_SETTLE);
+                }
+            }
+        }
+    }
+
+    /// Applies each resume whose settle time ended while its link stayed
+    /// (ADR 0006 §A Resume Settles).
+    fn apply_settled_resumes(&mut self, now: Instant, actions: &mut Vec<Action>) {
+        if let Some(row) = self.row.as_mut()
+            && row.resume_at.is_some_and(|at| at <= now)
+        {
+            row.resume_at = None;
+            if row.links.link.is_some() && !self.present {
+                self.present = true;
+                actions.push(Action::WriteFile {
+                    duration: row.file_duration,
+                });
+            }
+        }
+        if let Some(display) = self.display_row.as_mut()
+            && display.resume_at.is_some_and(|at| at <= now)
+        {
+            display.resume_at = None;
+            if display.links.link.is_some() {
+                display.shown = true;
+            }
         }
     }
 
@@ -845,7 +892,7 @@ mod tests {
     }
 
     #[test]
-    fn linked_deck_stop_removes_and_start_writes() {
+    fn linked_deck_stop_removes_and_start_writes_after_the_settle_time() {
         let start = Instant::now();
         let mut coordinator = deck_2_plays(start);
         coordinator.row(v4v_row(start, 200));
@@ -854,9 +901,34 @@ mod tests {
         assert_eq!(coordinator.update(start), vec![Action::RemoveFile]);
         assert!(!coordinator.file_present());
 
-        set_play(&mut coordinator, 2, true, start);
-        assert_eq!(coordinator.update(start), vec![write(200)]);
+        set_play(&mut coordinator, 2, true, at(start, 100));
+        assert_eq!(coordinator.update(at(start, 100)), vec![]);
+        assert!(!coordinator.file_present());
+        assert_eq!(coordinator.update(at(start, 2099)), vec![]);
+        assert_eq!(coordinator.update(at(start, 2100)), vec![write(200)]);
         assert!(coordinator.file_present());
+        assert_eq!(coordinator.update(at(start, 3000)), vec![]);
+    }
+
+    /// Mixxx sets `play` to 0 and then to 1 when a load into the linked deck
+    /// starts, and changes `duration` and `track_samples` when the load ends.
+    /// The old track must not go live again (ADR 0006 §A Resume Settles).
+    #[test]
+    fn a_load_into_the_playing_linked_deck_gives_one_remove_and_no_write() {
+        let start = Instant::now();
+        let mut coordinator = deck_2_plays(start);
+        coordinator.row(v4v_row(start, 200));
+
+        set_play(&mut coordinator, 2, false, at(start, 10));
+        assert_eq!(coordinator.update(at(start, 10)), vec![Action::RemoveFile]);
+        set_play(&mut coordinator, 2, true, at(start, 20));
+        assert_eq!(coordinator.update(at(start, 20)), vec![]);
+        set_duration(&mut coordinator, 2, 180, at(start, 400));
+        set_samples(&mut coordinator, 2, SAMPLES + 1, at(start, 400));
+        assert_eq!(coordinator.update(at(start, 400)), vec![Action::RemoveFile]);
+
+        assert_eq!(coordinator.update(at(start, 5000)), vec![]);
+        assert!(!coordinator.file_present());
     }
 
     #[test]
@@ -1545,6 +1617,8 @@ mod tests {
 
         set_play(&mut coordinator, 2, true, start);
         assert_eq!(coordinator.update(start), vec![]);
+        assert_eq!(coordinator.display_state(), DisplayState::Null);
+        assert_eq!(coordinator.update(at(start, 2000)), vec![]);
         assert_eq!(coordinator.display_state(), shown("A", false));
         assert!(!coordinator.file_present());
     }
@@ -1763,7 +1837,9 @@ mod tests {
         assert_eq!(coordinator.display_state(), DisplayState::Null);
 
         set_play(&mut coordinator, 2, true, start);
-        assert_eq!(coordinator.update(start), vec![write(200)]);
+        assert_eq!(coordinator.update(start), vec![]);
+        assert_eq!(coordinator.display_state(), DisplayState::Null);
+        assert_eq!(coordinator.update(at(start, 2000)), vec![write(200)]);
         assert_eq!(coordinator.display_state(), shown("V", true));
     }
 
