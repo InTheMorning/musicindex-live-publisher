@@ -529,3 +529,36 @@ fn watcher_track_returning_after_removal_gets_a_new_block_guid() -> Result<()> {
     assert_ne!(first[0].block_guid, replayed[0].block_guid);
     Ok(())
 }
+
+#[test]
+fn watcher_a_remove_after_a_rewrite_inside_the_window_gives_the_dead_block() -> Result<()> {
+    // Live failure, 2026-10-06: the producer removed the drop file, wrote the
+    // same track again, and removed it again, in less than 75 ms. The second
+    // remove must give the dead block, or the old track stays live.
+    let temp = TempDir::new()?;
+    let path = temp.path().join("nowplaying.json");
+    let mut watcher = DropWatcher::new(target(), Duration::from_millis(75));
+    let start = Instant::now();
+
+    write(&path, dropfile("Old Track"))?;
+    one_payload(watcher.process_event(upsert(&path), start)?)?;
+
+    fs::remove_file(&path)?;
+    let dead = one_payload(watcher.process_event(remove(&path), start + Duration::from_secs(60))?)?;
+    assert_eq!(dead["title"], "No V4V track playing");
+
+    write(&path, dropfile("Old Track"))?;
+    let again = one_payload(watcher.process_event(
+        upsert(&path),
+        start + Duration::from_secs(60) + Duration::from_millis(10),
+    )?)?;
+    assert_eq!(again["title"], "Old Track");
+
+    fs::remove_file(&path)?;
+    let last = one_payload(watcher.process_event(
+        remove(&path),
+        start + Duration::from_secs(60) + Duration::from_millis(20),
+    )?)?;
+    assert_eq!(last["title"], "No V4V track playing");
+    Ok(())
+}

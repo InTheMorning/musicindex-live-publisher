@@ -272,10 +272,15 @@ impl DropWatcher {
     }
 }
 
+/// Drops a repeat of the last event of a path inside the window.
+///
+/// Only the last event of each path counts. An event of the other kind ends
+/// the window, so remove, write and remove inside the window give three
+/// events. The last one decides the live block.
 #[derive(Debug)]
 struct Debouncer {
     window: Duration,
-    last: HashMap<(PathBuf, DropEventKind), Instant>,
+    last: HashMap<PathBuf, (DropEventKind, Instant)>,
 }
 
 impl Debouncer {
@@ -287,13 +292,12 @@ impl Debouncer {
     }
 
     fn is_duplicate(&mut self, event: &DropEvent, now: Instant) -> bool {
-        let key = (path_identity(&event.path), event.kind);
-        let duplicate = self
-            .last
-            .get(&key)
-            .is_some_and(|last| now.duration_since(*last) < self.window);
+        let key = path_identity(&event.path);
+        let duplicate = self.last.get(&key).is_some_and(|(kind, last)| {
+            *kind == event.kind && now.duration_since(*last) < self.window
+        });
         if !duplicate {
-            self.last.insert(key, now);
+            self.last.insert(key, (event.kind, now));
         }
         duplicate
     }
