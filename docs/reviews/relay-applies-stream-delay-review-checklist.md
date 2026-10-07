@@ -31,8 +31,11 @@ Status: open. Use this checklist after relay delay task 002. ADR 0011 becomes
 
 ## Cross-Repository
 
-- [ ] `musicindex-live-relay` ADR 0004 is implemented and deployed.
-- [ ] Task 001 and task 002 ship in one release.
+- [x] `musicindex-live-relay` ADR 0004 is implemented and deployed. Done
+  2026-10-06. With `stream_delay_secs = 15`, `GET /remoteValue` changed
+  15.5 s to 15.6 s after `GET /metadata`.
+- [x] Task 001 and task 002 ship in one release. Done 2026-10-06: package
+  `r83`.
 - [ ] `v4vmm` shows `stream_delay_secs` as the delay that podcast apps get.
 
 ## Visual

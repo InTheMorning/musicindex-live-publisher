@@ -31,5 +31,7 @@ only when each item passes.
 
 ## Cross-Repository
 
-- [ ] Relay ADR 0005 is deployed before this publisher.
+- [x] Relay ADR 0005 is deployed before this publisher. Done 2026-10-06 on
+  `api.musicindex.org` with publisher `r83`. A display state that went out
+  before its payload went out again with `value` in the next poll.
 - [ ] `citizenradio` is told that `songLine` is available for its ICY sync.
