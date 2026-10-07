@@ -721,6 +721,44 @@ The command writes one line to stderr for each exit code other than 0.
 After exit code 5, do not send the command again before you examine the deck
 state. Mixxx can have done the command, and the answer can be lost.
 
+## Known Limit: A Track That Plays Again
+
+This section is advisory. ADR 0005 and ADR 0006 own the rules that it
+restates.
+
+Mixxx writes a track to its history only when more than N other tracks
+played after its last entry. N is the Mixxx setting "Track duplicate
+distance", in Preferences, then Library. The default is 6
+(`SetlogFeature::slotPlayingTrackChanged`, Mixxx 2.5.6). When Mixxx writes no
+history row, the producer sees no new play.
+
+Mixxx also tells about a play only when a track loads into the playing deck,
+or when the playing deck changes. A restart in the same deck with no new load
+gives no history row with each value of the setting.
+
+| How the track plays again | History-only mode | Connector mode |
+|---|---|---|
+| Restart in the same deck, with no new load | The block of the first play stays. The expiry ends it after the duration of one play. Then the dead block goes out while the track plays. | The deck `play` gives the drop file again. The first play pays for the full time. |
+| A new load, or the other deck, before N other tracks | As above. | The new load ends the link. The track pays nobody. |
+| A new load, or the other deck, after N tracks | A new history row gives a new play and a new block. | As in history-only mode. |
+
+This result is safe. No boost goes to an incorrect recipient. During the time that
+the table names, a listener boost goes to the dead block.
+
+To make each new play a new block:
+
+1. Use the connector mode. See [MIDI Connector](#midi-connector).
+2. In Mixxx, set "Track duplicate distance" to 0. Mixxx then writes a history
+   row at each new load and at each change of the playing deck.
+
+With the setting 0, a crossfader move back to a deck that holds the same
+track also writes a history row. That row gives a new block with the same
+recipients. The show log then has two rows for one track.
+
+A replay in the same deck with no new load stays one play, with one
+`play_id`. A new block for that replay needs a new ADR, because the play
+identity of ADR 0010 and ADR 0012 is the Mixxx history row.
+
 ## Drop File Contract
 
 The producer writes `*.json` files by temp-file-plus-rename. The publisher
