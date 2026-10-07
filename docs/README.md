@@ -64,6 +64,9 @@ the next priority. Confirm that logging works before the show.
   — Implemented. `display.json` version 2 with the exact song line and
   `play_id`. The publisher adds `songLine` and the block identity to the
   display state (relay ADR 0005)
+- [ADR 0013: The display state carries the album](adr/0013-display-album.md)
+  — Proposed. `display.json` version 3 with the album of the history row.
+  The publisher adds `album` to the display state (relay ADR 0006)
 
 ## Plans
 
