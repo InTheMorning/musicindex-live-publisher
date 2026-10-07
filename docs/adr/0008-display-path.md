@@ -6,6 +6,16 @@ Date: 2026-10-04
 Accepted 2026-10-04 by the operator. The items in §Before Acceptance are
 done.
 
+Amended 2026-10-06 by ADR 0011, at its implementation review. ADR 0011
+replaces two items:
+
+- the invariant that the display state and the payload of one target pass
+  through the same stream delay,
+- the schedule rules in §The Publisher.
+
+The publisher now sends each display state at once. The display
+routes of the relay are instant.
+
 Amended 2026-10-06: version 2 of `display.json`, `musicindex.display/2`,
 exists. ADR 0012 owns it. It adds `song_line` and `play_id`, and the display
 body adds `songLine` and `value`. The publisher reads version 2 only.
@@ -177,16 +187,13 @@ A target turns on the display path with `display_dir`. The value is the
 `DIR` of its producer.
 
 - The publisher watches `DIR`. When `display.json` changes, it reads the file
-  and, for an embedded image, the image bytes at once, because the producer can delete the image
-  before the stream delay ends.
-- It holds the display state and the bytes in the stream-delay schedule of the
-  target. It releases them in order with the payloads of that target.
-- At the release, it uploads an embedded image that the relay does not hold
-  yet, and then it publishes the display state (relay ADR 0003). A URL needs
-  no upload. It does not upload one
-  image two times in one process.
-- A display request never delays a payload or a keepalive. It waits behind
-  them.
+  and, for an embedded image, the image bytes at once, because the producer
+  can delete the image.
+- It sends the display state at once (ADR 0011). It first uploads an embedded
+  image that the relay does not hold yet, and then it publishes the display
+  state (relay ADR 0003). A URL needs no upload. It does not upload one image
+  two times in one process.
+- A display request never delays a payload or a keepalive.
 - A display failure gives a `tracing::warn!` line. It is never fatal. A relay
   that answers `404` or `409 event_not_reserved` turns off the display path
   for that target until the next start, with one warning.
@@ -209,8 +216,6 @@ A target turns on the display path with `display_dir`. The value is the
 - No image larger than the relay limit leaves the producer.
 - `DIR` holds at most two images.
 - The producer never fetches an image from a URL.
-- The display state and the payload of one target pass through the same
-  stream delay.
 
 ## Before Acceptance
 
@@ -241,8 +246,8 @@ Mechanical:
   524,288 bytes.
 - A test that the producer writes `now-playing.txt` with no text when it
   stops.
-- A publisher test that a display entry waits for the stream delay, that it
-  does not delay a payload, and that an image is uploaded once.
+- A publisher test that a display entry goes out at once, that it does not
+  delay a payload, and that an image is uploaded once (ADR 0011).
 
 Visual:
 

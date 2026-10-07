@@ -10,6 +10,12 @@ acceptance, §What This Replaces moved its changes to ADR 0005 and ADR 0008 to
 the implementation review. Before that review, those rules still describe the
 running code.
 
+Amended 2026-10-06: the implementation review passed for each mechanical
+item. ADR 0005 and ADR 0008 now have the dated sentences of §What This
+Replaces, and their replaced rules give the present behavior. The review is
+`docs/reviews/relay-applies-stream-delay-review-checklist.md`. The `v4vmm`
+item and the two visual items are open.
+
 Class: situational. Supersede this record with `musicindex-live-relay` ADR
 0004.
 

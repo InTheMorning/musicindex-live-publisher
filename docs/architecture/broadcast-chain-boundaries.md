@@ -91,6 +91,14 @@ keys `event_id` and `metadata` is the wrapped form. Any other body is a direct
 payload. Listener apps read the direct form, so this service must never produce
 a body with exactly those two keys.
 
+The payload of a V4V track has `line`, `author` and `podcastName`, in the form
+of the model server (ADR 0010). The publisher sends each block and each
+display state at once, with the header `Listener-Delay-Secs` on each block
+publish (ADR 0011). `musicindex-live-relay` ADR 0004 owns that header and
+delays Socket.IO only. A display state has `songLine`, and the display state
+of the same play as the newest block has that block's identity in `value`
+(ADR 0012). `musicindex-live-relay` ADR 0005 owns those two keys on the wire.
+
 ## What Other Components Control Here
 
 ### Service control from `v4vmm`
@@ -132,22 +140,12 @@ the exit codes and the output.
 
 ## Changes Not Yet Implemented
 
-None of these ADRs is implemented. Until each one is, the sections above
-describe the chain.
+This ADR is not implemented. Until it is, the sections above describe the
+chain.
 
 - ADR 0009 (Proposed): this repository owns the song line that `butt` sends.
   A tagger on the stream host writes track metadata into the HLS stream at
   the ICY title. A new repository holds the tagger.
-- ADR 0010 (Proposed): the live value payload adds `line`, `author` and
-  `podcastName`. The drop file goes to version 2, with the album and
-  `play_id`.
-- ADR 0011 (Accepted, code done, review open): the publisher sends each block
-  at once, with the header `Listener-Delay-Secs`. `musicindex-live-relay` ADR
-  0004 owns that header and delays Socket.IO only. Deploy this publisher only
-  after that relay runs.
-- ADR 0012 (Proposed): `display.json` goes to version 2. The display state
-  carries `songLine` and the block identity. `musicindex-live-relay` ADR 0005
-  owns those two keys on the wire.
 
 ## Future Work
 

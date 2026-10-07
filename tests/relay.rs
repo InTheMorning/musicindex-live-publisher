@@ -11,7 +11,7 @@ use anyhow::{Result, anyhow};
 use musicindex_live_publisher::{
     ArtworkImage, DisplayState, ImageMime, LiveValue, LiveValueDestination, LiveValueModel,
     LiveValuePayload, ProducerState, PublishOutcome, PublisherConfig, PublisherTarget, RelayClient,
-    RelayPublisher, RelayTarget, write_token_file,
+    RelayPublisher, RelayTarget, dead_payload, write_token_file,
 };
 use serde_json::{Value, json};
 use tempfile::TempDir;
@@ -730,6 +730,41 @@ fn relay_producer_missing_stops_a_keepalive_in_retry() -> Result<()> {
     publisher.set_producer_for_target("event-guid", ProducerState::Missing)?;
 
     server.expect_no_request_within(Duration::from_millis(1500))?;
+    Ok(())
+}
+
+#[test]
+fn relay_dead_block_is_retried_to_success_before_the_keepalive_stops() -> Result<()> {
+    // ADR 0011 §Invariants: the keepalive stops only after the dead block
+    // publish succeeds. The dead block gets 503 one time. The producer goes
+    // missing at once, but the dead block is sent again until the relay
+    // accepts it.
+    let server = StubServer::start(vec![
+        accepted_with_interval(1, 60),
+        response(503),
+        accepted(2),
+    ])?;
+    let publisher = RelayPublisher::start_with_backoff(
+        &config(&server.endpoint),
+        Duration::from_millis(200),
+        Duration::from_secs(1),
+    )?;
+    publisher.set_producer(ProducerState::Running);
+
+    publisher.publish(payload("Track"))?;
+    server.wait_for_requests(1)?;
+    publisher.publish(dead_payload("event-guid", "dead-block"))?;
+    publisher.set_producer_for_target("event-guid", ProducerState::Missing)?;
+
+    // The 503 answer and the retry.
+    server.wait_for_requests(2)?;
+    server.expect_no_request_within(Duration::from_millis(1500))?;
+    let requests = server.requests()?;
+    assert_eq!(requests.len(), 3);
+    for request in &requests[1..] {
+        assert!(request.path.ends_with("/metadata"), "{}", request.path);
+        assert_eq!(request.body["blockGuid"], "dead-block");
+    }
     Ok(())
 }
 

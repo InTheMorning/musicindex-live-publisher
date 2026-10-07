@@ -43,7 +43,9 @@ packet.
   publisher reads version 2 only. The app check is open.
 - ADR 0011, the relay applies the stream delay, has the status `Accepted`. Its
   two packets are implemented. The publisher sends each block and display
-  state at once, with `Listener-Delay-Secs`. Its review checklist is open.
+  state at once, with `Listener-Delay-Secs`. Its review passed for each
+  mechanical item and the deployment. The `v4vmm` item and the two visual
+  items are open.
 - **Do not deploy this publisher before the relay of `musicindex-live-relay`
   ADR 0004 runs.** An older relay ignores the header, and podcast apps then
   get no delay.

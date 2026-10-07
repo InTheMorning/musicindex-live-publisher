@@ -6,6 +6,17 @@ Date: 2026-09-27
 Implemented 2026-09-28: relay lease tasks 001 to 004 are merged. The review
 is `docs/reviews/relay-lease-review-checklist.md`.
 
+Amended 2026-10-06 by ADR 0011, at its implementation review. ADR 0011
+replaces three rules of §Invariants:
+
+- a block goes through `PublishSchedule`,
+- the keepalive stops after `PublishSchedule` releases the dead block,
+- the reason about a delay longer than the lease.
+
+The publisher now sends each
+block at once, and the relay applies the delay (`musicindex-live-relay` ADR
+0004). §Invariants gives the present rules.
+
 Accepted 2026-09-27 by the operator. Only §Publisher Behavior depends on the
 relay. The keepalive rules in that section use `musicindex-live-relay` ADR
 0002, which defines the keepalive route and the interval.
@@ -120,17 +131,17 @@ dead block.
 
 - The publisher never publishes a block with zero destinations. An empty
   `value_routes` list gives the dead block.
-- Each transition publishes its block immediately after the stream delay. The
-  previous block never stays live while the lease expires.
-- A dead block and a track block go through `PublishSchedule`, so each block
-  reaches listeners with the audio.
-- A keepalive does not go through `PublishSchedule`. It carries no content.
+- Each transition publishes its block at once (ADR 0011). The previous block
+  never stays live while the lease expires.
+- A dead block and a track block go out at once, with the header
+  `Listener-Delay-Secs`. The relay delays Socket.IO by that value, so each
+  block reaches listeners with the audio (ADR 0011).
+- A keepalive carries no content and no header.
 - When the producer lock becomes free, the publisher publishes the dead block
-  one time. The keepalive stops only after `PublishSchedule` releases that
-  dead block, and only if the producer is still missing. The relay ends the
-  lease one lease duration later. The stream delay can be up to 300 seconds,
-  which is longer than the lease. If the keepalive stopped at once, the lease
-  could expire before the dead block goes out.
+  one time, at once. The keepalive stops only after that publish succeeds,
+  and only if the producer is still missing. The relay ends the lease one
+  lease duration later. The relay keeps the order of its listener timeline,
+  so the `{}` of the lease end reaches Socket.IO after the dead block.
 - At startup, the publisher publishes one block for each target. It is the
   track block when the producer lock is held and a drop file for that target
   is present. In all other conditions, it is the dead block. This replaces a
