@@ -751,6 +751,11 @@ To make each new play a new block:
 2. In Mixxx, set "Track duplicate distance" to 0. Mixxx then writes a history
    row at each new load and at each change of the playing deck.
 
+Mixxx examines its list of recent tracks before it applies a new value of
+the setting. After the change to 0, each track that is on that list is
+skipped one more time. Then the list is empty. This was seen on 2026-10-06.
+The next new load of the track gave a new history row and a new block.
+
 With the setting 0, a crossfader move back to a deck that holds the same
 track also writes a history row. That row gives a new block with the same
 recipients. The show log then has two rows for one track.

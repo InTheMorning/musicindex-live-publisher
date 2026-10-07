@@ -176,3 +176,9 @@ fails with the earlier `last_sent_paired` rule.
 
 The configuration runbook gives the display body with `songLine` and `value`.
 `README.md` does not describe `display.json`.
+
+Live check, 2026-10-06, on `api.musicindex.org` with package `r83`. Mixxx
+had "Track duplicate distance" 0. A new load of the same track gave a new
+history row and the block `b3790cee`. The first play had the block
+`26be808f`. The display state of the second play named `b3790cee` in the
+same poll as the block.
