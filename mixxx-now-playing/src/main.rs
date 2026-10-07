@@ -475,7 +475,12 @@ impl<'a> Runtime<'a> {
             return;
         };
         match self.coordinator.display_state() {
-            DisplayState::Track { artist, title, .. } => {
+            DisplayState::Track {
+                artist,
+                title,
+                album,
+                ..
+            } => {
                 let song_line = render_now_playing_line(&artist, &title, self.cli.strip_hyphens);
                 let play_id = self.state.current.as_ref().map(|current| current.hist_id);
                 let track = ShownTrack {
@@ -484,6 +489,7 @@ impl<'a> Runtime<'a> {
                     artwork: self.row_artwork.as_ref(),
                     song_line: &song_line,
                     play_id,
+                    album: album.as_deref(),
                 };
                 write_display(display, Some(track));
             }
@@ -520,6 +526,7 @@ impl<'a> Runtime<'a> {
         let display = DisplayTrack {
             artist: track.artist.clone(),
             title: track.title.clone(),
+            album: track.album.clone(),
         };
         let actions = self.coordinator.history_row(row, display);
         self.perform(&actions)?;
@@ -868,7 +875,7 @@ mod tests {
             serde_json::from_str(&fs::read_to_string(display_dir.join("display.json"))?)?;
         assert_eq!(
             display,
-            serde_json::json!({"schema": "musicindex.display/2", "track": null})
+            serde_json::json!({"schema": "musicindex.display/3", "track": null})
         );
         Ok(())
     }

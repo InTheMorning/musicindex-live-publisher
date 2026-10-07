@@ -137,21 +137,25 @@ payload, the image upload and the display publish. A URL artwork or a `null`
 state needs no upload. These requests share the per-event publish rate limit
 of the relay.
 
-The display file `display.json` uses the schema `musicindex.display/2` (ADR 0012).
-Version 2 adds two fields to each track:
+The display file `display.json` uses the schema `musicindex.display/3`. ADR
+0012 added two fields to each track in version 2, and ADR 0013 added one
+field in version 3:
 
 - `song_line`: the first line of `now-playing.txt` for this track, with the same
   format rules.
 - `play_id`: the ID of the Mixxx history row of this play. It is the same
   as `play_id` in the drop file `musicindex.nowplaying/2` of this play. A
   track that is not V4V has no drop file, and its `play_id` is `null`.
+- `album`: the album of the Mixxx history row, for each track. It is `null`
+  when Mixxx has no album or an empty album.
 
 Earlier versions are not supported.
 
 The publisher sends each display state to the relay in the body of
 `POST /v1/liveitems/{event_id}/display`. ADR 0012 owns the two keys
-`songLine` and `value`. Relay ADR 0005 accepts them. Deploy that relay before
-this publisher, because an older relay refuses each such state.
+`songLine` and `value`, and relay ADR 0005 accepts them. ADR 0013 owns the
+key `album`, and relay ADR 0006 accepts it. Deploy that relay before this
+publisher, because an older relay refuses each such state.
 
 This is the display state of a V4V track after its payload:
 
@@ -162,6 +166,7 @@ This is the display state of a V4V track after its payload:
     "title": "Goldberg Variations",
     "artwork": {"sha256": "fc34a460...", "mime": "image/jpeg"},
     "songLine": "Bach - Goldberg Variations",
+    "album": "Goldberg Variations, BWV 988",
     "value": {
       "eventGuid": "12345678-1234-1234-1234-123456789abc",
       "blockGuid": "87654321-4321-4321-4321-fedcba987654"
@@ -174,6 +179,8 @@ This is the display state of a V4V track after its payload:
 - `value` names the payload of the same play. The publisher compares the
   `play_id` of the display state with the `play_id` of the newest payload. It
   never uses the artist or the title for this.
+- `album` is present when the track has an album. A track with no album has
+  no `album` key.
 - A track with no drop file has no `value`. After a dead block, a track has
   no `value`.
 - A display state can go out before its payload. It then has no `value`. When
@@ -183,7 +190,7 @@ This is the display state of a V4V track after its payload:
 ### Turn On The Display Path With The Setup Helper
 
 Reserved safety task 004 adds `--display` to `setup-mixxx-musicindex`.
-ADR 0008 owns the rules. ADR 0012 owns version 2 of `display.json`. The display
+ADR 0008 owns the rules. ADR 0013 owns version 3 of `display.json`. The display
 directory of the helper is `$XDG_RUNTIME_DIR/musicindex-live-publisher/mixxx/display`.
 The display directory must not be the drop directory.
 

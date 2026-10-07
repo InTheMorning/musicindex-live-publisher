@@ -3,6 +3,10 @@
 Status: Implemented
 Date: 2026-10-06
 
+Amended 2026-10-06: version 3 of `display.json` exists. ADR 0013 owns it. It
+adds `album`. The rules of this ADR for `song_line`, `play_id`, `songLine`
+and `value` do not change.
+
 Implemented 2026-10-06: display pairing tasks 001 and 002 are done, and the
 chain is deployed. The named artifact is
 `docs/reviews/display-pairing-review-checklist.md`, with no open item.

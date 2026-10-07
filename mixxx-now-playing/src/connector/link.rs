@@ -63,6 +63,8 @@ pub struct DisplayTrack {
     pub artist: String,
     /// The title of the history row.
     pub title: String,
+    /// The album of the history row (ADR 0013).
+    pub album: Option<String>,
 }
 
 /// The display state of ADR 0008 §The Display State.
@@ -80,6 +82,8 @@ pub enum DisplayState {
         title: String,
         /// True when the row is `Row::V4v`.
         v4v: bool,
+        /// The album of the history row (ADR 0013).
+        album: Option<String>,
     },
 }
 
@@ -298,6 +302,7 @@ impl Coordinator {
                 artist: display.track.artist.clone(),
                 title: display.track.title.clone(),
                 v4v: display.v4v,
+                album: display.track.album.clone(),
             },
             _ => DisplayState::Null,
         }
@@ -1453,6 +1458,7 @@ mod tests {
         DisplayTrack {
             artist: format!("{name} Artist"),
             title: format!("{name} Title"),
+            album: None,
         }
     }
 
@@ -1461,6 +1467,7 @@ mod tests {
             artist: format!("{name} Artist"),
             title: format!("{name} Title"),
             v4v,
+            album: None,
         }
     }
 

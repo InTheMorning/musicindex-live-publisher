@@ -1518,6 +1518,7 @@ mod tests {
                         artwork: None,
                         song_line: "Alice - Track One".to_owned(),
                         play_id: Some("1".to_owned()),
+                        album: None,
                     }),
                 },
             })]

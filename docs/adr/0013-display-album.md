@@ -1,7 +1,10 @@
 # ADR 0013: The Display State Carries The Album
 
-Status: Proposed
+Status: Accepted
 Date: 2026-10-06
+
+Accepted 2026-10-06 by the operator. The item of §Before Acceptance is done:
+relay ADR 0006 is accepted.
 
 Class: situational. Supersede this record when the display state gets its
 track text from a different source.

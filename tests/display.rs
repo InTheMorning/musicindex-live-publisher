@@ -323,6 +323,7 @@ fn track_state(title: &str, artwork: Option<Artwork>) -> DisplayState {
             artwork,
             song_line: format!("Artist - {title}"),
             play_id: Some("1".to_owned()),
+            album: None,
         }),
     }
 }
@@ -949,7 +950,7 @@ fn sha256_of(bytes: &[u8]) -> String {
 fn write_display_json(dir: &Path, track: Value) -> Result<()> {
     fs::write(
         dir.join(DISPLAY_FILE_NAME),
-        json!({ "schema": "musicindex.display/2", "track": track }).to_string(),
+        json!({ "schema": "musicindex.display/3", "track": track }).to_string(),
     )?;
     Ok(())
 }
@@ -1129,6 +1130,7 @@ fn read_parses_version_2_with_song_line_and_play_id() -> Result<()> {
             artwork: None,
             song_line: "Artist - Title".to_owned(),
             play_id: Some("42".to_owned()),
+            album: None,
         })
     );
     Ok(())
@@ -1187,7 +1189,7 @@ fn read_ignores_a_file_with_an_unknown_schema() -> Result<()> {
     let temp = TempDir::new()?;
     fs::write(
         temp.path().join(DISPLAY_FILE_NAME),
-        json!({ "schema": "musicindex.display/3", "track": null }).to_string(),
+        json!({ "schema": "musicindex.display/4", "track": null }).to_string(),
     )?;
 
     assert_eq!(read_display_state(temp.path()), None);
@@ -1301,6 +1303,7 @@ fn display_state_with_matching_play_id_includes_value() -> Result<()> {
             artwork: None,
             song_line: "Artist - Title".to_owned(),
             play_id: Some("play-1".to_owned()),
+            album: None,
         }),
     };
 
@@ -1338,6 +1341,7 @@ fn display_state_with_mismatched_play_id_omits_value() -> Result<()> {
             artwork: None,
             song_line: "Artist - Title".to_owned(),
             play_id: Some("play-1".to_owned()),
+            album: None,
         }),
     };
 
@@ -1369,6 +1373,7 @@ fn display_state_without_play_id_has_no_value() -> Result<()> {
             artwork: None,
             song_line: "Artist - Title".to_owned(),
             play_id: None,
+            album: None,
         }),
     };
 
@@ -1416,6 +1421,7 @@ fn pairing_track_without_drop_file_has_no_value() -> Result<()> {
             artwork: None,
             song_line: "Artist - Track".to_owned(),
             play_id: None,
+            album: None,
         }),
     };
 
@@ -1447,6 +1453,7 @@ fn pairing_after_dead_block_has_no_value() -> Result<()> {
             artwork: None,
             song_line: "Artist - Track".to_owned(),
             play_id: Some("play-1".to_owned()),
+            album: None,
         }),
     };
 
@@ -1497,6 +1504,7 @@ fn paired_track(song_line: &str, play_id: &str, artwork: Option<Artwork>) -> Dis
             artwork,
             song_line: song_line.to_owned(),
             play_id: Some(play_id.to_owned()),
+            album: None,
         }),
     }
 }
@@ -1649,5 +1657,174 @@ fn pairing_second_play_before_its_payload_resends_with_the_second_block() -> Res
     wait_for_paired_display(&stub, "block-2")?;
     stub.expect_quiet(Duration::from_millis(300))?;
     assert_eq!(stub.of(Route::Display).len(), before + 2, "one resend only");
+    Ok(())
+}
+
+#[test]
+fn read_parses_version_3_with_album() -> Result<()> {
+    let temp = TempDir::new()?;
+    write_display_json(
+        temp.path(),
+        json!({
+            "artist": "Artist",
+            "title": "Title",
+            "artwork": null,
+            "song_line": "Artist - Title",
+            "play_id": "42",
+            "album": "Test Album"
+        }),
+    )?;
+
+    let state = read_display_state(temp.path()).ok_or_else(|| anyhow!("no state"))?;
+
+    assert_eq!(
+        state.track,
+        Some(DisplayTrack {
+            artist: "Artist".to_owned(),
+            title: "Title".to_owned(),
+            artwork: None,
+            song_line: "Artist - Title".to_owned(),
+            play_id: Some("42".to_owned()),
+            album: Some("Test Album".to_owned()),
+        })
+    );
+    Ok(())
+}
+
+#[test]
+fn read_parses_version_3_with_null_album() -> Result<()> {
+    let temp = TempDir::new()?;
+    write_display_json(
+        temp.path(),
+        json!({
+            "artist": "Artist",
+            "title": "Title",
+            "artwork": null,
+            "song_line": "Artist - Title",
+            "play_id": "42",
+            "album": null
+        }),
+    )?;
+
+    let state = read_display_state(temp.path()).ok_or_else(|| anyhow!("no state"))?;
+
+    assert_eq!(
+        state.track,
+        Some(DisplayTrack {
+            artist: "Artist".to_owned(),
+            title: "Title".to_owned(),
+            artwork: None,
+            song_line: "Artist - Title".to_owned(),
+            play_id: Some("42".to_owned()),
+            album: None,
+        })
+    );
+    Ok(())
+}
+
+#[test]
+fn read_ignores_version_2_with_warning() -> Result<()> {
+    let temp = TempDir::new()?;
+    fs::write(
+        temp.path().join(DISPLAY_FILE_NAME),
+        json!({ "schema": "musicindex.display/2", "track": null }).to_string(),
+    )?;
+
+    assert_eq!(read_display_state(temp.path()), None);
+    Ok(())
+}
+
+#[test]
+fn display_body_with_album_includes_album_key() -> Result<()> {
+    let state = DisplayState {
+        track: Some(DisplayTrack {
+            artist: "Artist".to_owned(),
+            title: "Title".to_owned(),
+            artwork: None,
+            song_line: "Artist - Title".to_owned(),
+            play_id: Some("1".to_owned()),
+            album: Some("Test Album".to_owned()),
+        }),
+    };
+
+    let body = state.body();
+    assert_eq!(body["track"]["album"], "Test Album");
+    Ok(())
+}
+
+#[test]
+fn display_body_without_album_omits_album_key() -> Result<()> {
+    let state = DisplayState {
+        track: Some(DisplayTrack {
+            artist: "Artist".to_owned(),
+            title: "Title".to_owned(),
+            artwork: None,
+            song_line: "Artist - Title".to_owned(),
+            play_id: Some("1".to_owned()),
+            album: None,
+        }),
+    };
+
+    let body = state.body();
+    assert!(body["track"].get("album").is_none());
+    Ok(())
+}
+
+#[test]
+fn pairing_display_with_album_includes_album_in_value() -> Result<()> {
+    // Verify that album is included in the display body when sent with value.
+    let stub = Stub::start(Vec::new(), false)?;
+    let publisher = start(&stub)?;
+
+    publisher.publish(paired_payload("play-1", "block-1"))?;
+    stub.wait_for(Route::Metadata, 1)?;
+    publisher.publish_display(DisplayEntry {
+        event_id: "event-guid".to_owned(),
+        state: DisplayState {
+            track: Some(DisplayTrack {
+                artist: "Artist".to_owned(),
+                title: "Track".to_owned(),
+                artwork: None,
+                song_line: "Artist - Track".to_owned(),
+                play_id: Some("play-1".to_owned()),
+                album: Some("Album".to_owned()),
+            }),
+        },
+    });
+
+    wait_for_paired_display(&stub, "block-1")?;
+    let displays = stub.of(Route::Display);
+    let body = displays[displays.len() - 1].json();
+    assert_eq!(body["track"]["album"], "Album");
+    assert_eq!(
+        body["track"]["value"],
+        json!({ "eventGuid": "event-guid", "blockGuid": "block-1" })
+    );
+    Ok(())
+}
+
+#[test]
+fn a_display_state_with_no_album_goes_out_with_no_album_key() -> Result<()> {
+    // ADR 0013: the publisher never sends an empty or a null `album`.
+    let stub = Stub::start(Vec::new(), false)?;
+    let publisher = start(&stub)?;
+    publisher.publish_display(DisplayEntry {
+        event_id: "event-guid".to_owned(),
+        state: DisplayState {
+            track: Some(DisplayTrack {
+                artist: "Artist".to_owned(),
+                title: "Track".to_owned(),
+                artwork: None,
+                song_line: "Artist - Track".to_owned(),
+                play_id: None,
+                album: None,
+            }),
+        },
+    });
+
+    stub.wait_for(Route::Display, 1)?;
+    let body = stub.of(Route::Display)[0].json();
+    assert_eq!(body["track"]["songLine"], "Artist - Track");
+    assert!(body["track"].get("album").is_none(), "{body}");
     Ok(())
 }

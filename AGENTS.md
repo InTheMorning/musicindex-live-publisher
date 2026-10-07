@@ -56,8 +56,13 @@ packet.
 - **Do not deploy this publisher before the relay of `musicindex-live-relay`
   ADR 0005 runs.** An older relay gives `400 invalid_display` for each
   display state with `songLine`.
-- ADR 0013, the album in the display state, has the status `Proposed`. It
-  needs relay ADR 0006. No implementation exists.
+- ADR 0013, the album in the display state, has the status `Accepted`. Its
+  packet is implemented. The producer writes `display.json` version 3 with
+  the album of the history row, and each display body has `album` when the
+  track has one.
+- **Do not deploy this publisher before the relay of `musicindex-live-relay`
+  ADR 0006 runs.** An older relay gives `400 invalid_display` for each
+  display state with `album`.
 - These items need a new ADR before work starts:
   - the talk break block from `v4vmm`,
   - a track identity source that is earlier than the Mixxx history row.

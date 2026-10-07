@@ -343,7 +343,7 @@ fn lifecycle_display_pairs_with_the_song_file_and_the_drop_file() -> Result<()> 
     let display = read_display(&display_dir)?;
     let drop_file: serde_json::Value = serde_json::from_str(&fs::read_to_string(&metadata_file)?)?;
     let song_file = fs::read_to_string(&txt_file)?;
-    assert_eq!(display["schema"], "musicindex.display/2");
+    assert_eq!(display["schema"], "musicindex.display/3");
     assert_eq!(
         display["track"]["song_line"].as_str(),
         song_file.lines().next()
@@ -393,7 +393,7 @@ fn lifecycle_display_startup_writes_null_track() -> Result<()> {
     fs::create_dir_all(&display_dir)?;
     fs::write(
         display_dir.join("display.json"),
-        r#"{"schema": "musicindex.display/2", "track": {"artist": "Old", "title": "Old", "artwork": null, "song_line": "Old - Old", "play_id": "1"}}"#,
+        r#"{"schema": "musicindex.display/3", "track": {"artist": "Old", "title": "Old", "artwork": null, "song_line": "Old - Old", "play_id": "1", "album": null}}"#,
     )?;
     let db = SyntheticMixxxDb::new()?;
 
@@ -408,7 +408,7 @@ fn lifecycle_display_startup_writes_null_track() -> Result<()> {
     assert!(output.status.success());
     assert_eq!(
         read_display(&display_dir)?,
-        serde_json::json!({"schema": "musicindex.display/2", "track": null})
+        serde_json::json!({"schema": "musicindex.display/3", "track": null})
     );
     Ok(())
 }
@@ -440,7 +440,7 @@ fn lifecycle_display_writes_the_track_and_its_embedded_image() -> Result<()> {
     )?;
     assert!(output.status.success());
     let display = read_display(&display_dir)?;
-    assert_eq!(display["schema"], "musicindex.display/2");
+    assert_eq!(display["schema"], "musicindex.display/3");
     // The display state holds the raw fields. The hyphen removal of the
     // song file does not apply.
     assert_eq!(display["track"]["artist"], "Test-Artist");
@@ -539,7 +539,7 @@ fn lifecycle_sigterm_writes_null_display_before_exit() -> Result<()> {
     assert!(exit.success());
     assert_eq!(
         read_display(&display_dir)?,
-        serde_json::json!({"schema": "musicindex.display/2", "track": null})
+        serde_json::json!({"schema": "musicindex.display/3", "track": null})
     );
     Ok(())
 }
@@ -589,5 +589,126 @@ fn lifecycle_display_v4v_track_with_image_tag_gives_the_url() -> Result<()> {
         .filter_map(|entry| entry.ok()?.file_name().into_string().ok())
         .collect();
     assert_eq!(names, vec!["display.json".to_owned()]);
+    Ok(())
+}
+
+#[test]
+fn lifecycle_display_v4v_track_with_album() -> Result<()> {
+    let temp = TempDir::new()?;
+    let v4v_root = temp.path().join("V4Vmusic");
+    let display_dir = temp.path().join("display");
+    fs::create_dir_all(&v4v_root)?;
+    fs::create_dir_all(&display_dir)?;
+    let track = v4v_root.join("track.mp3");
+    fs::copy(fixture("musicindex-tagged.mp3"), &track)?;
+    let mut db = SyntheticMixxxDb::new()?;
+
+    db.append_history_row_with_metadata(
+        Some("Album Artist"),
+        Some("Album Track"),
+        Some("Test Album"),
+        &track,
+    )?;
+    let output = Command::new(binary())
+        .arg("--once")
+        .arg("--db-file")
+        .arg(db.path())
+        .arg("--txt-file")
+        .arg(temp.path().join("now-playing.txt"))
+        .arg("--id3-file")
+        .arg(temp.path().join("metadata.txt"))
+        .arg("--v4v-root")
+        .arg(&v4v_root)
+        .arg("--display-dir")
+        .arg(&display_dir)
+        .output()?;
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let display = read_display(&display_dir)?;
+    assert_eq!(display["track"]["album"], "Test Album");
+    Ok(())
+}
+
+#[test]
+fn lifecycle_display_non_v4v_track_with_album() -> Result<()> {
+    let temp = TempDir::new()?;
+    let other_root = temp.path().join("OtherMusic");
+    let display_dir = temp.path().join("display");
+    fs::create_dir_all(&other_root)?;
+    fs::create_dir_all(&display_dir)?;
+    let track = other_root.join("track.mp3");
+    fs::copy(fixture("untagged.flac"), &track)?;
+    let mut db = SyntheticMixxxDb::new()?;
+
+    db.append_history_row_with_metadata(
+        Some("Non-V4V Artist"),
+        Some("Non-V4V Track"),
+        Some("Non-V4V Album"),
+        &track,
+    )?;
+    let output = Command::new(binary())
+        .arg("--once")
+        .arg("--db-file")
+        .arg(db.path())
+        .arg("--txt-file")
+        .arg(temp.path().join("now-playing.txt"))
+        .arg("--id3-file")
+        .arg(temp.path().join("metadata.txt"))
+        .arg("--display-dir")
+        .arg(&display_dir)
+        .output()?;
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let display = read_display(&display_dir)?;
+    assert_eq!(display["track"]["album"], "Non-V4V Album");
+    Ok(())
+}
+
+#[test]
+fn lifecycle_display_track_with_null_album() -> Result<()> {
+    let temp = TempDir::new()?;
+    let v4v_root = temp.path().join("V4Vmusic");
+    let display_dir = temp.path().join("display");
+    fs::create_dir_all(&v4v_root)?;
+    fs::create_dir_all(&display_dir)?;
+    let track = v4v_root.join("track.mp3");
+    fs::copy(fixture("musicindex-tagged.mp3"), &track)?;
+    let mut db = SyntheticMixxxDb::new()?;
+
+    db.append_history_row_with_metadata(
+        Some("No Album Artist"),
+        Some("No Album Track"),
+        None,
+        &track,
+    )?;
+    let output = Command::new(binary())
+        .arg("--once")
+        .arg("--db-file")
+        .arg(db.path())
+        .arg("--txt-file")
+        .arg(temp.path().join("now-playing.txt"))
+        .arg("--id3-file")
+        .arg(temp.path().join("metadata.txt"))
+        .arg("--v4v-root")
+        .arg(&v4v_root)
+        .arg("--display-dir")
+        .arg(&display_dir)
+        .output()?;
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let display = read_display(&display_dir)?;
+    assert!(display["track"]["album"].is_null());
     Ok(())
 }

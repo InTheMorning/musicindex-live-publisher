@@ -65,7 +65,7 @@ the next priority. Confirm that logging works before the show.
   `play_id`. The publisher adds `songLine` and the block identity to the
   display state (relay ADR 0005)
 - [ADR 0013: The display state carries the album](adr/0013-display-album.md)
-  — Proposed. `display.json` version 3 with the album of the history row.
+  — Accepted. `display.json` version 3 with the album of the history row.
   The publisher adds `album` to the display state (relay ADR 0006)
 
 ## Plans
@@ -98,6 +98,8 @@ the next priority. Confirm that logging works before the show.
   Ready. Two packets for ADR 0010
 - [Display pairing plan](plans/display-pairing.md) — Implemented. Two packets
   for ADR 0012, in one release, after relay ADR 0005
+- [Display album plan](plans/display-album.md) — Ready. One packet for
+  ADR 0013, after relay ADR 0006
 - [Relay applies the stream delay plan](plans/relay-applies-stream-delay.md)
   — Ready. Two packets for ADR 0011, in one release, after relay ADR 0004
 
@@ -227,6 +229,12 @@ relay of ADR 0005 is deployed.
 - [002 — The pairing](tasks/display-pairing-task-002-pairing.md)
   — Implemented - 2026-10-06
 
+Packet for the display album plan. ADR 0013 governs it. Ship it after relay
+ADR 0006 is deployed.
+
+- [001 — The display file version 3](tasks/display-album-task-001-display-json-v3.md)
+  — Implemented - 2026-10-06
+
 ## Reviews
 
 - [Rust now-playing review checklist](reviews/rust-now-playing-review-checklist.md)
@@ -240,6 +248,7 @@ relay of ADR 0005 is deployed.
 - [Relay applies the stream delay review checklist](reviews/relay-applies-stream-delay-review-checklist.md) — open
 - [Display pairing review checklist](reviews/display-pairing-review-checklist.md)
   — the named artifact for the `Implemented` status of ADR 0012
+- [Display album review checklist](reviews/display-album-review-checklist.md) — open
 
 ## Runbooks
 

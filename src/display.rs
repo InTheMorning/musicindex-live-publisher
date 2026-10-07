@@ -36,7 +36,7 @@ pub struct Pairing {
 }
 
 /// The schema of `display.json` that this publisher reads.
-pub const DISPLAY_SCHEMA: &str = "musicindex.display/2";
+pub const DISPLAY_SCHEMA: &str = "musicindex.display/3";
 
 /// The file name of the display state in a display directory.
 pub const DISPLAY_FILE_NAME: &str = "display.json";
@@ -168,6 +168,8 @@ pub struct DisplayTrack {
     pub song_line: String,
     /// The play ID from `display.json` version 2 (ADR 0010, ADR 0012).
     pub play_id: Option<String>,
+    /// The album from `display.json` version 3 (ADR 0013).
+    pub album: Option<String>,
 }
 
 /// The display state of one target: `null` or one track.
@@ -214,6 +216,12 @@ impl DisplayState {
                 "artwork": artwork,
                 "songLine": track.song_line,
             });
+
+            if let Some(album) = &track.album
+                && let Some(obj) = track_obj.as_object_mut()
+            {
+                obj.insert("album".to_owned(), Value::String(album.clone()));
+            }
 
             if let Some(pairing) = pairing.filter(|pairing| self.pairs_with(pairing))
                 && let Some(obj) = track_obj.as_object_mut()
@@ -307,6 +315,13 @@ pub fn read_display_state(dir: &Path) -> Option<DisplayState> {
         );
         return None;
     }
+    if schema == Some("musicindex.display/2") {
+        tracing::warn!(
+            path = %path.display(),
+            "display.json version 2 is not supported; ignoring it"
+        );
+        return None;
+    }
     if schema != Some(DISPLAY_SCHEMA) {
         tracing::warn!(
             path = %path.display(),
@@ -345,12 +360,18 @@ fn parse_track(dir: &Path, path: &Path, track: &Value) -> Option<DisplayTrack> {
         .get("play_id")
         .and_then(Value::as_str)
         .map(String::from);
+    let album = track
+        .get("album")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .map(String::from);
     Some(DisplayTrack {
         artist: artist.to_owned(),
         title: title.to_owned(),
         artwork,
         song_line: song_line.to_owned(),
         play_id,
+        album,
     })
 }
 
