@@ -1,7 +1,7 @@
 # Pair The Display State With Its Value Block: Phase Plan
 
-Status: Ready 2026-10-06. This plan does not make rules. ADR 0012 owns
-them. The operator accepted ADR 0012 and relay ADR 0005 on 2026-10-06.
+Status: Implemented 2026-10-06. This plan does not make rules. ADR 0012 owns
+them. Both packets are done, and the chain is deployed.
 
 ## Goal
 

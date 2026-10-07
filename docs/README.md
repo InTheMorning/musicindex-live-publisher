@@ -61,7 +61,7 @@ the next priority. Confirm that logging works before the show.
   the delay in a header. Relay ADR 0004 delays Socket.IO only. Replaces the
   schedule rules of ADR 0005 and ADR 0008 at its implementation review
 - [ADR 0012: Pair the display state with its value block](adr/0012-pair-display-state-with-value-block.md)
-  — Accepted. `display.json` version 2 with the exact song line and
+  — Implemented. `display.json` version 2 with the exact song line and
   `play_id`. The publisher adds `songLine` and the block identity to the
   display state (relay ADR 0005)
 
@@ -93,7 +93,7 @@ the next priority. Confirm that logging works before the show.
   gates of ADR 0009 and the packets that follow them. No packet exists yet
 - [Live value reference shape plan](plans/live-value-reference-shape.md) —
   Ready. Two packets for ADR 0010
-- [Display pairing plan](plans/display-pairing.md) — Ready. Two packets
+- [Display pairing plan](plans/display-pairing.md) — Implemented. Two packets
   for ADR 0012, in one release, after relay ADR 0005
 - [Relay applies the stream delay plan](plans/relay-applies-stream-delay.md)
   — Ready. Two packets for ADR 0011, in one release, after relay ADR 0004
@@ -235,7 +235,8 @@ relay of ADR 0005 is deployed.
 - [Display path review checklist](reviews/display-path-review-checklist.md)
 - [Live value reference shape review checklist](reviews/live-value-reference-shape-review-checklist.md) — open
 - [Relay applies the stream delay review checklist](reviews/relay-applies-stream-delay-review-checklist.md) — open
-- [Display pairing review checklist](reviews/display-pairing-review-checklist.md) — open
+- [Display pairing review checklist](reviews/display-pairing-review-checklist.md)
+  — the named artifact for the `Implemented` status of ADR 0012
 
 ## Runbooks
 

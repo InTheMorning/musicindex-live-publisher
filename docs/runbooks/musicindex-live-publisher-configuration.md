@@ -642,6 +642,19 @@ Mixxx finds MIDI devices only at startup. So start Mixxx after the reboot.
 
 If the setup script gave a different port name, use that port name in step 2.
 
+### Mixxx History Setup
+
+Set this Mixxx option one time. Without it, a track that plays again within
+six tracks pays nobody.
+
+1. In Mixxx, open Preferences, then Library.
+2. Set "Track duplicate distance" to 0.
+3. Click OK.
+
+Each track that is on the recent list of Mixxx is then skipped one more
+time. See
+[Known Limit: A Track That Plays Again](#known-limit-a-track-that-plays-again).
+
 ### Operator Rules
 
 - Disable a controller in Mixxx before you unplug it, if its mapping sends

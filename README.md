@@ -104,6 +104,10 @@ services. The publisher uses a fixed dead block for idle or non-V4V playback
 setup-mixxx-musicindex
 ```
 
+In Mixxx, set Preferences, then Library, "Track duplicate distance" to 0.
+Without it, a track that plays again within six tracks pays nobody. See
+[Mixxx History Setup](docs/runbooks/musicindex-live-publisher-configuration.md#mixxx-history-setup).
+
 Temporary mode keeps config and token under `$XDG_RUNTIME_DIR`, writes the user
 unit files under `~/.config/systemd/user`, and starts services only for the
 current login session:

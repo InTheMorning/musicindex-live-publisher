@@ -1,7 +1,11 @@
 # ADR 0012: Pair The Display State With Its Value Block
 
-Status: Accepted
+Status: Implemented
 Date: 2026-10-06
+
+Implemented 2026-10-06: display pairing tasks 001 and 002 are done, and the
+chain is deployed. The named artifact is
+`docs/reviews/display-pairing-review-checklist.md`, with no open item.
 
 Accepted 2026-10-06 by the operator. The two items of §Before Acceptance
 are done: relay ADR 0005 and ADR 0010 are accepted.

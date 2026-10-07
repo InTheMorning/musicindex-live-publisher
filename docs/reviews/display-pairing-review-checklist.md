@@ -1,11 +1,10 @@
 # Pair The Display State With Its Value Block: Review Checklist
 
-Status: open - 2026-10-06. Tasks 001 and 002 are done, and each item above
-§Cross-Repository passes. `README.md` does not describe `display.json`, so
-the configuration runbook holds version 2. The producer calls
-`render_now_playing_line` for the song file and for `display.json` with the
-same arguments from the same display state. ADR 0012 becomes `Implemented`
-only when each item passes.
+Status: closed - 2026-10-06. Each item passes. This checklist is the named
+artifact for the `Implemented` status of ADR 0012. `README.md` does not
+describe `display.json`, so the configuration runbook holds version 2. The
+producer calls `render_now_playing_line` for the song file and for
+`display.json` with the same arguments from the same display state.
 
 ## Invariants Of ADR 0012
 
@@ -34,4 +33,6 @@ only when each item passes.
 - [x] Relay ADR 0005 is deployed before this publisher. Done 2026-10-06 on
   `api.musicindex.org` with publisher `r83`. A display state that went out
   before its payload went out again with `value` in the next poll.
-- [ ] `citizenradio` is told that `songLine` is available for its ICY sync.
+- [x] `citizenradio` is told that `songLine` is available for its ICY sync.
+  Done 2026-10-06 in `citizenradio`
+  `docs/plans/upstream-live-metadata-plan.md`, §Available Now.

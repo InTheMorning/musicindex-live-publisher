@@ -1,7 +1,6 @@
 # The Relay Applies The Stream Delay: Review Checklist
 
-Status: open - 2026-10-06. Each mechanical item and the deployment pass. The
-`v4vmm` item and the two visual items are open. ADR 0011 becomes
+Status: open - 2026-10-06. Each item passes except the two visual items. ADR 0011 becomes
 `Implemented` only when each item passes.
 
 ## Invariants Of ADR 0011
@@ -37,7 +36,9 @@ Status: open - 2026-10-06. Each mechanical item and the deployment pass. The
   15.5 s to 15.6 s after `GET /metadata`.
 - [x] Task 001 and task 002 ship in one release. Done 2026-10-06: package
   `r83`.
-- [ ] `v4vmm` shows `stream_delay_secs` as the delay that podcast apps get.
+- [x] `v4vmm` shows `stream_delay_secs` as the delay that podcast apps get.
+  Done 2026-10-06. No `v4vmm` screen shows the value. The doc comment of
+  `PublisherTarget::stream_delay_secs` gives its meaning.
 
 ## Visual
 

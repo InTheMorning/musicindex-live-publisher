@@ -44,13 +44,12 @@ packet.
 - ADR 0011, the relay applies the stream delay, has the status `Accepted`. Its
   two packets are implemented. The publisher sends each block and display
   state at once, with `Listener-Delay-Secs`. Its review passed for each
-  mechanical item and the deployment. The `v4vmm` item and the two visual
-  items are open.
+  item except the two visual items.
 - **Do not deploy this publisher before the relay of `musicindex-live-relay`
   ADR 0004 runs.** An older relay ignores the header, and podcast apps then
   get no delay.
 - ADR 0012, the pairing of the display state with its value block, has the
-  status `Accepted`. Its two packets are implemented. The producer writes
+  status `Implemented`. The producer writes
   `display.json` version 2 with `song_line` and `play_id`. Each display body
   has `songLine`. A display state of the same play as the newest payload also
   has `value` with the `eventGuid` and the `blockGuid` of that payload.

@@ -36,6 +36,10 @@ next reboot. The setup helper stops if the card is missing. See
 [MIDI Connector](musicindex-live-publisher-configuration.md#midi-connector)
 for the card setup and the Mixxx controller setup.
 
+In Mixxx, also set Preferences, then Library, "Track duplicate distance" to
+0. Without it, a track that plays again within six tracks pays nobody. See
+[Mixxx History Setup](musicindex-live-publisher-configuration.md#mixxx-history-setup).
+
 The package builds the working tree on disk. If the tree is dirty, the generated
 package version ends in `.local`. Commit local edits first when you need a
 traceable package version.
