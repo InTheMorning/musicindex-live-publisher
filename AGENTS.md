@@ -71,8 +71,10 @@ packet.
     track, it writes a file with an empty `value_routes`.
   - The review is `docs/reviews/track-reporting-review-checklist.md`, with no
     open item.
-- ADR 0015 has the status `Proposed`. ADR 0016 has the status `Accepted`.
-  No implementation of either exists.
+- ADR 0015 has the status `Proposed`, and no implementation exists. ADR 0016
+  has the status `Accepted`. Its plan is
+  `docs/plans/instances-and-producer-lock.md`, with two packets. No
+  implementation exists.
   - ADR 0015: `v4vmm` starts a talk break or a live set through `segment`
     commands. It needs a `v4vmm` ADR before acceptance.
   - ADR 0016: one instance for each show and for each event, and the rules of

@@ -112,6 +112,7 @@ the next priority. Confirm that logging works before the show.
 - [Relay applies the stream delay plan](plans/relay-applies-stream-delay.md)
   — Ready. Two packets for ADR 0011, in one release, after relay ADR 0004
 - [Each producer reports each track plan](plans/track-reporting.md)
+- [Instances, events and the producer lock plan](plans/instances-and-producer-lock.md)
   — Implemented. Two packets for ADR 0014, in one release
 
 ## Tasks
@@ -254,6 +255,14 @@ release.
 - [002 — The non-payable file in the connector mode](tasks/track-reporting-task-002-connector-mode.md)
   — Implemented - 2026-10-18
 
+Packets for the instances plan. ADR 0016 governs them. Each packet can ship
+by itself.
+
+- [001 — The producer lock wait limit](tasks/instances-task-001-producer-lock-wait.md)
+  — Ready - 2026-10-18
+- [002 — One instance for each event](tasks/instances-task-002-event-ownership-checks.md)
+  — Ready - 2026-10-18
+
 ## Reviews
 
 - [Rust now-playing review checklist](reviews/rust-now-playing-review-checklist.md)
@@ -267,8 +276,9 @@ release.
 - [Relay applies the stream delay review checklist](reviews/relay-applies-stream-delay-review-checklist.md) — open
 - [Display pairing review checklist](reviews/display-pairing-review-checklist.md)
 - [Track reporting review checklist](reviews/track-reporting-review-checklist.md)
-  — the named artifact for the `Implemented` status of ADR 0012
+  — the named artifact for the `Implemented` status of ADR 0014
 - [Display album review checklist](reviews/display-album-review-checklist.md) — open
+- [Instances review checklist](reviews/instances-review-checklist.md) — open
 
 ## Runbooks
 
