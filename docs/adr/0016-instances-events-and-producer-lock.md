@@ -1,7 +1,9 @@
 # ADR 0016: Instances, Events And The Producer Lock
 
-Status: Proposed
+Status: Accepted
 Date: 2026-10-18
+
+Accepted 2026-10-18 by the operator. No implementation exists.
 
 Class: durable. These are ownership and liveness rules.
 

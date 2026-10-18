@@ -6,6 +6,10 @@ Date: 2026-09-27
 Implemented 2026-09-28: relay lease tasks 001 to 004 are merged. The review
 is `docs/reviews/relay-lease-review-checklist.md`.
 
+Amended 2026-10-18 by ADR 0016. A producer waits at most 2 seconds for the
+producer lock, and then exits with an error. The lock stays a kernel lock. No
+other rule of this ADR changes.
+
 Amended 2026-10-18 by ADR 0014. ADR 0014 adopts the rejected alternative
 §A Non-Payable Drop File For Each Non-V4V Track. It uses it for a different
 fact: if a track plays. The reason for the rejection stays correct for

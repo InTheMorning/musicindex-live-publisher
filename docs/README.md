@@ -74,7 +74,7 @@ the next priority. Confirm that logging works before the show.
   — Proposed. `v4vmm` starts a talk break or a live set through `segment`
   commands over `ssh`, with a split that it sets for each show
 - [ADR 0016: Instances, events and the producer lock](adr/0016-instances-events-and-producer-lock.md)
-  — Proposed. One instance for each show and for each event, and the rules
+  — Accepted, not implemented. One instance for each show and for each event, and the rules
   of the producer lock. The binding of a drop file to the lock is deferred
 
 ## Plans
