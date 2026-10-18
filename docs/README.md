@@ -68,7 +68,7 @@ the next priority. Confirm that logging works before the show.
   — Accepted. `display.json` version 3 with the album of the history row.
   The publisher adds `album` to the display state (relay ADR 0006)
 - [ADR 0014: One assembler, and each producer reports each track](adr/0014-one-assembler-and-track-reporting.md)
-  — Accepted. Packets done, manual checks open. Only this repository assembles and publishes
+  — Implemented. Only this repository assembles and publishes
   blocks. Drop file version 3: each producer reports each track that plays, payable or not
 - [ADR 0015: Live segments from v4vmm](adr/0015-live-segments-from-v4vmm.md)
   — Proposed. `v4vmm` starts a talk break or a live set through `segment`
@@ -112,7 +112,7 @@ the next priority. Confirm that logging works before the show.
 - [Relay applies the stream delay plan](plans/relay-applies-stream-delay.md)
   — Ready. Two packets for ADR 0011, in one release, after relay ADR 0004
 - [Each producer reports each track plan](plans/track-reporting.md)
-  — Packets done. Two packets for ADR 0014, in one release
+  — Implemented. Two packets for ADR 0014, in one release
 
 ## Tasks
 
@@ -266,7 +266,7 @@ release.
 - [Live value reference shape review checklist](reviews/live-value-reference-shape-review-checklist.md) — open
 - [Relay applies the stream delay review checklist](reviews/relay-applies-stream-delay-review-checklist.md) — open
 - [Display pairing review checklist](reviews/display-pairing-review-checklist.md)
-- [Track reporting review checklist](reviews/track-reporting-review-checklist.md) — open
+- [Track reporting review checklist](reviews/track-reporting-review-checklist.md)
   — the named artifact for the `Implemented` status of ADR 0012
 - [Display album review checklist](reviews/display-album-review-checklist.md) — open
 

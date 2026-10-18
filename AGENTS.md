@@ -63,15 +63,14 @@ packet.
 - **Do not deploy this publisher before the relay of `musicindex-live-relay`
   ADR 0006 runs.** An older relay gives `400 invalid_display` for each
   display state with `album`.
-- ADR 0014 has the status `Accepted`. No implementation exists.
+- ADR 0014 has the status `Implemented`.
   - Only this repository assembles and publishes a block or a display state.
     `v4vmm` and each producer do not make a block.
   - Each producer reports each track that plays, payable or not, through
     version 3 of the drop file. The producer writes version 3. For a non-V4V
     track, it writes a file with an empty `value_routes`.
-  - Packets 001 and 002 of `docs/plans/track-reporting.md` are done. The
-    manual checks of `docs/reviews/track-reporting-review-checklist.md` are
-    open.
+  - The review is `docs/reviews/track-reporting-review-checklist.md`, with no
+    open item.
 - ADRs 0015 and 0016 have the status `Proposed`. No implementation exists.
   - ADR 0015: `v4vmm` starts a talk break or a live set through `segment`
     commands. It needs a `v4vmm` ADR before acceptance.

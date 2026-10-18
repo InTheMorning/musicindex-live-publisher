@@ -1,8 +1,6 @@
 # Each Producer Reports Each Track: Review Checklist
 
-Status: open - 2026-10-18. Tasks 001 and 002 are done, and each mechanical
-item passes. The manual items are open. ADR 0014 becomes `Implemented` only
-when each item passes.
+Status: closed - 2026-10-18. Each item passes. ADR 0014 is `Implemented`.
 
 ## Invariants Of ADR 0014
 
@@ -31,7 +29,7 @@ when each item passes.
   ADR 0014 as its owner.
 - [x] The doc comment of `DropFile` states the meaning of presence of
   ADR 0014.
-- [ ] ADR 0014 gets the status `Implemented`, with a dated sentence that
+- [x] ADR 0014 gets the status `Implemented`, with a dated sentence that
   names this checklist. Its acceptance sentence about version 2 is removed.
 - [x] The ADR 0002 amendment of 2026-10-18 says that the producer writes
   version 3. Its sentence about version 2 until the implementation is
@@ -43,8 +41,15 @@ when each item passes.
 A person must complete these items on the Mixxx host. Report each one as
 open until then.
 
-- [ ] With the connector, a non-V4V track that plays gives a drop file with
-  an empty `value_routes`. A stop of the deck removes the file.
-- [ ] Without the connector, a non-V4V track gives a drop file with an empty
-  `value_routes`, and the next history row replaces it.
-- [ ] During a non-V4V track, the relay shows the dead block.
+- [x] With the connector, a non-V4V track that plays gives a drop file with
+  an empty `value_routes`. A stop of the deck removes the file. Passed on
+  2026-10-18 with "Zelda Medley": version 3, `value_routes` `[]`,
+  `value_routes_source` `null`, `play_id` `638231`. The file was removed at
+  the stop of the deck.
+- [x] Without the connector, a non-V4V track gives a drop file with an empty
+  `value_routes`, and the next history row replaces it. Passed on 2026-10-18
+  with `--no-connector`: "Cold Turkey" gave `[]`. The next track, the V4V
+  track "Possible", replaced the file with its two routes.
+- [x] During a non-V4V track, the relay shows the dead block. Passed on
+  2026-10-18: `/metadata` of the event of the target `default` gave
+  `no-v4v-track@example.invalid` at 100% during "Zelda Medley".

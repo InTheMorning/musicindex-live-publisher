@@ -1,7 +1,6 @@
 # Each Producer Reports Each Track: Phase Plan
 
-Status: Packets done 2026-10-18. The manual checks of the review checklist
-are open. This plan does not make rules. ADR 0014 owns them.
+Status: Implemented 2026-10-18. The review checklist has no open item. This plan does not make rules. ADR 0014 owns them.
 The operator accepted ADR 0014 on 2026-10-18.
 
 ## Goal

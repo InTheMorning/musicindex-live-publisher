@@ -1,13 +1,14 @@
 # ADR 0014: One Assembler, And Each Producer Reports Each Track
 
-Status: Accepted
+Status: Implemented
 Date: 2026-10-18
 
-Accepted 2026-10-18 by the operator. Packets 001 and 002 of
-`docs/plans/track-reporting.md` are done on 2026-10-18. The producer writes
-version 3. The manual checks of
-`docs/reviews/track-reporting-review-checklist.md` are open, so the status
-stays `Accepted`.
+Implemented 2026-10-18: packets 001 and 002 of `docs/plans/track-reporting.md`
+are done. The named artifact is
+`docs/reviews/track-reporting-review-checklist.md`, with no open item. The
+producer writes version 3.
+
+Accepted 2026-10-18 by the operator.
 
 Class: durable. These are layering and ownership rules.
 
