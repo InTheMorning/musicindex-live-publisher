@@ -1,7 +1,11 @@
 # ADR 0014: One Assembler, And Each Producer Reports Each Track
 
-Status: Proposed
+Status: Accepted
 Date: 2026-10-18
+
+Accepted 2026-10-18 by the operator. No implementation exists. Until it
+exists, the producer writes version 2 and removes the drop file for a non-V4V
+track.
 
 Class: durable. These are layering and ownership rules.
 
@@ -29,6 +33,11 @@ history row, the producer removes the drop file
 file means no payable block". So the publisher cannot tell if a track plays.
 An input that pays someone while no track plays, such as a segment of
 ADR 0015, could then pay that person for a non-V4V track.
+
+ADR 0005 rejected "A Non-Payable Drop File For Each Non-V4V Track". Its reason
+was producer liveness: the producer lock gives that fact with no schema
+change. That reason stays correct, and the lock stays the source of liveness.
+This ADR needs a different fact, if a track plays. The lock cannot give it.
 
 ## Decision
 
@@ -102,9 +111,10 @@ would hold the same fact two times.
 
 - The Mixxx producer changes its non-V4V path. It writes a file with no
   routes, and it does not remove the file.
-- On acceptance, ADR 0002 and ADR 0005 get a dated amendment. Their sentence
-  "Removing a file means no payable block" becomes "Removing a file means no
-  track plays". The same change updates `AGENTS.md`.
+- On acceptance, ADR 0002 and ADR 0005 got a dated amendment, and
+  `AGENTS.md` changed. For version 3, "Removing a file means no payable
+  block" becomes "Removing a file means no track plays". Versions 1 and 2 keep
+  the earlier meaning.
 
 ## References
 

@@ -162,7 +162,7 @@ recipients.
 ## Before Acceptance
 
 - ADR 0014 is accepted. Without its drop file version 3, a segment can pay
-  the station for a non-V4V track.
+  the station for a non-V4V track. Done on 2026-10-18.
 - `v4vmm` records the per-show setting and the `ssh` call in its own ADR,
   which cites this ADR.
 

@@ -6,6 +6,12 @@ Date: 2026-09-27
 Implemented 2026-09-28: relay lease tasks 001 to 004 are merged. The review
 is `docs/reviews/relay-lease-review-checklist.md`.
 
+Amended 2026-10-18 by ADR 0014. ADR 0014 adopts the rejected alternative
+§A Non-Payable Drop File For Each Non-V4V Track. It uses it for a different
+fact: if a track plays. The reason for the rejection stays correct for
+producer liveness, and the producer lock stays its source. §Publisher Behavior does not change: a
+present file with no routes, and an absent file, give the dead block.
+
 Amended 2026-10-06 by ADR 0011, at its implementation review. ADR 0011
 replaces three rules of §Invariants:
 

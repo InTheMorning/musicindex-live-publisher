@@ -68,8 +68,8 @@ the next priority. Confirm that logging works before the show.
   — Accepted. `display.json` version 3 with the album of the history row.
   The publisher adds `album` to the display state (relay ADR 0006)
 - [ADR 0014: One assembler, and each producer reports each track](adr/0014-one-assembler-and-track-reporting.md)
-  — Proposed. Only this repository assembles and publishes blocks. Drop file
-  version 3: each producer reports each track that plays, payable or not
+  — Accepted, not implemented. Only this repository assembles and publishes
+  blocks. Drop file version 3: each producer reports each track that plays, payable or not
 - [ADR 0015: Live segments from v4vmm](adr/0015-live-segments-from-v4vmm.md)
   — Proposed. `v4vmm` starts a talk break or a live set through `segment`
   commands over `ssh`, with a split that it sets for each show
