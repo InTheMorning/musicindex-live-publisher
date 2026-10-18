@@ -1,6 +1,7 @@
 //! Service configuration and token loading.
 
 use std::collections::HashSet;
+use std::ffi::OsStr;
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -245,9 +246,11 @@ pub fn show_config(path: &Path) -> Result<RedactedPublisherConfig> {
 /// # Errors
 ///
 /// Returns an error when the existing config cannot be read or parsed, the
-/// target is invalid, the token file cannot be read, or the write fails.
+/// target is invalid, the token file cannot be read, a different instance
+/// already holds the event (ADR 0016), or the write fails.
 pub fn add_target_to_config(path: &Path, edit: &TargetConfigEdit, replace: bool) -> Result<()> {
     validate_target_config_edit(edit)?;
+    check_event_ownership(path, std::slice::from_ref(&edit.event_id))?;
     let text =
         fs::read_to_string(path).with_context(|| format!("read config file {}", path.display()))?;
     let edited = add_target_to_config_text(&text, edit, replace)?;
@@ -266,6 +269,147 @@ pub fn remove_target_from_config(path: &Path, name: &str) -> Result<()> {
         fs::read_to_string(path).with_context(|| format!("read config file {}", path.display()))?;
     let edited = remove_target_from_config_text(&text, name)?;
     write_config_text_atomic(path, &edited)
+}
+
+/// Checks that no other instance already holds one of `event_ids`
+/// (ADR 0016 §One Instance For Each Event).
+///
+/// The check runs only when `config_path` has the instance layout
+/// `<root>/<instance>/config.toml`, with `root` named
+/// `musicindex-live-publisher`. At a different path, this function does
+/// nothing: there is no instance name to find a second writer for.
+///
+/// With that layout, this function reads the `event_id` of each target in
+/// every other instance directory under the same root. It does not run the
+/// full validation of `load_config`, and it writes nothing.
+///
+/// # Errors
+///
+/// Returns an error that names ADR 0016, the event, the other instance, its
+/// configuration path, and this instance, when a different instance holds
+/// an event also in `event_ids`. Event identifiers compare with the spaces
+/// at the two ends removed, with exact case.
+pub fn check_event_ownership(config_path: &Path, event_ids: &[String]) -> Result<()> {
+    let Some(layout) = instance_layout(config_path) else {
+        return Ok(());
+    };
+
+    for other in other_instance_events(&layout) {
+        let held_by_this_instance = event_ids
+            .iter()
+            .any(|event_id| event_id.trim() == other.event_id);
+        if held_by_this_instance {
+            return Err(anyhow!(
+                "ADR 0016: event {} belongs to instance {} ({}). Instance {} cannot use it. \
+                 Remove the target from one instance.",
+                other.event_id,
+                other.instance,
+                other.config_path.display(),
+                layout.instance
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// The instance name and root directory of a configuration path (ADR 0016).
+struct InstanceLayout {
+    root: PathBuf,
+    instance: String,
+}
+
+/// Returns the instance layout of `config_path`.
+///
+/// A path has an instance only when its file name is `config.toml`, its
+/// parent directory has a name (the instance), and the parent of that
+/// directory (the root) has the name `musicindex-live-publisher`. A path of
+/// another shape gives `None`.
+fn instance_layout(config_path: &Path) -> Option<InstanceLayout> {
+    if config_path.file_name()? != OsStr::new("config.toml") {
+        return None;
+    }
+    let instance_dir = config_path.parent()?;
+    let instance = instance_dir.file_name()?.to_str()?.to_owned();
+    let root = instance_dir.parent()?;
+    if root.file_name()? != OsStr::new("musicindex-live-publisher") {
+        return None;
+    }
+    Some(InstanceLayout {
+        root: root.to_path_buf(),
+        instance,
+    })
+}
+
+/// One `event_id` that another instance's configuration holds (ADR 0016).
+struct OtherInstanceEvent {
+    instance: String,
+    config_path: PathBuf,
+    event_id: String,
+}
+
+/// Reads the event identifiers of every other instance under `layout.root`.
+///
+/// An instance is a directory `<root>/<name>` with `name` different from
+/// `layout.instance` and with a file `<root>/<name>/config.toml`. A
+/// directory with no `config.toml` is not an instance and is ignored. The
+/// instances are read in name order, so an error names the same instance on
+/// each run.
+///
+/// A `config.toml` that cannot be read, or that does not parse as TOML,
+/// gets a `tracing::warn!` with its path and is skipped. The error of a
+/// different instance must not stop this instance. A directory entry that is
+/// a symbolic link to a directory counts as an instance.
+fn other_instance_events(layout: &InstanceLayout) -> Vec<OtherInstanceEvent> {
+    let mut names: Vec<String> = fs::read_dir(&layout.root)
+        .into_iter()
+        .flatten()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.path().is_dir())
+        .filter_map(|entry| entry.file_name().into_string().ok())
+        .filter(|name| *name != layout.instance)
+        .collect();
+    names.sort();
+
+    let mut events = Vec::new();
+    for name in names {
+        let config_path = layout.root.join(&name).join("config.toml");
+        let text = match fs::read_to_string(&config_path) {
+            Ok(text) => text,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => {
+                tracing::warn!(
+                    path = %config_path.display(),
+                    error = %error,
+                    "ADR 0016: could not read the configuration of another instance. \
+                     Its event check is skipped"
+                );
+                continue;
+            }
+        };
+        let Ok(table) = toml::from_str::<toml::Table>(&text) else {
+            tracing::warn!(
+                path = %config_path.display(),
+                "ADR 0016: could not parse the configuration of another instance. \
+                 Its event check is skipped"
+            );
+            continue;
+        };
+        let targets = table
+            .get("target")
+            .and_then(toml::Value::as_array)
+            .into_iter()
+            .flatten();
+        for target in targets {
+            if let Some(event_id) = target.get("event_id").and_then(toml::Value::as_str) {
+                events.push(OtherInstanceEvent {
+                    instance: name.clone(),
+                    config_path: config_path.clone(),
+                    event_id: event_id.trim().to_owned(),
+                });
+            }
+        }
+    }
+    events
 }
 
 /// Lists target stanzas from TOML text without reading broadcaster tokens.

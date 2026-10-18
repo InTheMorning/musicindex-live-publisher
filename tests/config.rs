@@ -64,6 +64,29 @@ fn write_config(dir: &Path, text: &str) -> Result<std::path::PathBuf> {
     Ok(path)
 }
 
+/// Writes a configuration at the instance layout `<root>/<instance>/config.toml`
+/// (ADR 0016). `root` must be named `musicindex-live-publisher` for the
+/// instance checks to see it.
+fn write_instance_config(root: &Path, instance: &str, text: &str) -> Result<std::path::PathBuf> {
+    let dir = root.join(instance);
+    fs::create_dir_all(&dir)?;
+    write_config(&dir, text)
+}
+
+/// The minimal configuration text of an instance that holds one target with
+/// `event_id` (ADR 0016). The event ownership check reads only the `target`
+/// array, so this text has no `watch_dir`, `endpoint`, or `token_file`.
+fn other_instance_text(event_id: &str) -> String {
+    format!(
+        "[[target]]\nname = \"default\"\nevent_id = {}\n",
+        toml_string(event_id)
+    )
+}
+
+fn toml_string(value: &str) -> String {
+    toml::Value::String(value.to_owned()).to_string()
+}
+
 fn publisher_command() -> Command {
     Command::new(env!("CARGO_BIN_EXE_musicindex-live-publisher"))
 }
@@ -1428,5 +1451,177 @@ fn config_target_debug_with_display_dir_redacts_the_token() -> Result<()> {
 
     assert!(rendered.contains("display_dir"));
     assert!(!rendered.contains("secret-token"));
+    Ok(())
+}
+
+// ADR 0016 §One Instance For Each Event. Each test below makes the layout
+// `<tmp>/musicindex-live-publisher/<instance>/config.toml`.
+
+#[test]
+fn target_add_is_refused_when_a_different_instance_holds_the_event() -> Result<()> {
+    let temp = TempDir::new()?;
+    let root = temp.path().join("musicindex-live-publisher");
+    write_instance_config(&root, "b", &other_instance_text("event-x"))?;
+    let watch_dir = temp.path().join("watch");
+    let token = write_token(temp.path(), "default.token", "secret-token")?;
+    let config_a = write_instance_config(&root, "a", &config_text(&watch_dir, &token, None))?;
+    let original = fs::read_to_string(&config_a)?;
+
+    let error = add_target_to_config(&config_a, &target_edit("aux", "event-x", &token), false)
+        .err()
+        .ok_or_else(|| anyhow!("expected an ADR 0016 event ownership error"))?;
+
+    let message = error.to_string();
+    assert!(message.contains("ADR 0016"), "{message}");
+    assert!(message.contains("event-x"), "{message}");
+    assert!(message.contains("belongs to instance b"), "{message}");
+    assert!(message.contains("Instance a cannot use it"), "{message}");
+    assert_eq!(fs::read_to_string(&config_a)?, original);
+    Ok(())
+}
+
+#[test]
+fn target_add_succeeds_when_a_different_instance_holds_a_different_event() -> Result<()> {
+    let temp = TempDir::new()?;
+    let root = temp.path().join("musicindex-live-publisher");
+    write_instance_config(&root, "b", &other_instance_text("event-y"))?;
+    let watch_dir = temp.path().join("watch");
+    let token = write_token(temp.path(), "default.token", "secret-token")?;
+    let config_a = write_instance_config(&root, "a", &config_text(&watch_dir, &token, None))?;
+
+    add_target_to_config(&config_a, &target_edit("aux", "event-x", &token), false)?;
+
+    let config = load_config(&config_a, ConfigOverrides::default())?;
+    assert_eq!(config.targets.len(), 2);
+    Ok(())
+}
+
+#[test]
+fn target_add_replace_does_not_count_its_own_instance() -> Result<()> {
+    let temp = TempDir::new()?;
+    let root = temp.path().join("musicindex-live-publisher");
+    let watch_dir = temp.path().join("watch");
+    let token = write_token(temp.path(), "default.token", "secret-token")?;
+    // `config_text`'s own "default" target already holds "event-default".
+    let config_a = write_instance_config(&root, "a", &config_text(&watch_dir, &token, None))?;
+
+    add_target_to_config(
+        &config_a,
+        &target_edit("default", "event-default", &token),
+        true,
+    )?;
+
+    let config = load_config(&config_a, ConfigOverrides::default())?;
+    assert_eq!(config.targets[0].event_id, "event-default");
+    Ok(())
+}
+
+#[test]
+fn target_add_is_refused_against_an_event_with_surrounding_spaces() -> Result<()> {
+    let temp = TempDir::new()?;
+    let root = temp.path().join("musicindex-live-publisher");
+    write_instance_config(&root, "b", &other_instance_text(" X "))?;
+    let watch_dir = temp.path().join("watch");
+    let token = write_token(temp.path(), "default.token", "secret-token")?;
+    let config_a = write_instance_config(&root, "a", &config_text(&watch_dir, &token, None))?;
+
+    let error = add_target_to_config(&config_a, &target_edit("aux", "X", &token), false)
+        .err()
+        .ok_or_else(|| anyhow!("expected an ADR 0016 event ownership error"))?;
+
+    assert!(error.to_string().contains("belongs to instance b"));
+    Ok(())
+}
+
+#[test]
+fn target_add_succeeds_against_an_event_that_differs_only_by_case() -> Result<()> {
+    let temp = TempDir::new()?;
+    let root = temp.path().join("musicindex-live-publisher");
+    write_instance_config(&root, "b", &other_instance_text("x"))?;
+    let watch_dir = temp.path().join("watch");
+    let token = write_token(temp.path(), "default.token", "secret-token")?;
+    let config_a = write_instance_config(&root, "a", &config_text(&watch_dir, &token, None))?;
+
+    add_target_to_config(&config_a, &target_edit("aux", "X", &token), false)?;
+
+    let config = load_config(&config_a, ConfigOverrides::default())?;
+    assert_eq!(config.targets.len(), 2);
+    Ok(())
+}
+
+#[test]
+fn target_add_succeeds_when_another_instance_configuration_does_not_parse() -> Result<()> {
+    let temp = TempDir::new()?;
+    let root = temp.path().join("musicindex-live-publisher");
+    write_instance_config(&root, "b", "event_id = \"unterminated")?;
+    let watch_dir = temp.path().join("watch");
+    let token = write_token(temp.path(), "default.token", "secret-token")?;
+    let config_a = write_instance_config(&root, "a", &config_text(&watch_dir, &token, None))?;
+
+    add_target_to_config(&config_a, &target_edit("aux", "event-x", &token), false)?;
+
+    let config = load_config(&config_a, ConfigOverrides::default())?;
+    assert_eq!(config.targets.len(), 2);
+    Ok(())
+}
+
+#[test]
+fn target_add_ignores_a_sibling_directory_with_no_config_toml() -> Result<()> {
+    let temp = TempDir::new()?;
+    let root = temp.path().join("musicindex-live-publisher");
+    fs::create_dir_all(root.join("c"))?;
+    let watch_dir = temp.path().join("watch");
+    let token = write_token(temp.path(), "default.token", "secret-token")?;
+    let config_a = write_instance_config(&root, "a", &config_text(&watch_dir, &token, None))?;
+
+    add_target_to_config(&config_a, &target_edit("aux", "event-x", &token), false)?;
+
+    let config = load_config(&config_a, ConfigOverrides::default())?;
+    assert_eq!(config.targets.len(), 2);
+    Ok(())
+}
+
+#[test]
+fn target_add_at_a_path_with_no_instance_layout_skips_the_check() -> Result<()> {
+    let temp = TempDir::new()?;
+    // `temp.path()` is not named `musicindex-live-publisher`, so neither
+    // `config_a` below nor this sibling has an instance layout.
+    write_instance_config(temp.path(), "b", &other_instance_text("event-x"))?;
+    let watch_dir = temp.path().join("watch");
+    let token = write_token(temp.path(), "default.token", "secret-token")?;
+    let config_a = write_config(temp.path(), &config_text(&watch_dir, &token, None))?;
+
+    add_target_to_config(&config_a, &target_edit("aux", "event-x", &token), false)?;
+
+    let config = load_config(&config_a, ConfigOverrides::default())?;
+    assert_eq!(config.targets.len(), 2);
+    Ok(())
+}
+
+#[test]
+fn startup_exits_with_an_error_naming_both_instances_when_a_different_instance_holds_the_event()
+-> Result<()> {
+    let temp = TempDir::new()?;
+    let root = temp.path().join("musicindex-live-publisher");
+    write_instance_config(&root, "b", &other_instance_text("event-x"))?;
+    let watch_dir = temp.path().join("watch");
+    let token = write_token(temp.path(), "default.token", "secret-token")?;
+    let text = config_text(&watch_dir, &token, None).replace("event-default", "event-x");
+    let config_a = write_instance_config(&root, "a", &text)?;
+
+    let output = publisher_command()
+        .arg("--dry-run")
+        .arg("--config")
+        .arg(&config_a)
+        .output()?;
+
+    assert!(
+        !output.status.success(),
+        "startup must exit with an error when a different instance holds the event"
+    );
+    let stderr = String::from_utf8(output.stderr)?;
+    assert!(stderr.contains("ADR 0016"), "{stderr}");
+    assert!(stderr.contains("belongs to instance b"), "{stderr}");
+    assert!(stderr.contains("Instance a cannot use it"), "{stderr}");
     Ok(())
 }

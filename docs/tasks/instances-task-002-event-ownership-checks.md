@@ -1,6 +1,6 @@
 # Instances Task 002: One Instance For Each Event
 
-Status: Ready - 2026-10-18.
+Status: Implemented - 2026-10-18.
 
 Every criterion is mechanical.
 
@@ -165,3 +165,25 @@ At the end, report:
 3. behavior changed
 4. deviations from task
 5. unresolved concerns
+
+## Review Result
+
+Reviewed 2026-10-18. The full gate passes with 512 tests in the workspace.
+Task 001 ended with 503.
+
+- The layout rule, the order by name, the comparison and the error agree
+  with §Constraints. `target add` runs the check before it reads its own
+  file, so a refusal leaves the file unchanged. The startup check runs
+  directly after `load_config`.
+- The public function is `check_event_ownership`. The two callers use it.
+- The review found three defects and corrected them:
+  - A configuration of another instance that could not be read, for
+    example because of its permissions, was skipped with no warning. It now
+    gets the same warning as a file that does not parse. A missing file
+    still gives no warning.
+  - An instance directory that is a symbolic link was ignored. The check
+    now follows the link.
+  - The warning text had a semicolon. It now has two sentences.
+- No test covers a root directory that cannot be read. The check then
+  finds no other instance. That agrees with the rule that the error of a
+  different instance must not stop this instance.

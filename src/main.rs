@@ -11,7 +11,7 @@ use musicindex_live_publisher::{
     DISPLAY_FILE_NAME, DisplayEntry, DisplayState, DropEvent, DropEventKind, DropWatcher,
     LiveValuePayload, ProducerState, PublisherConfig, RedactedPublisherConfig, RelayClient,
     RelayPublisher, TargetConfigEdit, TargetConfigSummary, add_target_to_config,
-    list_config_targets, load_config, probe_producer, read_display_state,
+    check_event_ownership, list_config_targets, load_config, probe_producer, read_display_state,
     remove_target_from_config, show_config, write_token_file,
 };
 use notify::event::{CreateKind, ModifyKind, RemoveKind, RenameMode};
@@ -64,6 +64,15 @@ fn run_cli(cli: Cli) -> Result<()> {
             endpoint: cli.endpoint,
         },
     )?;
+    // One instance for each event (ADR 0016). This runs before the config is
+    // logged, before the relay publisher starts, and before the drop
+    // directory is watched.
+    let event_ids: Vec<String> = config
+        .targets
+        .iter()
+        .map(|target| target.event_id.clone())
+        .collect();
+    check_event_ownership(&config_path, &event_ids)?;
     tracing::info!(
         config = %config_path.display(),
         watch_dir = %config.watch_dir.display(),

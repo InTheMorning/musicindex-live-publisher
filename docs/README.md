@@ -259,9 +259,9 @@ Packets for the instances plan. ADR 0016 governs them. Each packet can ship
 by itself.
 
 - [001 — The producer lock wait limit](tasks/instances-task-001-producer-lock-wait.md)
-  — Ready - 2026-10-18
+  — Implemented - 2026-10-18
 - [002 — One instance for each event](tasks/instances-task-002-event-ownership-checks.md)
-  — Ready - 2026-10-18
+  — Implemented - 2026-10-18
 
 ## Reviews
 
@@ -278,7 +278,8 @@ by itself.
 - [Track reporting review checklist](reviews/track-reporting-review-checklist.md)
   — the named artifact for the `Implemented` status of ADR 0014
 - [Display album review checklist](reviews/display-album-review-checklist.md) — open
-- [Instances review checklist](reviews/instances-review-checklist.md) — open
+- [Instances review checklist](reviews/instances-review-checklist.md) — the
+  named artifact for the `Implemented` status of ADR 0016
 
 ## Runbooks
 

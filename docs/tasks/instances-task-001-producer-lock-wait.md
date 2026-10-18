@@ -1,6 +1,6 @@
 # Instances Task 001: The Producer Lock Wait Limit
 
-Status: Ready - 2026-10-18.
+Status: Implemented - 2026-10-18.
 
 Every criterion is mechanical.
 
@@ -129,3 +129,15 @@ At the end, report:
 3. behavior changed
 4. deviations from task
 5. unresolved concerns
+
+## Review Result
+
+Reviewed 2026-10-18. The full gate passes with 503 tests in the workspace.
+
+- The loop, the error and the doc comments agree with §Constraints. The
+  error names ADR 0016, the drop directory and the limit. It does not say
+  that the lock file is stale.
+- The test of the shared lock takes the lock before the second thread
+  starts. So `acquire_within` must wait, and the test proves the wait.
+- The review corrected one doc comment. It cited ADR 0016 §Risk Areas,
+  which does not exist. It now cites §The Producer Lock, rule 4.

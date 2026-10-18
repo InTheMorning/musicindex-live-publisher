@@ -1,9 +1,13 @@
 # ADR 0016: Instances, Events And The Producer Lock
 
-Status: Accepted
+Status: Implemented
 Date: 2026-10-18
 
-Accepted 2026-10-18 by the operator. No implementation exists.
+Implemented 2026-10-18: packets 001 and 002 of
+`docs/plans/instances-and-producer-lock.md`. The named artifact is
+`docs/reviews/instances-review-checklist.md`, which has no open item.
+
+Accepted 2026-10-18 by the operator.
 
 Class: durable. These are ownership and liveness rules.
 

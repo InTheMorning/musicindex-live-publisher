@@ -1,6 +1,6 @@
 # Instances, Events And The Producer Lock: Phase Plan
 
-Status: Ready 2026-10-18. This plan does not make rules. ADR 0016 owns them.
+Status: Implemented 2026-10-18. The review checklist has no open item. This plan does not make rules. ADR 0016 owns them.
 The operator accepted ADR 0016 on 2026-10-18.
 
 ## Goal

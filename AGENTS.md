@@ -71,14 +71,15 @@ packet.
     track, it writes a file with an empty `value_routes`.
   - The review is `docs/reviews/track-reporting-review-checklist.md`, with no
     open item.
-- ADR 0015 has the status `Proposed`, and no implementation exists. ADR 0016
-  has the status `Accepted`. Its plan is
-  `docs/plans/instances-and-producer-lock.md`, with two packets. No
-  implementation exists.
-  - ADR 0015: `v4vmm` starts a talk break or a live set through `segment`
-    commands. It needs a `v4vmm` ADR before acceptance.
-  - ADR 0016: one instance for each show and for each event, and the rules of
-    the producer lock.
+- ADR 0016 has the status `Implemented`. The review is
+  `docs/reviews/instances-review-checklist.md`, with no open item.
+  - A producer waits at most 2 seconds for its lock, then exits with an
+    error.
+  - `target add` and the startup of the publisher refuse an event that a
+    different instance on the same host holds.
+- ADR 0015 has the status `Proposed`, and no implementation exists. In it,
+  `v4vmm` starts a talk break or a live set through `segment` commands. It
+  needs a `v4vmm` ADR before acceptance.
 - This item needs a new ADR before work starts: a track identity source that
   is earlier than the Mixxx history row.
 

@@ -413,6 +413,25 @@ The package installs `musicindex-live-publisher@.service` for this instance
 layout. The future producer must write its drop file into that instance's watch
 directory.
 
+Each drop directory has one producer (ADR 0016). The producer waits at most
+2 seconds for its lock, `.producer.lock`, in the drop directory. If a
+different producer holds the lock after 2 seconds, the producer stops with an
+error that names ADR 0016 and the drop directory. Stop the other producer,
+or give the new producer its own instance and drop directory.
+
+One instance owns each event (ADR 0016). `target add` refuses an `event_id`
+that a different instance holds. The error names the other instance and
+this instance.
+
+At startup, the publisher reads the configuration files of the other
+instances under the same root. If a different instance holds one of its
+events, the publisher exits with an error. That error also names the two
+instances.
+
+The two checks read configuration files only. They keep no state, so a
+restart gives the same answer. These checks cover one host only. On two
+hosts, only the custody of the broadcaster token stops a second writer.
+
 ## Publisher CLI
 
 Run mode:
