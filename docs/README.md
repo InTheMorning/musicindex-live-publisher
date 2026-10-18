@@ -68,7 +68,7 @@ the next priority. Confirm that logging works before the show.
   — Accepted. `display.json` version 3 with the album of the history row.
   The publisher adds `album` to the display state (relay ADR 0006)
 - [ADR 0014: One assembler, and each producer reports each track](adr/0014-one-assembler-and-track-reporting.md)
-  — Accepted, not implemented. Only this repository assembles and publishes
+  — Accepted. Packets done, manual checks open. Only this repository assembles and publishes
   blocks. Drop file version 3: each producer reports each track that plays, payable or not
 - [ADR 0015: Live segments from v4vmm](adr/0015-live-segments-from-v4vmm.md)
   — Proposed. `v4vmm` starts a talk break or a live set through `segment`
@@ -112,7 +112,7 @@ the next priority. Confirm that logging works before the show.
 - [Relay applies the stream delay plan](plans/relay-applies-stream-delay.md)
   — Ready. Two packets for ADR 0011, in one release, after relay ADR 0004
 - [Each producer reports each track plan](plans/track-reporting.md)
-  — Ready. Two packets for ADR 0014, in one release
+  — Packets done. Two packets for ADR 0014, in one release
 
 ## Tasks
 
@@ -250,9 +250,9 @@ Packets for the track reporting plan. ADR 0014 governs them. Ship both in one
 release.
 
 - [001 — The drop file version 3, history-only mode](tasks/track-reporting-task-001-dropfile-v3-history-only.md)
-  — Ready - 2026-10-18
+  — Implemented - 2026-10-18
 - [002 — The non-payable file in the connector mode](tasks/track-reporting-task-002-connector-mode.md)
-  — Ready - 2026-10-18
+  — Implemented - 2026-10-18
 
 ## Reviews
 

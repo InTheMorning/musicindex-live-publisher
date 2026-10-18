@@ -47,7 +47,7 @@ fn run_once(db_path: &Path, txt_file: &Path, metadata_file: &Path, v4v_root: &Pa
 }
 
 #[test]
-fn lifecycle_toggles_metadata_presence_for_v4v_and_non_v4v_tracks() -> Result<()> {
+fn lifecycle_drop_file_stays_present_for_v4v_and_non_v4v_tracks() -> Result<()> {
     let temp = TempDir::new()?;
     let v4v_root = temp.path().join("V4Vmusic");
     let other_root = temp.path().join("OtherMusic");
@@ -74,7 +74,13 @@ fn lifecycle_toggles_metadata_presence_for_v4v_and_non_v4v_tracks() -> Result<()
     db.append_history_row_with_metadata(Some("Plain Artist"), Some("Plain Title"), None, &non_v4v)?;
     run_once(db.path(), &txt_file, &metadata_file, &v4v_root)?;
     assert_eq!(fs::read_to_string(&txt_file)?, "Plain Artist - Plain Title");
-    assert!(!metadata_file.exists());
+    // ADR 0014: a non-V4V row is not payable, but it still plays. Its drop
+    // file stays present, with no MusicIndex section.
+    assert!(metadata_file.exists());
+    assert_eq!(
+        fs::read_to_string(&metadata_file)?,
+        "Plain Artist - Plain Title\n\n"
+    );
 
     db.append_history_row_with_metadata(
         Some("Next Artist"),
@@ -134,7 +140,7 @@ fn lifecycle_two_plays_of_one_track_give_two_play_ids() -> Result<()> {
     db.append_history_row_with_metadata(Some("Artist"), Some("Title"), Some("Album"), &track)?;
     let second = read_json_drop_file(db.path(), &txt_file, &metadata_file, &v4v_root)?;
 
-    assert_eq!(first["schema"], "musicindex.nowplaying/2");
+    assert_eq!(first["schema"], "musicindex.nowplaying/3");
     assert_eq!(first["album"], "Album");
     assert_eq!(second["album"], "Album");
     let first_id = first["play_id"]
@@ -145,6 +151,78 @@ fn lifecycle_two_plays_of_one_track_give_two_play_ids() -> Result<()> {
         .ok_or_else(|| anyhow!("no play_id"))?;
     assert!(first_id.parse::<i64>().is_ok(), "{first_id}");
     assert_ne!(first_id, second_id);
+    Ok(())
+}
+
+#[test]
+fn lifecycle_non_v4v_track_with_musicindex_tags_gets_no_route() -> Result<()> {
+    // ADR 0014: the producer never takes a route from a non-V4V file. This
+    // stays true also when the file holds a MusicIndex tag. This file sits
+    // outside the V4V root, but it is a copy of the V4V fixture. So it
+    // carries the same `Track Guid` and `Value Routes` MusicIndex tags.
+    let temp = TempDir::new()?;
+    let v4v_root = temp.path().join("V4Vmusic");
+    let other_root = temp.path().join("OtherMusic");
+    fs::create_dir_all(&v4v_root)?;
+    fs::create_dir_all(&other_root)?;
+    let tagged_outside_v4v = other_root.join("tagged.mp3");
+    fs::copy(fixture("musicindex-tagged.mp3"), &tagged_outside_v4v)?;
+    let txt_file = temp.path().join("now-playing.txt");
+    let metadata_file = temp.path().join("metadata.json");
+    let mut db = SyntheticMixxxDb::new()?;
+
+    db.append_history_row_with_metadata(
+        Some("Outside Artist"),
+        Some("Outside Title"),
+        None,
+        &tagged_outside_v4v,
+    )?;
+    let drop_file = read_json_drop_file(db.path(), &txt_file, &metadata_file, &v4v_root)?;
+
+    assert_eq!(drop_file["schema"], "musicindex.nowplaying/3");
+    assert_eq!(drop_file["artist"], "Outside Artist");
+    assert_eq!(drop_file["title"], "Outside Title");
+    assert_eq!(drop_file["value_routes"], serde_json::json!([]));
+    assert!(drop_file["value_routes_source"].is_null());
+    assert!(drop_file["image"].is_null());
+    assert!(drop_file["feed_guid"].is_null());
+    assert!(drop_file["track_guid"].is_null());
+    assert!(metadata_file.exists());
+    Ok(())
+}
+
+#[test]
+fn lifecycle_v4v_track_with_unreadable_tags_gets_the_non_payable_file() -> Result<()> {
+    // ADR 0014: a V4V row whose tags the producer cannot read follows the
+    // non-V4V path. It is not payable.
+    let temp = TempDir::new()?;
+    let v4v_root = temp.path().join("V4Vmusic");
+    fs::create_dir_all(&v4v_root)?;
+    let corrupt = v4v_root.join("corrupt.mp3");
+    fs::write(&corrupt, b"not a real audio file")?;
+    let txt_file = temp.path().join("now-playing.txt");
+    let metadata_file = temp.path().join("metadata.json");
+    let mut db = SyntheticMixxxDb::new()?;
+
+    db.append_history_row_with_metadata(
+        Some("Corrupt Artist"),
+        Some("Corrupt Title"),
+        Some("Corrupt Album"),
+        &corrupt,
+    )?;
+    let drop_file = read_json_drop_file(db.path(), &txt_file, &metadata_file, &v4v_root)?;
+
+    assert_eq!(drop_file["schema"], "musicindex.nowplaying/3");
+    assert_eq!(drop_file["artist"], "Corrupt Artist");
+    assert_eq!(drop_file["title"], "Corrupt Title");
+    assert_eq!(drop_file["album"], "Corrupt Album");
+    assert_eq!(drop_file["value_routes"], serde_json::json!([]));
+    assert!(drop_file["value_routes_source"].is_null());
+    assert!(drop_file["image"].is_null());
+    assert!(drop_file["feed_guid"].is_null());
+    assert!(drop_file["track_guid"].is_null());
+    assert!(drop_file["duration_secs"].is_null());
+    assert!(metadata_file.exists());
     Ok(())
 }
 
@@ -472,7 +550,16 @@ fn lifecycle_display_writes_the_track_and_its_embedded_image() -> Result<()> {
     let display = read_display(&display_dir)?;
     assert_eq!(display["track"]["artist"], "Other");
     assert_eq!(display["track"]["artwork"]["sha256"], sha256);
-    assert!(!metadata_file.exists());
+    // ADR 0014: a non-V4V row is not payable, but it still plays, so its
+    // drop file stays present. This file is outside the V4V root, but it
+    // holds the same MusicIndex tags as the V4V fixture above (including a
+    // route). The drop file must never carry a route from it.
+    assert!(metadata_file.exists());
+    let content = fs::read_to_string(&metadata_file)?;
+    assert!(
+        !content.contains("[MusicIndex]"),
+        "a non-V4V file must not carry a route into the drop file: {content}"
+    );
 
     // A track with no picture gives the `null` artwork.
     db.append_history_row_with_metadata(Some("Plain"), Some("Track"), None, &plain_track)?;
@@ -487,6 +574,7 @@ fn lifecycle_display_writes_the_track_and_its_embedded_image() -> Result<()> {
     let display = read_display(&display_dir)?;
     assert_eq!(display["track"]["artist"], "Plain");
     assert_eq!(display["track"]["artwork"], serde_json::Value::Null);
+    assert!(metadata_file.exists());
     Ok(())
 }
 

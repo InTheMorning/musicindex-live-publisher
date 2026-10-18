@@ -77,7 +77,7 @@ pub fn render_metadata_json_with_routes(
         .unwrap_or_default();
 
     Ok(serde_json::to_string_pretty(&DropFile {
-        schema: "musicindex.nowplaying/2",
+        schema: "musicindex.nowplaying/3",
         target,
         artist: display.artist,
         title: display.title,
@@ -253,7 +253,7 @@ mod tests {
                 "value_routes_source",
             ]
         );
-        assert_eq!(value["schema"], "musicindex.nowplaying/2");
+        assert_eq!(value["schema"], "musicindex.nowplaying/3");
         assert_eq!(value["target"], "stream-a");
         assert_eq!(value["duration_secs"], 187.326);
         assert_eq!(value["image"], serde_json::Value::Null);
@@ -282,7 +282,7 @@ mod tests {
         assert_eq!(value["target"], "default");
         assert_eq!(value["value_routes"], serde_json::json!([]));
         assert_eq!(value["value_routes_source"], serde_json::Value::Null);
-        assert_eq!(value["schema"], "musicindex.nowplaying/2");
+        assert_eq!(value["schema"], "musicindex.nowplaying/3");
         Ok(())
     }
 

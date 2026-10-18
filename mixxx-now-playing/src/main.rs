@@ -282,6 +282,12 @@ struct CurrentTrack {
     album: Option<String>,
     tags: mixxx_now_playing::tags::TrackTags,
     routes_source: ValueRoutesSource,
+    /// False for a non-V4V track, or a V4V track with tags the producer
+    /// could not read (ADR 0014). `write_current` then ignores `tags` and
+    /// writes an empty `value_routes`, so a MusicIndex tag of a non-V4V
+    /// file can never become a route. The display `play_id` ignores this
+    /// track too, as it did before ADR 0014.
+    payable: bool,
 }
 
 /// The artwork input of a history row for the display output.
@@ -482,7 +488,16 @@ impl<'a> Runtime<'a> {
                 ..
             } => {
                 let song_line = render_now_playing_line(&artist, &title, self.cli.strip_hyphens);
-                let play_id = self.state.current.as_ref().map(|current| current.hist_id);
+                // ADR 0014: `current` now also holds a non-payable track, so
+                // that `write_current` can render its drop file. The display
+                // pairing of ADR 0012 stays as it was: only a payable track
+                // gets a `play_id` here.
+                let play_id = self
+                    .state
+                    .current
+                    .as_ref()
+                    .filter(|current| current.payable)
+                    .map(|current| current.hist_id);
                 let track = ShownTrack {
                     artist: &artist,
                     title: &title,
@@ -554,9 +569,19 @@ impl<'a> Runtime<'a> {
         let Some(current) = self.state.current.as_ref() else {
             return Ok(());
         };
-        let tags = mixxx_now_playing::tags::TrackTags {
-            duration,
-            ..current.tags.clone()
+        // ADR 0014: a non-payable track never carries a route. This stays
+        // true also when `current.tags` holds a MusicIndex tag by mistake.
+        // Only `payable` decides what `tags` reaches the renderer.
+        let tags = if current.payable {
+            mixxx_now_playing::tags::TrackTags {
+                duration,
+                ..current.tags.clone()
+            }
+        } else {
+            mixxx_now_playing::tags::TrackTags {
+                duration,
+                ..Default::default()
+            }
         };
         let content = render_metadata_content(
             self.cli,
@@ -572,8 +597,21 @@ impl<'a> Runtime<'a> {
 
     fn process_track(&mut self, row: &TrackRow, now: Instant) -> Result<()> {
         if !is_v4v_track(&row.path, &self.config.v4v_root) {
+            // ADR 0014: a non-V4V row is not payable, but it still plays.
+            // The producer reads only its stream duration here. It never
+            // reads a MusicIndex tag of this file. So it can never take a
+            // route from it, also when the file holds one.
+            let duration = read_tags(&row.path).ok().and_then(|tags| tags.duration);
             self.state.clear();
-            return self.apply_row(Row::Other, row, ArtworkInput::File);
+            self.set_non_payable_current(row, duration);
+            return self.apply_row(
+                Row::Other {
+                    header_duration: duration,
+                    expiry: self.make_expiry(now, duration),
+                },
+                row,
+                ArtworkInput::File,
+            );
         }
 
         // With the display output on, the one tag read of the row also
@@ -592,8 +630,18 @@ impl<'a> Runtime<'a> {
                         row.path.display()
                     );
                 }
+                // ADR 0014: a V4V row with tags the producer cannot read
+                // follows the non-V4V path. It is not payable.
                 self.state.clear();
-                return self.apply_row(Row::Other, row, ArtworkInput::Unreadable);
+                self.set_non_payable_current(row, None);
+                return self.apply_row(
+                    Row::Other {
+                        header_duration: None,
+                        expiry: self.make_expiry(now, None),
+                    },
+                    row,
+                    ArtworkInput::Unreadable,
+                );
             }
         };
         let artwork = ArtworkInput::V4v {
@@ -602,15 +650,7 @@ impl<'a> Runtime<'a> {
         };
         // The expiry keeps its source in both modes. The `Coordinator`
         // enforces it only in the history-only mode.
-        let expiry = match self.cli.expiry {
-            cli::ExpiryMode::Duration => Expiry::duration(
-                now,
-                tags.duration,
-                self.cli.expiry_slack,
-                self.cli.expiry_max,
-            ),
-            cli::ExpiryMode::None => Expiry::none(),
-        };
+        let expiry = self.make_expiry(now, tags.duration);
         let header_duration = tags.duration;
         self.state.current = Some(CurrentTrack {
             hist_id: row.hist_id,
@@ -619,6 +659,7 @@ impl<'a> Runtime<'a> {
             album: row.album.clone(),
             tags,
             routes_source: ValueRoutesSource::EmbeddedId3,
+            payable: true,
         });
         self.apply_row(
             Row::V4v {
@@ -636,6 +677,34 @@ impl<'a> Runtime<'a> {
             }
         }
         Ok(())
+    }
+
+    /// Gives the ADR 0005 expiry for a row, by `--expiry`.
+    fn make_expiry(&self, now: Instant, duration: Option<Duration>) -> Expiry {
+        match self.cli.expiry {
+            cli::ExpiryMode::Duration => {
+                Expiry::duration(now, duration, self.cli.expiry_slack, self.cli.expiry_max)
+            }
+            cli::ExpiryMode::None => Expiry::none(),
+        }
+    }
+
+    /// Stores the state of a row that is not payable: a non-V4V track, or a
+    /// V4V track with tags the producer could not read (ADR 0014). Its tags
+    /// are always empty, so `write_current` can never take a route from it.
+    fn set_non_payable_current(&mut self, row: &TrackRow, duration: Option<Duration>) {
+        self.state.current = Some(CurrentTrack {
+            hist_id: row.hist_id,
+            artist: row.artist.clone(),
+            title: row.title.clone(),
+            album: row.album.clone(),
+            tags: mixxx_now_playing::tags::TrackTags {
+                duration,
+                ..Default::default()
+            },
+            routes_source: ValueRoutesSource::EmbeddedId3,
+            payable: false,
+        });
     }
 
     fn apply_completed_value_routes(&mut self) -> Result<()> {

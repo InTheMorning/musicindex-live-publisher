@@ -1,7 +1,7 @@
 # Track Reporting Task 002: The Non-Payable File In The Connector Mode
 
-Status: Ready - 2026-10-18. It needs task 001. Ship it in one release with
-task 001.
+Status: Implemented - 2026-10-18. It needs task 001. Ship it in one release
+with task 001.
 
 Every criterion is mechanical.
 
@@ -58,8 +58,10 @@ different track.
 
 ## Implementation Steps
 
-1. Remove the early return for `Row::Other` in `Coordinator::row`. Give it
-   the link and the file duration of a V4V row.
+1. Task 001 gave `Row::Other` a duration and an expiry, and added a guard in
+   `Coordinator::row`: `if self.mode != KnownMode::HistoryOnly` gives
+   `RemoveFile`. Remove that guard. Give `Row::Other` the link and the file
+   duration of a V4V row.
 2. Keep the payable kind of the row in `CurrentRow`, if `write_current`
    needs it.
 3. Change the two non-V4V tests, and add the tests of §Acceptance Criteria.
@@ -133,3 +135,28 @@ At the end, report:
 3. behavior changed
 4. deviations from task
 5. unresolved concerns
+
+## Review Result
+
+Reviewed 2026-10-18. The full gate passes with 500 tests. Only
+`connector/link.rs` changed.
+
+- `Coordinator::row` gives `Row::V4v` and `Row::Other` one path. A row that
+  is not payable thus also uses the relink after an outage of ADR 0006.
+- No test of a V4V row changed. Three tests of a non-V4V row changed their
+  result and their name:
+  - `non_v4v_row_ends_the_link` became
+    `non_v4v_row_after_a_v4v_row_on_the_same_deck_writes_with_no_removal`.
+  - `non_v4v_row_with_playing_loudest_deck_gives_display_track_and_no_payment_write`
+    became
+    `non_v4v_row_with_playing_loudest_deck_gives_display_track_and_a_payment_write`.
+  - `non_v4v_row_after_a_v4v_row_removes_the_file_and_shows_the_new_track`
+    became `non_v4v_row_after_a_v4v_row_writes_and_shows_the_new_track`.
+- No new test was added. The changed tests assert each criterion: the write,
+  the stop, the resume after 2 seconds, the new load, no link, and the change
+  from a payable to a non-payable file.
+- The lifecycle harness runs only the history-only mode. The content of the
+  non-payable file does not depend on the mode, and the tests of task 001
+  prove it.
+- The review changed the comment in `Coordinator::row` to state the present
+  rule only.

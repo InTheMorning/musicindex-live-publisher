@@ -58,8 +58,15 @@ pub enum Row {
         expiry: Expiry,
     },
     /// A track that is not V4V, or a V4V track with tags that the producer
-    /// could not read.
-    Other,
+    /// could not read. It is not payable (ADR 0014).
+    Other {
+        /// The duration from the stream headers. A non-V4V file uses this
+        /// source too.
+        header_duration: Option<Duration>,
+        /// The ADR 0005 expiry, which starts at the time of the row. The
+        /// history-only mode uses it the same way as for `V4v`.
+        expiry: Expiry,
+    },
 }
 
 /// The artist and the title of a history row, as Mixxx gives them.
@@ -366,14 +373,18 @@ impl Coordinator {
     /// Applies the payment link of a new history row.
     fn row(&mut self, row: Row) -> Vec<Action> {
         let skip = std::mem::take(&mut self.skip_next_row);
-        let Row::V4v {
-            header_duration,
-            expiry,
-        } = row
-        else {
-            self.row = None;
-            self.present = false;
-            return vec![Action::RemoveFile];
+        // ADR 0014: a row that is not payable (`Row::Other`) gets the link,
+        // the file duration and the expiry of a V4V row, in each mode. Only
+        // the content of its drop file is different.
+        let (header_duration, expiry) = match row {
+            Row::V4v {
+                header_duration,
+                expiry,
+            }
+            | Row::Other {
+                header_duration,
+                expiry,
+            } => (header_duration, expiry),
         };
 
         let (link, file_duration) = match self.mode {
@@ -731,6 +742,25 @@ mod tests {
         }
     }
 
+    /// A non-V4V row with a known stream duration (ADR 0014).
+    fn other_track_row(time: Instant, header_secs: u64) -> Row {
+        let header = Duration::from_secs(header_secs);
+        Row::Other {
+            header_duration: Some(header),
+            expiry: Expiry::duration(time, Some(header), Duration::ZERO, MAX),
+        }
+    }
+
+    /// A non-V4V row with no known stream duration. The connector-mode
+    /// tests use this: that mode ignores the duration and the expiry of a
+    /// non-V4V row.
+    fn other_track_row_no_duration() -> Row {
+        Row::Other {
+            header_duration: None,
+            expiry: Expiry::none(),
+        }
+    }
+
     fn write(secs: u64) -> Action {
         Action::WriteFile {
             duration: Some(Duration::from_secs(secs)),
@@ -978,17 +1008,29 @@ mod tests {
         assert!(coordinator.file_present());
     }
 
+    /// ADR 0014: a non-V4V row links to the loudest playing deck as a V4V
+    /// row does. A V4V row followed by a non-V4V row on the same deck
+    /// switches the file from payable to non-payable, with no removal
+    /// between them (§Acceptance Criteria).
     #[test]
-    fn non_v4v_row_ends_the_link() {
+    fn non_v4v_row_after_a_v4v_row_on_the_same_deck_writes_with_no_removal() {
         let start = Instant::now();
         let mut coordinator = deck_2_plays(start);
-        coordinator.row(v4v_row(start, 200));
-        assert_eq!(coordinator.row(Row::Other), vec![Action::RemoveFile]);
+        assert_eq!(coordinator.row(v4v_row(start, 200)), vec![write(200)]);
+        assert_eq!(
+            coordinator.row(other_track_row_no_duration()),
+            vec![write(200)]
+        );
+        assert!(coordinator.file_present());
 
+        // The link still works: a stop removes the file, and a resume
+        // writes it again after the settle time.
         set_play(&mut coordinator, 2, false, start);
+        assert_eq!(coordinator.update(start), vec![Action::RemoveFile]);
         set_play(&mut coordinator, 2, true, start);
         assert_eq!(coordinator.update(start), vec![]);
-        assert_eq!(coordinator.api_result(), None);
+        assert_eq!(coordinator.update(at(start, 2000)), vec![write(200)]);
+        assert_eq!(coordinator.api_result(), Some(write(200)));
     }
 
     #[test]
@@ -1156,7 +1198,47 @@ mod tests {
         let start = Instant::now();
         let mut coordinator = history_only(start);
         assert_eq!(coordinator.row(v4v_row(start, 187)), vec![write(187)]);
-        assert_eq!(coordinator.row(Row::Other), vec![Action::RemoveFile]);
+        // ADR 0014: a non-V4V row writes too, with its own stream duration.
+        assert_eq!(
+            coordinator.row(other_track_row(start, 150)),
+            vec![write(150)]
+        );
+    }
+
+    #[test]
+    fn history_only_non_v4v_row_writes_and_expires_like_a_v4v_row() {
+        let start = Instant::now();
+        let mut coordinator = history_only(start);
+
+        assert_eq!(coordinator.row(other_track_row(start, 10)), vec![write(10)]);
+        assert!(coordinator.file_present());
+
+        assert_eq!(coordinator.update(at(start, 9999)), vec![]);
+        assert_eq!(
+            coordinator.update(at(start, 10_000)),
+            vec![Action::RemoveFile]
+        );
+        assert!(!coordinator.file_present());
+    }
+
+    #[test]
+    fn history_only_non_v4v_row_with_no_duration_uses_the_expiry_maximum() {
+        let start = Instant::now();
+        let mut coordinator = history_only(start);
+
+        assert_eq!(
+            coordinator.row(Row::Other {
+                header_duration: None,
+                expiry: Expiry::duration(start, None, Duration::ZERO, MAX),
+            }),
+            vec![Action::WriteFile { duration: None }]
+        );
+
+        assert_eq!(coordinator.update(at(start, 599_999)), vec![]);
+        assert_eq!(
+            coordinator.update(at(start, 600_000)),
+            vec![Action::RemoveFile]
+        );
     }
 
     #[test]
@@ -1544,7 +1626,7 @@ mod tests {
     }
 
     fn other_row(coordinator: &mut Coordinator, name: &str) -> Vec<Action> {
-        coordinator.history_row(Row::Other, track(name))
+        coordinator.history_row(other_track_row_no_duration(), track(name))
     }
 
     fn v4v_display_row(
@@ -1556,11 +1638,13 @@ mod tests {
         coordinator.history_row(v4v_row(time, header_secs), track(name))
     }
 
-    /// Deck 2 plays and is display-linked to the non-V4V row "A".
+    /// Deck 2 plays and is linked to the non-V4V row "A", for its payment
+    /// link (ADR 0014) and its display link.
     fn other_linked_deck_2(start: Instant) -> Coordinator {
         let mut coordinator = deck_2_plays(start);
-        assert_eq!(other_row(&mut coordinator, "A"), vec![Action::RemoveFile]);
+        assert_eq!(other_row(&mut coordinator, "A"), vec![write(200)]);
         assert_eq!(coordinator.display_state(), shown("A", false));
+        assert!(coordinator.file_present());
         coordinator
     }
 
@@ -1572,15 +1656,19 @@ mod tests {
         assert_eq!(coordinator.take_display_change(), None);
     }
 
+    /// §Acceptance Criteria: a non-V4V row with a playing loudest deck gives
+    /// `Action::WriteFile`, not `Action::RemoveFile` (ADR 0014, task 002).
+    /// Renamed from
+    /// `non_v4v_row_with_playing_loudest_deck_gives_display_track_and_no_payment_write`.
     #[test]
-    fn non_v4v_row_with_playing_loudest_deck_gives_display_track_and_no_payment_write() {
+    fn non_v4v_row_with_playing_loudest_deck_gives_display_track_and_a_payment_write() {
         let start = Instant::now();
         let mut coordinator = deck_2_plays(start);
         let actions = other_row(&mut coordinator, "A");
-        assert_eq!(actions, vec![Action::RemoveFile]);
-        assert!(!has_write(&actions));
-        assert!(!coordinator.file_present());
-        assert_eq!(coordinator.api_result(), None);
+        assert_eq!(actions, vec![write(200)]);
+        assert!(has_write(&actions));
+        assert!(coordinator.file_present());
+        assert_eq!(coordinator.api_result(), Some(write(200)));
         assert_eq!(coordinator.take_display_change(), Some(shown("A", false)));
         assert_eq!(coordinator.take_display_change(), None);
     }
@@ -1591,8 +1679,11 @@ mod tests {
         let mut coordinator = deck_2_plays(start);
         set_loudest(&mut coordinator, 0, start);
         coordinator.update(start);
-        other_row(&mut coordinator, "A");
+        // §Acceptance Criteria: a non-V4V row with no playing loudest deck
+        // gives `Action::RemoveFile`.
+        assert_eq!(other_row(&mut coordinator, "A"), vec![Action::RemoveFile]);
         assert_eq!(coordinator.display_state(), DisplayState::Null);
+        assert!(!coordinator.file_present());
     }
 
     #[test]
@@ -1602,35 +1693,44 @@ mod tests {
         set_play(&mut coordinator, 2, false, start);
         set_loudest(&mut coordinator, 2, start);
         coordinator.update(start);
-        other_row(&mut coordinator, "A");
+        // §Acceptance Criteria: a non-V4V row with no playing loudest deck
+        // gives `Action::RemoveFile`.
+        assert_eq!(other_row(&mut coordinator, "A"), vec![Action::RemoveFile]);
         assert_eq!(coordinator.display_state(), DisplayState::Null);
+        assert!(!coordinator.file_present());
     }
 
+    /// ADR 0014: the non-V4V row has a payment link now, so its stop and
+    /// its settled resume also give the `Action` of a V4V row
+    /// (§Acceptance Criteria).
     #[test]
     fn non_v4v_linked_deck_stop_gives_null_and_start_gives_the_track_again() {
         let start = Instant::now();
         let mut coordinator = other_linked_deck_2(start);
 
         set_play(&mut coordinator, 2, false, start);
-        assert_eq!(coordinator.update(start), vec![]);
+        assert_eq!(coordinator.update(start), vec![Action::RemoveFile]);
         assert_eq!(coordinator.display_state(), DisplayState::Null);
+        assert!(!coordinator.file_present());
 
         set_play(&mut coordinator, 2, true, start);
         assert_eq!(coordinator.update(start), vec![]);
         assert_eq!(coordinator.display_state(), DisplayState::Null);
-        assert_eq!(coordinator.update(at(start, 2000)), vec![]);
+        assert_eq!(coordinator.update(at(start, 2000)), vec![write(200)]);
         assert_eq!(coordinator.display_state(), shown("A", false));
-        assert!(!coordinator.file_present());
+        assert!(coordinator.file_present());
     }
 
-    /// A new load on the display-linked deck gives `Null`. A start of that
-    /// deck after the load does not show the track again.
+    /// A new load on the display-linked deck gives `Null`, and ends the
+    /// payment link too (ADR 0014), with `Action::RemoveFile`. A start of
+    /// that deck after the load does not show the track again.
     fn assert_new_load_ends_the_display_link(load: impl Fn(&mut Coordinator, Instant)) {
         let start = Instant::now();
         let mut coordinator = other_linked_deck_2(start);
         load(&mut coordinator, start);
-        assert_eq!(coordinator.update(start), vec![]);
+        assert_eq!(coordinator.update(start), vec![Action::RemoveFile]);
         assert_eq!(coordinator.display_state(), DisplayState::Null);
+        assert!(!coordinator.file_present());
 
         set_play(&mut coordinator, 2, false, start);
         set_play(&mut coordinator, 2, true, start);
@@ -1721,15 +1821,21 @@ mod tests {
         heartbeat_returns(&mut coordinator, at(start, 5000));
         assert_eq!(coordinator.display_state(), DisplayState::Null);
 
+        // ADR 0014: the payment link relinks too, with the deck duration.
         assert_eq!(
             complete_state(&mut coordinator, 2, true, SAMPLES, at(start, 5100)),
-            vec![]
+            vec![write(200)]
         );
         assert_eq!(coordinator.display_state(), shown("A", false));
+        assert!(coordinator.file_present());
 
-        // The display link works again: a stop gives `Null`.
+        // The display link works again: a stop gives `Null`, and the
+        // payment link removes the file.
         set_play(&mut coordinator, 2, false, at(start, 5200));
-        coordinator.update(at(start, 5200));
+        assert_eq!(
+            coordinator.update(at(start, 5200)),
+            vec![Action::RemoveFile]
+        );
         assert_eq!(coordinator.display_state(), DisplayState::Null);
     }
 
@@ -1854,12 +1960,15 @@ mod tests {
     }
 
     #[test]
-    fn non_v4v_row_after_a_v4v_row_removes_the_file_and_shows_the_new_track() {
+    fn non_v4v_row_after_a_v4v_row_writes_and_shows_the_new_track() {
         let start = Instant::now();
         let mut coordinator = deck_2_plays(start);
         v4v_display_row(&mut coordinator, "V", start, 200);
-        assert_eq!(other_row(&mut coordinator, "A"), vec![Action::RemoveFile]);
+        // ADR 0014: the non-V4V row keeps the payment link to the same
+        // deck, so the file switches with no removal.
+        assert_eq!(other_row(&mut coordinator, "A"), vec![write(200)]);
         assert_eq!(coordinator.display_state(), shown("A", false));
+        assert!(coordinator.file_present());
     }
 
     #[test]
@@ -1879,7 +1988,11 @@ mod tests {
         );
         assert_eq!(coordinator.display_state(), shown("V", true));
 
-        assert_eq!(other_row(&mut coordinator, "A"), vec![Action::RemoveFile]);
+        // ADR 0014: the next row, payable or not, replaces the drop file.
+        assert_eq!(
+            other_row(&mut coordinator, "A"),
+            vec![Action::WriteFile { duration: None }]
+        );
         assert_eq!(coordinator.display_state(), shown("A", false));
     }
 

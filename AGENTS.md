@@ -67,10 +67,11 @@ packet.
   - Only this repository assembles and publishes a block or a display state.
     `v4vmm` and each producer do not make a block.
   - Each producer reports each track that plays, payable or not, through
-    version 3 of the drop file. Until the implementation, the producer
-    writes version 2 and removes the drop file for a non-V4V track.
-  - The plan is `docs/plans/track-reporting.md`, with two packets. No packet
-    has started.
+    version 3 of the drop file. The producer writes version 3. For a non-V4V
+    track, it writes a file with an empty `value_routes`.
+  - Packets 001 and 002 of `docs/plans/track-reporting.md` are done. The
+    manual checks of `docs/reviews/track-reporting-review-checklist.md` are
+    open.
 - ADRs 0015 and 0016 have the status `Proposed`. No implementation exists.
   - ADR 0015: `v4vmm` starts a talk break or a live set through `segment`
     commands. It needs a `v4vmm` ADR before acceptance.

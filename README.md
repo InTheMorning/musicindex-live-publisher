@@ -3,15 +3,19 @@
 This repository contains two Rust binaries:
 
 - `musicindex-live-publisher` watches a local now-playing drop directory and publishes
-  `musicindex.nowplaying/2` JSON files to a MusicIndex live relay.
+  `musicindex.nowplaying/3` JSON files to a MusicIndex live relay.
   It transforms them into direct Podcasting 2.0 live value payloads.
 - `mixxx-now-playing` watches the Mixxx history database, writes icecast-friendly
-  text output (for use with eg. Butt), and can write publisher drop files for V4V tracks.
+  text output (for use with eg. Butt), and writes a publisher drop file for each
+  track that plays, V4V or not (ADR 0014).
 
 The publisher is a headless service. Producers write drop files by
 temp-file-plus-rename. A drop file that exists means a track plays. A producer
-removes the file when no track plays. The service then publishes the dead
-block (ADR 0005), so a boost stops going to the last track.
+removes the file when no track plays. A file that exists with an empty
+`value_routes` means that the track is not payable, for example a non-V4V
+track. For an absent file, and for a track that is not payable, the service
+publishes the dead block (ADR 0005). So a boost stops going to the last
+track.
 
 The dead block is a constant. No configuration changes it.
 

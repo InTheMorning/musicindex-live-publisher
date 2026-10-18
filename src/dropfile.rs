@@ -4,12 +4,18 @@ use anyhow::{Context, Result, anyhow};
 use serde::{Deserialize, Serialize};
 
 /// Supported now-playing drop-file schema version.
-pub const SCHEMA_VERSION: &str = "musicindex.nowplaying/2";
+pub const SCHEMA_VERSION: &str = "musicindex.nowplaying/3";
 
 /// A MusicIndex now-playing drop file.
 ///
-/// Producers write this JSON shape into the watched drop directory. Presence of
-/// a file means the track is playing; removing it means the track stopped.
+/// Producers write this JSON shape into the watched drop directory. ADR 0014
+/// of `musicindex-live-publisher` owns the meaning of presence, for version 3:
+///
+/// - Present, with routes in `value_routes`: a payable track plays.
+/// - Present, with an empty `value_routes`: a track plays that is not
+///   payable, for example a non-V4V track, or a V4V track with no readable
+///   routes.
+/// - Absent: no track plays.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DropFile {
     pub schema: String,
@@ -43,14 +49,15 @@ pub struct PaymentRoute {
 
 /// Parses a now-playing drop file.
 ///
-/// Unknown schema versions are ignored with `Ok(None)`. Valid version 2 files
-/// are returned as `Ok(Some(_))`. Version 1 files are ignored with `Ok(None)`
-/// and a warning.
+/// Unknown schema versions are ignored with `Ok(None)`, with a warning. This
+/// covers version 2 (ADR 0014: no transition period is necessary). Valid
+/// version 3 files are returned as `Ok(Some(_))`. Version 1 files are
+/// ignored with `Ok(None)` and a warning too.
 ///
 /// # Errors
 ///
 /// Returns an error when the bytes are not valid JSON, the `schema` field is
-/// missing or not a string, or a version 2 file does not match the contract.
+/// missing or not a string, or a version 3 file does not match the contract.
 pub fn parse(bytes: &[u8]) -> Result<Option<DropFile>> {
     let value: serde_json::Value =
         serde_json::from_slice(bytes).context("failed to parse drop file JSON")?;
@@ -72,7 +79,7 @@ pub fn parse(bytes: &[u8]) -> Result<Option<DropFile>> {
 
     serde_json::from_value(value)
         .map(Some)
-        .context("drop file does not match musicindex.nowplaying/2")
+        .context("drop file does not match musicindex.nowplaying/3")
 }
 
 #[cfg(test)]
@@ -81,7 +88,7 @@ mod tests {
 
     fn valid_dropfile_json() -> &'static str {
         r#"{
-          "schema": "musicindex.nowplaying/2",
+          "schema": "musicindex.nowplaying/3",
           "target": "default",
           "artist": "Alice",
           "title": "Some Track",
@@ -120,7 +127,7 @@ mod tests {
     #[test]
     fn dropfile_unknown_schema_returns_none() -> Result<()> {
         let input =
-            valid_dropfile_json().replace("musicindex.nowplaying/2", "musicindex.nowplaying/3");
+            valid_dropfile_json().replace("musicindex.nowplaying/3", "musicindex.nowplaying/4");
 
         assert_eq!(parse(input.as_bytes())?, None);
         Ok(())
@@ -129,7 +136,18 @@ mod tests {
     #[test]
     fn dropfile_version_1_returns_none() -> Result<()> {
         let input =
-            valid_dropfile_json().replace("musicindex.nowplaying/2", "musicindex.nowplaying/1");
+            valid_dropfile_json().replace("musicindex.nowplaying/3", "musicindex.nowplaying/1");
+
+        assert_eq!(parse(input.as_bytes())?, None);
+        Ok(())
+    }
+
+    #[test]
+    fn dropfile_version_2_returns_none() -> Result<()> {
+        // ADR 0014: version 3 replaces version 2 at once. No transition
+        // period is necessary, because no one runs the chain in production.
+        let input =
+            valid_dropfile_json().replace("musicindex.nowplaying/3", "musicindex.nowplaying/2");
 
         assert_eq!(parse(input.as_bytes())?, None);
         Ok(())
@@ -145,7 +163,7 @@ mod tests {
     #[test]
     fn dropfile_missing_optional_fields_parse() -> Result<()> {
         let input = r#"{
-          "schema": "musicindex.nowplaying/2",
+          "schema": "musicindex.nowplaying/3",
           "target": "default",
           "artist": "Alice",
           "title": "Some Track",
@@ -189,6 +207,41 @@ mod tests {
         assert!(parsed.value_routes.is_empty());
         assert_eq!(parsed.album, Some("Test Album".to_string()));
         assert_eq!(parsed.play_id, Some("42".to_string()));
+        Ok(())
+    }
+
+    #[test]
+    fn dropfile_non_payable_shape_parses_with_no_image_or_guid() -> Result<()> {
+        // ADR 0014: a present file with an empty `value_routes` is a track
+        // that plays and is not payable. It never has an image or a guid.
+        let input = r#"{
+          "schema": "musicindex.nowplaying/3",
+          "target": "default",
+          "artist": "Alice",
+          "title": "Some Track",
+          "duration_secs": 187.326,
+          "image": null,
+          "feed_guid": null,
+          "track_guid": null,
+          "album": "Test Album",
+          "play_id": "42",
+          "value_routes": [],
+          "value_routes_source": null
+        }"#;
+
+        let parsed =
+            parse(input.as_bytes())?.ok_or_else(|| anyhow!("expected known schema to parse"))?;
+
+        assert_eq!(parsed.artist, "Alice");
+        assert_eq!(parsed.title, "Some Track");
+        assert_eq!(parsed.duration_secs, Some(187.326));
+        assert_eq!(parsed.album, Some("Test Album".to_string()));
+        assert_eq!(parsed.play_id, Some("42".to_string()));
+        assert_eq!(parsed.image, None);
+        assert_eq!(parsed.feed_guid, None);
+        assert_eq!(parsed.track_guid, None);
+        assert!(parsed.value_routes.is_empty());
+        assert_eq!(parsed.value_routes_source, None);
         Ok(())
     }
 }

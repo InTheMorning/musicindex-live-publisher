@@ -3,9 +3,11 @@
 Status: Accepted
 Date: 2026-10-18
 
-Accepted 2026-10-18 by the operator. No implementation exists. Until it
-exists, the producer writes version 2 and removes the drop file for a non-V4V
-track.
+Accepted 2026-10-18 by the operator. Packets 001 and 002 of
+`docs/plans/track-reporting.md` are done on 2026-10-18. The producer writes
+version 3. The manual checks of
+`docs/reviews/track-reporting-review-checklist.md` are open, so the status
+stays `Accepted`.
 
 Class: durable. These are layering and ownership rules.
 

@@ -1,6 +1,6 @@
 # Track Reporting Task 001: The Drop File Version 3, History-Only Mode
 
-Status: Ready - 2026-10-18. Ship it in one release with task 002.
+Status: Implemented - 2026-10-18. Ship it in one release with task 002.
 
 Every criterion is mechanical.
 
@@ -162,3 +162,24 @@ At the end, report:
 3. behavior changed
 4. deviations from task
 5. unresolved concerns
+
+## Review Result
+
+Reviewed 2026-10-18. The full gate passes with 500 tests. The baseline at
+`a19e5d3` had 493.
+
+- No file in §Do Not Touch changed. In the connector mode, a non-V4V row kept
+  its result in this task. Each test of a V4V row kept its result.
+- `CurrentTrack` got a `payable` flag. A row that is not payable gets empty
+  tags, and `write_current` uses the tags only when `payable` is true. A late
+  route result cannot match the row, because it must match `hist_id`.
+- The display `play_id` reads only a payable track. That keeps the display
+  output of ADR 0012 as it was.
+- The packet asked for a test that no route lookup starts. No unit test can
+  build a `Runtime` without the integration harness. The code returns before
+  `resolver.request`, and the lifecycle test
+  `lifecycle_non_v4v_track_with_musicindex_tags_gets_no_route` proves the
+  result. The review accepts this.
+- The review changed two sentences: the dead block in `README.md` also
+  applies to an absent file, and the runbook says that the non-payable fields
+  are `null`.

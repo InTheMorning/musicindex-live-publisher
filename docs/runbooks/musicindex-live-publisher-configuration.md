@@ -144,8 +144,9 @@ field in version 3:
 - `song_line`: the first line of `now-playing.txt` for this track, with the same
   format rules.
 - `play_id`: the ID of the Mixxx history row of this play. It is the same
-  as `play_id` in the drop file `musicindex.nowplaying/2` of this play. A
-  track that is not V4V has no drop file, and its `play_id` is `null`.
+  as `play_id` in the drop file `musicindex.nowplaying/3` of this play. A
+  track that is not V4V is not payable (ADR 0014). Its display `play_id`
+  stays `null`, also when its drop file has a `play_id`.
 - `album`: the album of the Mixxx history row, for each track. It is `null`
   when Mixxx has no album or an empty album.
 
@@ -787,14 +788,23 @@ identity of ADR 0010 and ADR 0012 is the Mixxx history row.
 ## Drop File Contract
 
 The producer writes `*.json` files by temp-file-plus-rename. The publisher
-ignores non-JSON files and publishes the dead block when the file
-disappears.
+ignores non-JSON files. It publishes the dead block when the file
+disappears, or when `value_routes` is empty.
 
-Current schema (ADR 0010):
+ADR 0014 owns version 3 of the drop file. It gives the meaning of each
+row:
+
+| Drop file | Meaning |
+|---|---|
+| Present, with routes | A payable track plays. |
+| Present, with an empty `value_routes` | A track plays that is not payable, for example a non-V4V track, or a V4V track with no readable routes. |
+| Absent | No track plays. |
+
+Current schema (ADR 0014):
 
 ```json
 {
-  "schema": "musicindex.nowplaying/2",
+  "schema": "musicindex.nowplaying/3",
   "target": "default",
   "artist": "Alice",
   "title": "Track Title",
@@ -816,6 +826,26 @@ Current schema (ADR 0010):
     }
   ],
   "value_routes_source": "musicindex-api"
+}
+```
+
+A track that is not payable gets this shape. Its `image`, `feed_guid` and
+`track_guid` are `null`:
+
+```json
+{
+  "schema": "musicindex.nowplaying/3",
+  "target": "default",
+  "artist": "Alice",
+  "title": "Track Title",
+  "duration_secs": 187.326,
+  "image": null,
+  "feed_guid": null,
+  "track_guid": null,
+  "album": "Test Album",
+  "play_id": "42",
+  "value_routes": [],
+  "value_routes_source": null
 }
 ```
 

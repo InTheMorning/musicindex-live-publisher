@@ -14,8 +14,8 @@ Amended 2026-10-18: version 3 of the drop file, `musicindex.nowplaying/3`,
 is accepted. ADR 0014 owns it. It has the fields of version 2. For version 3,
 a present file means that a track plays, an empty `value_routes` means that
 the track is not payable, and removing a file means that no track plays. The
-meaning below applies to versions 1 and 2. The producer writes version 2
-until ADR 0014 is implemented.
+meaning below applies to versions 1 and 2. The producer writes version 3
+from 2026-10-18.
 
 Amended 2026-10-06: version 2 of the drop file, `musicindex.nowplaying/2`,
 exists. ADR 0010 owns it. It adds `album` and `play_id`. The publisher reads

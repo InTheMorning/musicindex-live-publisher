@@ -1433,7 +1433,7 @@ mod tests {
         std::fs::write(
             &path,
             serde_json::json!({
-                "schema": "musicindex.nowplaying/2",
+                "schema": "musicindex.nowplaying/3",
                 "target": "default",
                 "artist": "Alice",
                 "title": "Track One",
