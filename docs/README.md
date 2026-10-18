@@ -111,6 +111,8 @@ the next priority. Confirm that logging works before the show.
   ADR 0013, after relay ADR 0006
 - [Relay applies the stream delay plan](plans/relay-applies-stream-delay.md)
   — Ready. Two packets for ADR 0011, in one release, after relay ADR 0004
+- [Each producer reports each track plan](plans/track-reporting.md)
+  — Ready. Two packets for ADR 0014, in one release
 
 ## Tasks
 
@@ -244,6 +246,14 @@ ADR 0006 is deployed.
 - [001 — The display file version 3](tasks/display-album-task-001-display-json-v3.md)
   — Implemented - 2026-10-06
 
+Packets for the track reporting plan. ADR 0014 governs them. Ship both in one
+release.
+
+- [001 — The drop file version 3, history-only mode](tasks/track-reporting-task-001-dropfile-v3-history-only.md)
+  — Ready - 2026-10-18
+- [002 — The non-payable file in the connector mode](tasks/track-reporting-task-002-connector-mode.md)
+  — Ready - 2026-10-18
+
 ## Reviews
 
 - [Rust now-playing review checklist](reviews/rust-now-playing-review-checklist.md)
@@ -256,6 +266,7 @@ ADR 0006 is deployed.
 - [Live value reference shape review checklist](reviews/live-value-reference-shape-review-checklist.md) — open
 - [Relay applies the stream delay review checklist](reviews/relay-applies-stream-delay-review-checklist.md) — open
 - [Display pairing review checklist](reviews/display-pairing-review-checklist.md)
+- [Track reporting review checklist](reviews/track-reporting-review-checklist.md) — open
   — the named artifact for the `Implemented` status of ADR 0012
 - [Display album review checklist](reviews/display-album-review-checklist.md) — open
 
