@@ -63,9 +63,17 @@ packet.
 - **Do not deploy this publisher before the relay of `musicindex-live-relay`
   ADR 0006 runs.** An older relay gives `400 invalid_display` for each
   display state with `album`.
-- These items need a new ADR before work starts:
-  - the talk break block from `v4vmm`,
-  - a track identity source that is earlier than the Mixxx history row.
+- ADRs 0014, 0015 and 0016 have the status `Proposed`. No implementation
+  exists.
+  - ADR 0014: only this repository assembles and publishes a block or a
+    display state. Each producer reports each track that plays, payable or
+    not, through version 3 of the drop file.
+  - ADR 0015: `v4vmm` starts a talk break or a live set through `segment`
+    commands. It needs ADR 0014 and a `v4vmm` ADR before acceptance.
+  - ADR 0016: one instance for each show and for each event, and the rules of
+    the producer lock.
+- This item needs a new ADR before work starts: a track identity source that
+  is earlier than the Mixxx history row.
 
 ## Build / Lint / Test Commands
 
