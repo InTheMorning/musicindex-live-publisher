@@ -389,6 +389,16 @@ fn units_only_writes_the_units_and_nothing_else() -> Result<()> {
         publisher.contains(&format!("--config {}", helper.config_file().display())),
         "{publisher}"
     );
+    // ADR 0017: the generated unit agrees with the template unit, so the
+    // publisher writes the show log in the state directory of the instance.
+    assert!(
+        publisher.contains("--state-dir %S/musicindex-live-publisher/mixxx"),
+        "{publisher}"
+    );
+    assert!(
+        publisher.contains("StateDirectory=musicindex-live-publisher/mixxx\n"),
+        "{publisher}"
+    );
     let unit_names: Vec<String> = snapshot(&helper.unit_dir())?.into_keys().collect();
     for unit in [
         "musicindex-live-publisher@mixxx.service",

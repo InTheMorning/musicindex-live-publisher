@@ -74,7 +74,7 @@ the next priority. Confirm that logging works before the show.
   — Implemented. One instance for each show and for each event, and the rules
   of the producer lock. The binding of a drop file to the lock is deferred
 - [ADR 0017: The show log](adr/0017-show-log.md)
-  — Accepted, not implemented. The log that `v4vmm` reads to export an
+  — Implemented. The log that `v4vmm` reads to export an
   episode. The time is the read time of this service, and the art is a
   reference. It supersedes ADR 0003
 
@@ -269,7 +269,7 @@ one before it.
 - [002 — The track and clear entries](tasks/show-log-task-002-track-and-clear-entries.md)
   — Implemented - 2026-10-19
 - [003 — The display entries, the unit and the documents](tasks/show-log-task-003-display-entries-and-unit.md)
-  — Implemented - 2026-10-19. The manual check is open
+  — Implemented - 2026-10-19
 
 ## Reviews
 
@@ -288,7 +288,8 @@ one before it.
 - [Display album review checklist](reviews/display-album-review-checklist.md) — open
 - [Instances review checklist](reviews/instances-review-checklist.md) — the
   named artifact for the `Implemented` status of ADR 0016
-- [Show log review checklist](reviews/show-log-review-checklist.md) — open
+- [Show log review checklist](reviews/show-log-review-checklist.md) — the
+  named artifact for the `Implemented` status of ADR 0017
 
 ## Runbooks
 

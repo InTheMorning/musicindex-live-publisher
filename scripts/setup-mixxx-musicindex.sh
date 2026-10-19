@@ -512,13 +512,17 @@ StartLimitBurst=5
 
 [Service]
 Type=simple
-ExecStart=$publisher_bin --config $config_file --watch-dir $watch_dir
+ExecStart=$publisher_bin --config $config_file --watch-dir $watch_dir --state-dir %S/musicindex-live-publisher/$instance
 Restart=on-failure
 RestartSec=5s
 
 RuntimeDirectory=musicindex-live-publisher/$instance/nowplaying
 RuntimeDirectoryMode=0700
 RuntimeDirectoryPreserve=yes
+
+# The show log of ADR 0017 lives under this state directory.
+StateDirectory=musicindex-live-publisher/$instance
+StateDirectoryMode=0700
 
 NoNewPrivileges=true
 ProtectSystem=strict

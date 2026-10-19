@@ -1,6 +1,6 @@
 # The Show Log: Phase Plan
 
-Status: Packets done 2026-10-19. The manual check is open. This plan does not make rules. ADR 0017 owns them.
+Status: Implemented 2026-10-19. The review checklist has no open item. This plan does not make rules. ADR 0017 owns them.
 The operator accepted ADR 0017 on 2026-10-19.
 
 ## Goal

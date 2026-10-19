@@ -1,6 +1,6 @@
 # Show Log Task 003: The Display Entries, The Unit And The Documents
 
-Status: Implemented - 2026-10-19. It needs task 002. The manual check is open.
+Status: Implemented - 2026-10-19. It needs task 002. The manual check passed on 2026-10-19.
 
 Every criterion is mechanical, except one visual item in §Manual Check.
 
@@ -178,3 +178,10 @@ not change.
 - The agent also added `--state-dir` to the CLI options of the runbook.
 - No defect was found.
 - The manual check is open until the operator runs a show with the unit.
+- The first manual check found no log. The running unit was not the
+  template. `scripts/setup-mixxx-musicindex.sh` writes its own unit,
+  `musicindex-live-publisher@<instance>.service`, which takes priority over
+  the template. This packet did not name that script, so its unit had no
+  `--state-dir`. The fix on 2026-10-19 adds `--state-dir` and
+  `StateDirectory=` to the generated unit. The test of `--units-only` now
+  checks the two lines.

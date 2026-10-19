@@ -1,8 +1,7 @@
 # The Show Log: Review Checklist
 
-Status: open - 2026-10-19. Tasks 001 to 003 are done, and each code and
-document item passes. The manual item is open. ADR 0017 becomes `Implemented`
-only when each item passes.
+Status: closed - 2026-10-19. Each item passes. This checklist is the named
+artifact for the `Implemented` status of ADR 0017.
 
 ## Invariants Of ADR 0017
 
@@ -29,12 +28,23 @@ only when each item passes.
 
 - [x] `README.md` and the configuration runbook describe the log and name
   ADR 0017.
-- [ ] ADR 0017 gets the status `Implemented`, with a dated sentence that
+- [x] ADR 0017 gets the status `Implemented`, with a dated sentence that
   names this checklist.
 - [x] `AGENTS.md` §Current State describes the present.
 
 ## Manual
 
-- [ ] One show with the unit gives a file of the day in
+- [x] One show with the unit gives a file of the day in
   `~/.local/state/musicindex-live-publisher/mixxx/showlog/`, with `track`,
   `clear` and `display` entries.
+
+## Manual Result
+
+The operator ran the check on 2026-10-19 with the unit that
+`scripts/setup-mixxx-musicindex.sh --units-only` wrote.
+
+- `showlog-2026-10-19.jsonl` has mode `-rw-------`.
+- Two restarts gave a `clear` entry and a `display` entry each, at
+  16:47:25.771Z and 16:47:27.977Z.
+- Three tracks gave a `track` entry and a `display` entry each: "Nothing Is
+  Easy", "Kick Your Arse" and "Bipolar". Each publish was `accepted`.

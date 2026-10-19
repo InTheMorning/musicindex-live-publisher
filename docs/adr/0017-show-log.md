@@ -1,10 +1,14 @@
 # ADR 0017: The Show Log
 
-Status: Accepted
+Status: Implemented
 Date: 2026-10-19
 
+Implemented 2026-10-19: tasks 001 to 003 of `docs/plans/show-log.md`. The
+named artifact is `docs/reviews/show-log-review-checklist.md`, which has no
+open item.
+
 Accepted 2026-10-19 by the operator. This record supersedes ADR 0003, which
-moved to `docs/archive/adr/`. No implementation exists.
+moved to `docs/archive/adr/`.
 
 Amended 2026-10-19: `song_line` and `artwork` move from the `track` entry
 to a new `display` entry. The producer writes the drop file and
