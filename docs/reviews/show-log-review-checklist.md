@@ -70,3 +70,7 @@ The operator printed the fields of each entry of the same file on
   publisher still pairs no `value` with a non-V4V display state, because its
   dead block has no `play_id`. `pairing_after_dead_block_has_no_value` shows
   this.
+- The operator confirmed the fix on 2026-10-19 after a restart of the
+  producer. The `display` entry of the non-V4V track "Locomotive Breath" has
+  `play_id` 638995. Before the restart, the producer ran the old binary, and
+  each non-V4V `display` entry had no `play_id`.
