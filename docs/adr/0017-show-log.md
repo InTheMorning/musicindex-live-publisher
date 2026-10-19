@@ -6,6 +6,13 @@ Date: 2026-10-19
 Accepted 2026-10-19 by the operator. This record supersedes ADR 0003, which
 moved to `docs/archive/adr/`. No implementation exists.
 
+Amended 2026-10-19: `song_line` and `artwork` move from the `track` entry
+to a new `display` entry. The producer writes the drop file and
+`display.json` in no fixed order (ADR 0012), and a separate worker publishes
+the display state. So a `track` entry often comes before the display state of
+its play. A reader joins the two by `target` and `play_id`. No decision
+reverses.
+
 Proposed 2026-10-19.
 
 Class: durable. This record owns a contract between this repository and
@@ -86,10 +93,15 @@ the read time is wrong, a later drop file version can add one.
 
 ### Entries
 
-One entry for each publish attempt of each target. `kind` is one of:
+`kind` is one of:
 
-- `track`: a drop file is present. Payable or not, as ADR 0014 defines.
-- `clear`: the drop file is gone, and no track plays.
+- `track`: a drop file is present. Payable or not, as ADR 0014 defines. One
+  entry for each publish attempt of each target.
+- `clear`: the drop file is gone, and no track plays. One entry for each
+  publish attempt of each target.
+- `display`: this service read a new display state for a target with a
+  display path. One entry for each display state that it sends to the
+  relay.
 
 A reader ignores an entry with a `kind` that it does not know. A later record,
 for example a talk segment of ADR 0015, can add a kind with no new schema
@@ -106,11 +118,9 @@ version.
 | `payable` | `true` when the drop file has value routes |
 | `play_id` | From the drop file, when present |
 | `artist`, `title`, `album` | From the drop file. `album` when present. |
-| `song_line` | From the display state, when the target has a display path |
 | `duration_secs` | From the drop file, when present |
 | `feed_guid`, `track_guid` | From the drop file, when present |
 | `image_url` | The `image` of the drop file, when present |
-| `artwork` | From the display state: `{"url": …}`, or `{"sha256": …, "mime": …}`, or absent |
 | `value` | The `value` object of the published payload, exactly as sent |
 | `listener_delay_secs` | The value sent in `Listener-Delay-Secs` |
 | `publish_result` | `accepted`, `retryable`, `dropped` or `fatal` |
@@ -118,6 +128,19 @@ version.
 
 A `track` entry and a `clear` entry have the same fields. A field that has no
 value is absent, not `null`.
+
+A `display` entry has these fields:
+
+| Field | Content |
+|---|---|
+| `schema`, `kind`, `observed_at`, `target`, `event_guid` | As above. `observed_at` is the time at which this service read `display.json`. |
+| `play_id` | From the display state, when present |
+| `artist`, `title`, `album`, `song_line` | From the display state. Absent for `{"track": null}`. |
+| `artwork` | `{"url": …}`, or `{"sha256": …, "mime": …}`, or absent |
+
+A reader joins a `display` entry to a `track` entry by `target` and
+`play_id`. A `display` entry with no track marks the end of the display
+state.
 
 `value` is the copy of what the live listeners paid. The value time splits of
 the episode come from it, not from the drop file. A reader thus pays the same
@@ -129,7 +152,7 @@ ADR 0005 and ADR 0010.
 This service never stores an image. The log records only references:
 
 - `image_url`, the public image of the track, when the drop file has one.
-- `artwork`, the image of the live display state. A SHA-256 identifies the
+- `artwork` of a `display` entry, the live image. A SHA-256 identifies the
   image that went out live. That image can be a reduced JPEG, so the hash is
   not always the hash of the embedded original.
 - `play_id`, so that `v4vmm` can find the history row and the file.

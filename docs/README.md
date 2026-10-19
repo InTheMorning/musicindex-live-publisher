@@ -114,6 +114,7 @@ the next priority. Confirm that logging works before the show.
   — Ready. Two packets for ADR 0011, in one release, after relay ADR 0004
 - [Each producer reports each track plan](plans/track-reporting.md)
 - [Instances, events and the producer lock plan](plans/instances-and-producer-lock.md)
+- [Show log plan](plans/show-log.md)
   — Implemented. Two packets for ADR 0014, in one release
 
 ## Tasks
@@ -260,6 +261,16 @@ by itself.
 - [002 — One instance for each event](tasks/instances-task-002-event-ownership-checks.md)
   — Implemented - 2026-10-18
 
+Packets for the show log plan. ADR 0017 governs them. Each packet needs the
+one before it.
+
+- [001 — The writer module](tasks/show-log-task-001-writer-module.md)
+  — Ready - 2026-10-19
+- [002 — The track and clear entries](tasks/show-log-task-002-track-and-clear-entries.md)
+  — Ready - 2026-10-19
+- [003 — The display entries, the unit and the documents](tasks/show-log-task-003-display-entries-and-unit.md)
+  — Ready - 2026-10-19
+
 ## Reviews
 
 - [Rust now-playing review checklist](reviews/rust-now-playing-review-checklist.md)
@@ -277,6 +288,7 @@ by itself.
 - [Display album review checklist](reviews/display-album-review-checklist.md) — open
 - [Instances review checklist](reviews/instances-review-checklist.md) — the
   named artifact for the `Implemented` status of ADR 0016
+- [Show log review checklist](reviews/show-log-review-checklist.md) — open
 
 ## Runbooks
 
