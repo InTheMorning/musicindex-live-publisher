@@ -23,8 +23,10 @@ packet.
 - The operator deferred the packaging pass. The package files exist, but no
   one built or installed a package that holds them. `docs/plans/packaging-pass.md` lists
   the open gates. ADR 0006 becomes `Implemented` after that pass.
-- ADR 0003, the show log contract, has the status `Accepted`. Its
-  implementation has not started.
+- ADR 0017, the show log, has the status `Accepted`. No implementation
+  exists. The time of each entry is the read time of this service. Each
+  entry holds the published `value`. The art is a reference that `v4vmm`
+  resolves.
 - `mixxx-now-playing command fade-now` starts an AutoDJ fade through the
   connector (ADR 0007).
 - ADR 0008, the optional display path for artwork, has the status `Accepted`.

@@ -1,6 +1,10 @@
 # ADR 0003: Show log contract
 
+> Archived: superseded by [ADR 0017](../../adr/0017-show-log.md) on 2026-10-19.
+
 ## Status
+
+Superseded by ADR 0017 - 2026-10-19.
 
 Accepted - 2026-09-06.
 

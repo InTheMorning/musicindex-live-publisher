@@ -1,5 +1,8 @@
 # Show Log Task 002: Read Contract And Documentation
 
+> Archived: ADR 0017 superseded ADR 0003 on 2026-10-19. This packet was never
+> started. ADR 0017 gets its own packets.
+
 Status: Not started - 2026-09-18. This packet follows the writer and its timestamp-source decision.
 The corrected reader instructions follow ADR 0003's existing real-time rule.
 

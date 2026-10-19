@@ -1,5 +1,8 @@
 # Show Log Task 001: Show Log Writer
 
+> Archived: ADR 0017 superseded ADR 0003 on 2026-10-19. This packet was never
+> started. ADR 0017 gets its own packets.
+
 Status: Not started - 2026-09-18. The writer needs a timestamp-source decision
 before implementation. ADR 0003 defines producer time, but version 1 drop files
 contain no producer timestamp. The scheduler's `Instant` values cannot supply

@@ -28,9 +28,6 @@ the next priority. Confirm that logging works before the show.
   — Implemented
 - [ADR 0002: Now-playing drop-file contract](adr/0002-nowplaying-drop-file-contract.md)
   — Implemented
-- [ADR 0003: Show log contract](adr/0003-show-log-contract.md) — the
-  accepted append-only log contract for future episode generation. Implementation
-  and the producer timestamp source remain open
 - [ADR 0004: Publisher control CLI](adr/0004-publisher-control-cli.md) —
   Implemented. The target and JSON commands that let `v4vmm` control this
   repository without writing its configuration file
@@ -74,8 +71,12 @@ the next priority. Confirm that logging works before the show.
   — Proposed. `v4vmm` starts a talk break or a live set through `segment`
   commands over `ssh`, with a split that it sets for each show
 - [ADR 0016: Instances, events and the producer lock](adr/0016-instances-events-and-producer-lock.md)
-  — Accepted, not implemented. One instance for each show and for each event, and the rules
+  — Implemented. One instance for each show and for each event, and the rules
   of the producer lock. The binding of a drop file to the lock is deferred
+- [ADR 0017: The show log](adr/0017-show-log.md)
+  — Accepted, not implemented. The log that `v4vmm` reads to export an
+  episode. The time is the read time of this service, and the art is a
+  reference. It supersedes ADR 0003
 
 ## Plans
 
@@ -165,10 +166,6 @@ each can be done alone, but 002, 004, and 005 gate any run against a live relay.
 - [005 — A fatal publish failure must not fail silently](tasks/audit-fix-task-005-fatal-publish-exit.md)
 - [006 — Compensate for stream latency before publishing](tasks/audit-fix-task-006-stream-delay-compensation.md)
 
-Show log packets. These give `v4vmm` the timeline it needs to build an episode.
-
-- [001 — Show log writer](tasks/show-log-task-001-log-writer.md)
-- [002 — Read contract and documentation](tasks/show-log-task-002-read-contract-and-docs.md)
 
 Control surface packets. ADR 0004 governs them. They support the `v4vmm`
 broadcast control surface (`v4vmm` ADR 0059). Task 001 gates `v4vmm` task 014.
@@ -286,3 +283,14 @@ by itself.
 - [MusicIndex live publisher deployment](runbooks/musicindex-live-publisher-deploy.md)
 - [MusicIndex live publisher Arch package](runbooks/musicindex-live-publisher-arch-package.md)
 - [MusicIndex live publisher configuration](runbooks/musicindex-live-publisher-configuration.md)
+
+## Archive
+
+Superseded decisions and their packets. Read them for research only.
+
+- [ADR 0003: Show log contract](archive/adr/0003-show-log-contract.md)
+  — Superseded by ADR 0017 on 2026-10-19
+- [Show log task 001 — Show log writer](archive/tasks/show-log-task-001-log-writer.md)
+  — never started
+- [Show log task 002 — Read contract and documentation](archive/tasks/show-log-task-002-read-contract-and-docs.md)
+  — never started

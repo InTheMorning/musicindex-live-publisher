@@ -60,26 +60,20 @@ never guessed.
 
 ### The show log
 
-`musicindex.showlog/1`, an append-only JSON Lines file. ADR 0003 defines it.
-This repository owns the contract.
+`musicindex.showlog/1`, an append-only JSON Lines file. ADR 0017 defines it.
+This repository owns the contract. It is not implemented.
 
-This is an accepted contract, not an implemented output. The writer and reader
-packets remain unstarted. The writer first needs a producer timestamp source.
+This service records what it published. `v4vmm` reads the log and exports the
+episode, its chapters, its art and its value time splits. This service
+generates none of those.
 
-The intended division is unchanged. This service records the timeline.
-A future v4vmm feature reads the log and generates the episode, chapters and
-value time split blocks. This service generates none of those artifacts.
-
-The timeline and revision rules are:
-
-- `observed_at` is the producer time. An episode built from a local encoder
-  recording aligns to it, because that recording is made before every delay
-  that `stream_delay_secs` covers.
-- `aired_at` is the time this service sent the payload. It serves the live path
-  only and must not drive a recorded episode. A post-icecast recording requires
-  correction to producer time before episode generation.
-- A later entry with the same `event_guid` and `block_guid` supersedes an
-  earlier one. That is a route revision, and only the last entry is correct.
+- `observed_at` is the time at which this service reads the drop file. An
+  episode built from a local encoder recording uses it with no correction.
+- Each entry holds the published `value`, so the episode pays what the live
+  listeners paid.
+- The art is a reference: a URL, or the SHA-256 of the live image, and
+  `play_id`. This service stores no image.
+- A later accepted entry for the same block supersedes an earlier one.
 
 ### The live value payload
 
