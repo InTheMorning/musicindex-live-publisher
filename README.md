@@ -93,10 +93,32 @@ Fields:
   delay. The publisher sends it with each publish and does not wait (ADR
   0011). Defaults to `0`. See the configuration runbook for how to measure
   it.
+- `show_log_retention_days`: the retention of the show log, in days (ADR
+  0017). Defaults to `365`. The value must be `1` or more.
 
 When no payable block plays, the publisher publishes the dead block (ADR
 0005). The dead block pays the fixed `lnaddress` recipient
 `no-v4v-track@example.invalid`. No configuration changes it.
+
+## Show Log
+
+ADR 0017 owns the show log contract. With `--state-dir`, the publisher
+writes an append-only log of the show to
+`<state_dir>/showlog/showlog-YYYY-MM-DD.jsonl`, one file for each UTC day.
+The packaged unit sets `--state-dir` and a systemd `StateDirectory`.
+
+The log holds the artist and title of each track that the operator played.
+A reader keeps the log for `show_log_retention_days` days, 365 by default.
+The log has three kinds of entry:
+
+- `track`: one entry each time the publisher tries to publish a track,
+  payable or not.
+- `clear`: one entry each time the publisher tries to publish with no
+  track.
+- `display`: one entry for each display update that the publisher sends.
+
+See the configuration runbook for the full log location and the entry
+schema.
 
 ## Provisioning
 

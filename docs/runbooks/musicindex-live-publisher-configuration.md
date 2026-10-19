@@ -61,6 +61,13 @@ Required top-level fields:
 - `endpoint`: relay base URL, for example `https://api.musicindex.org`.
 - `[[target]]`: one or more publish targets.
 
+Optional top-level fields:
+
+- `show_log_retention_days`: the retention of the show log, in days (ADR
+  0017). Defaults to `365`. The value must be an integer of `1` or more. A
+  value of `0` or less is a load error that names the key. See "Show Log"
+  below.
+
 Required target fields:
 
 - `name`: target name matched against the producer JSON `target` field.
@@ -432,6 +439,51 @@ The two checks read configuration files only. They keep no state, so a
 restart gives the same answer. These checks cover one host only. On two
 hosts, only the custody of the broadcaster token stops a second writer.
 
+## Show Log
+
+ADR 0017 owns the show log contract. This section restates it.
+
+With `--state-dir DIR`, the publisher writes an append-only log to:
+
+```text
+DIR/showlog/showlog-YYYY-MM-DD.jsonl
+```
+
+The log starts one file for each UTC day. The log holds the artist and
+title of each track that the operator played. Keep this in mind before you
+share a log file.
+
+The top-level configuration key `show_log_retention_days` sets the
+retention, in days. The default is `365`. At startup, the publisher
+removes each log file older than the retention.
+
+A log line is one of three kinds:
+
+- `track`: one entry each time the publisher tries to publish a track,
+  payable or not.
+- `clear`: one entry each time the publisher tries to publish with no
+  track.
+- `display`: one entry for each display update that the publisher sends
+  to a target with a display path.
+
+Without `--state-dir`, the publisher writes no show log. A log write error
+does not stop a publish (ADR 0017 §The Log Never Stops A Publish).
+
+The packaged template unit,
+`musicindex-live-publisher@.service`, sets `StateDirectory` and passes
+`--state-dir` to each instance:
+
+```text
+StateDirectory=musicindex-live-publisher/%i
+--state-dir %S/musicindex-live-publisher/%i
+```
+
+With this unit, the Mixxx pipeline writes its show log to:
+
+```text
+~/.local/state/musicindex-live-publisher/mixxx/showlog/
+```
+
 ## Publisher CLI
 
 Run mode:
@@ -446,6 +498,9 @@ Options:
   `/etc/musicindex-live-publisher/config.toml`.
 - `--watch-dir <path>`: override the config `watch_dir`.
 - `--endpoint <url>`: override the config `endpoint`.
+- `--state-dir <path>`: the state directory of this instance. The publisher
+  writes the show log to `<path>/showlog/`. Without this flag, the
+  publisher writes no show log. See "Show Log" above.
 - `--dry-run`: print live value payloads to stdout instead of publishing.
 - `--verbose`: enable debug logging.
 - `--version`: print the package version and exit.

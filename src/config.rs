@@ -15,6 +15,9 @@ use crate::WatchTarget;
 /// Default service configuration path.
 pub const DEFAULT_CONFIG_PATH: &str = "/etc/musicindex-live-publisher/config.toml";
 
+/// Default retention of the show log, in days (ADR 0017, show log task 003).
+pub const DEFAULT_SHOW_LOG_RETENTION_DAYS: u32 = 365;
+
 /// Ceiling for a configured stream delay.
 ///
 /// Chosen well above any real broadcast buffer. Its job is to catch a units
@@ -34,6 +37,9 @@ pub struct PublisherConfig {
     pub watch_dir: PathBuf,
     pub endpoint: String,
     pub targets: Vec<PublisherTarget>,
+    /// The retention of the show log, in days (ADR 0017, show log task 003).
+    /// `--state-dir` uses this value for [`crate::ShowLog::open`].
+    pub show_log_retention_days: u32,
 }
 
 /// A configured publishing target with its loaded broadcaster token.
@@ -105,6 +111,8 @@ pub struct TargetConfigSummary {
 pub struct RedactedPublisherConfig {
     pub watch_dir: PathBuf,
     pub endpoint: String,
+    /// The retention of the show log, in days (ADR 0017, show log task 003).
+    pub show_log_retention_days: u32,
     pub targets: Vec<RedactedPublisherTarget>,
 }
 
@@ -141,6 +149,9 @@ impl std::error::Error for ConfigEditError {}
 struct RawConfig {
     watch_dir: PathBuf,
     endpoint: String,
+    /// The show log retention, in days (ADR 0017, show log task 003). `None`
+    /// takes the default of [`DEFAULT_SHOW_LOG_RETENTION_DAYS`].
+    show_log_retention_days: Option<i64>,
     #[serde(rename = "target")]
     targets: Vec<RawTarget>,
 }
@@ -167,6 +178,7 @@ struct RawTargetSummaryConfig {
 struct RawPublisherConfigSummary {
     watch_dir: PathBuf,
     endpoint: String,
+    show_log_retention_days: Option<i64>,
     #[serde(rename = "target")]
     targets: Vec<RawTargetSummary>,
 }
@@ -454,6 +466,7 @@ pub fn show_config_from_str(text: &str) -> Result<RedactedPublisherConfig> {
     if raw.targets.is_empty() {
         return Err(anyhow!("config must define at least one target"));
     }
+    let show_log_retention_days = resolve_show_log_retention_days(raw.show_log_retention_days)?;
 
     let mut seen = HashSet::new();
     let targets = raw
@@ -465,6 +478,7 @@ pub fn show_config_from_str(text: &str) -> Result<RedactedPublisherConfig> {
     Ok(RedactedPublisherConfig {
         watch_dir: raw.watch_dir,
         endpoint: raw.endpoint,
+        show_log_retention_days,
         targets,
     })
 }
@@ -547,6 +561,7 @@ fn resolve_config(raw: RawConfig, overrides: ConfigOverrides) -> Result<Publishe
     if raw.targets.is_empty() {
         return Err(anyhow!("config must define at least one target"));
     }
+    let show_log_retention_days = resolve_show_log_retention_days(raw.show_log_retention_days)?;
 
     let mut seen = HashSet::new();
     let targets = raw
@@ -565,7 +580,24 @@ fn resolve_config(raw: RawConfig, overrides: ConfigOverrides) -> Result<Publishe
         watch_dir,
         endpoint: overrides.endpoint.unwrap_or(raw.endpoint),
         targets,
+        show_log_retention_days,
     })
+}
+
+/// Resolves the top-level `show_log_retention_days` key (ADR 0017, show log
+/// task 003).
+///
+/// `None` gives [`DEFAULT_SHOW_LOG_RETENTION_DAYS`]. A value of `0` or less
+/// is a configuration error that names the key: `--state-dir` must not open
+/// a show log with a retention that deletes a file on the day it writes it.
+fn resolve_show_log_retention_days(value: Option<i64>) -> Result<u32> {
+    let Some(days) = value else {
+        return Ok(DEFAULT_SHOW_LOG_RETENTION_DAYS);
+    };
+    u32::try_from(days)
+        .ok()
+        .filter(|&days| days >= 1)
+        .ok_or_else(|| anyhow!("show_log_retention_days must be an integer of 1 or more"))
 }
 
 /// Refuses a display directory that is empty or that is the watch directory.

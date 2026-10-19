@@ -359,6 +359,7 @@ fn payload(title: &str) -> LiveValuePayload {
             destinations: Vec::new(),
         },
         play_id: None,
+        log: None,
     }
 }
 
@@ -384,6 +385,7 @@ fn display_config(endpoint: &str) -> PublisherConfig {
             stream_delay: Duration::ZERO,
             display_dir: Some(PathBuf::from("/nonexistent/display")),
         }],
+        show_log_retention_days: 365,
     }
 }
 
@@ -1481,6 +1483,7 @@ fn pairing_after_dead_block_has_no_value() -> Result<()> {
             destinations: vec![],
         },
         play_id: None,
+        log: None,
     };
     publisher.publish(dead)?;
 

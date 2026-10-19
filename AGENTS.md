@@ -23,8 +23,11 @@ packet.
 - The operator deferred the packaging pass. The package files exist, but no
   one built or installed a package that holds them. `docs/plans/packaging-pass.md` lists
   the open gates. ADR 0006 becomes `Implemented` after that pass.
-- ADR 0017, the show log, has the status `Accepted`. No implementation
-  exists. The plan is `docs/plans/show-log.md`, with three packets. The time of each entry is the read time of this service. Each
+- ADR 0017, the show log, has the status `Accepted`. Its three packets are
+  done. With `--state-dir`, the publisher writes the log, and the template
+  unit passes it. The manual check of
+  `docs/reviews/show-log-review-checklist.md` is open: one show with the
+  unit. The time of each entry is the read time of this service. Each
   entry holds the published `value`. The art is a reference that `v4vmm`
   resolves.
 - `mixxx-now-playing command fade-now` starts an AutoDJ fade through the

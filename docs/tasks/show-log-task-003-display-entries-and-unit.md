@@ -1,6 +1,6 @@
 # Show Log Task 003: The Display Entries, The Unit And The Documents
 
-Status: Ready - 2026-10-19. It needs task 002.
+Status: Implemented - 2026-10-19. It needs task 002. The manual check is open.
 
 Every criterion is mechanical, except one visual item in §Manual Check.
 
@@ -155,3 +155,26 @@ At the end, report:
 3. behavior changed
 4. deviations from task
 5. unresolved concerns
+
+## Review Result
+
+Reviewed 2026-10-19. The full gate passes with 545 tests in the workspace.
+Task 002 ended with 537. `Cargo.toml`, `Cargo.lock` and `tests/golden.rs` did
+not change.
+
+- `changed_entries` is the only place where a changed display entry becomes
+  an `EmitItem::Display`. The `display` entry is written there, so an
+  unchanged `display.json` gives no entry, and the startup state and the
+  `null` state of a missing producer give one.
+- The read time comes after the read of `display.json`.
+- A map from the event to the target name gives `target`, because one
+  display directory can serve more than one target.
+- `show_log_retention_days` replaces the constant of task 002. A value of 0
+  or less is a configuration error that names the key. `config show` prints
+  it.
+- The unit has `StateDirectory=musicindex-live-publisher/%i`,
+  `StateDirectoryMode=0700` and `--state-dir %S/musicindex-live-publisher/%i`.
+  `ProtectHome=read-only` did not change.
+- The agent also added `--state-dir` to the CLI options of the runbook.
+- No defect was found.
+- The manual check is open until the operator runs a show with the unit.

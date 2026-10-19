@@ -265,11 +265,11 @@ Packets for the show log plan. ADR 0017 governs them. Each packet needs the
 one before it.
 
 - [001 — The writer module](tasks/show-log-task-001-writer-module.md)
-  — Ready - 2026-10-19
+  — Implemented - 2026-10-19
 - [002 — The track and clear entries](tasks/show-log-task-002-track-and-clear-entries.md)
-  — Ready - 2026-10-19
+  — Implemented - 2026-10-19
 - [003 — The display entries, the unit and the documents](tasks/show-log-task-003-display-entries-and-unit.md)
-  — Ready - 2026-10-19
+  — Implemented - 2026-10-19. The manual check is open
 
 ## Reviews
 

@@ -1,6 +1,6 @@
 # Show Log Task 001: The Writer Module
 
-Status: Ready - 2026-10-19.
+Status: Implemented - 2026-10-19.
 
 Every criterion is mechanical.
 
@@ -147,3 +147,23 @@ At the end, report:
 3. behavior changed
 4. deviations from task
 5. unresolved concerns
+
+## Review Result
+
+Reviewed 2026-10-19. The full gate passes with 523 tests in the workspace.
+Task 002 of the instances plan ended with 512. `Cargo.toml` and `Cargo.lock`
+did not change.
+
+- The types, the time format, the daily file, the `Mutex`, the modes and
+  the retention agree with §Constraints. `append` warns and returns on each
+  error.
+- `value` is `Option<LiveValue>`, the type that the payload serializes. So
+  the log holds the same `value` object as the wire.
+- `ShowLogArtwork` is a separate type from `display::Artwork`, because the
+  log holds a reference and not the bytes.
+- `append` takes the date from the first ten characters of `observed_at`.
+  The packet permits this.
+- `ShowLog::open` sets mode `0700` only on a directory that it makes. A
+  directory that exists keeps its mode. That agrees with the packet. Task 003
+  gives the directory through systemd with `StateDirectoryMode=0700`.
+- No defect was found.

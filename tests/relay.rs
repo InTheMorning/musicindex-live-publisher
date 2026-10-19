@@ -258,6 +258,7 @@ fn payload(title: &str) -> LiveValuePayload {
             }],
         },
         play_id: None,
+        log: None,
     }
 }
 
@@ -266,6 +267,7 @@ fn config(endpoint: &str) -> PublisherConfig {
         watch_dir: Path::new("/tmp").to_path_buf(),
         endpoint: endpoint.to_owned(),
         targets: vec![publisher_target_with_stream_delay(Duration::ZERO)],
+        show_log_retention_days: 365,
     }
 }
 

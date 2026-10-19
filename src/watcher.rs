@@ -3,13 +3,13 @@
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use anyhow::{Context, Result};
 use uuid::Uuid;
 
 use crate::{
-    DropFile, LiveValuePayload, ProducerState, dead_payload, parse, payload_from_dropfile,
+    DropFile, LiveValuePayload, LogFacts, ProducerState, dead_payload, parse, payload_from_dropfile,
 };
 
 /// Debounce window for repeated filesystem notifications on one path.
@@ -123,12 +123,16 @@ impl DropWatcher {
             .map(|payload| payload.event_guid.clone())
             .collect();
 
+        // One read time for every target with no file in this call, so each
+        // of their `clear` entries agrees on when the scan found them gone
+        // (ADR 0017 §The Time Source).
+        let observed_at = SystemTime::now();
         let mut payloads = track_payloads;
         payloads.extend(
             self.targets
                 .values()
                 .filter(|target| !present.contains(&target.event_guid))
-                .map(|target| dead_payload(&target.event_guid, &fresh_guid())),
+                .map(|target| dead_payload_with_log(&target.event_guid, observed_at)),
         );
         Ok(payloads)
     }
@@ -192,10 +196,11 @@ impl DropWatcher {
                 let Some(target_name) = self.path_targets.remove(&identity) else {
                     return Ok(Vec::new());
                 };
+                let observed_at = SystemTime::now();
                 Ok(self
                     .targets
                     .get(&target_name)
-                    .map(|target| vec![dead_payload(&target.event_guid, &fresh_guid())])
+                    .map(|target| vec![dead_payload_with_log(&target.event_guid, observed_at)])
                     .unwrap_or_default())
             }
         }
@@ -203,6 +208,10 @@ impl DropWatcher {
 
     fn payload_for_upsert(&mut self, path: &Path) -> Result<Option<LiveValuePayload>> {
         let bytes = fs::read(path).with_context(|| format!("read drop file {}", path.display()))?;
+        // The read time of the drop file (ADR 0017 §The Time Source): taken
+        // right after the read, not after the payload is built or
+        // published.
+        let observed_at = SystemTime::now();
         let dropfile = match parse(&bytes) {
             Ok(Some(dropfile)) => dropfile,
             Ok(None) => return Ok(None),
@@ -233,11 +242,15 @@ impl DropWatcher {
         // ADR 0005: an empty value_routes list is not a payable block. The
         // dead block replaces it entirely; it keeps neither the drop file's
         // title nor its GUIDs.
-        let payload = if dropfile.value_routes.is_empty() {
+        let mut payload = if dropfile.value_routes.is_empty() {
             dead_payload(&target.event_guid, &block_guid)
         } else {
             payload_from_dropfile(&dropfile, &target.event_guid, &block_guid)
         };
+        // The show log facts come from the drop file itself (ADR 0017, show
+        // log task 002), so a non-payable track still logs its artist and
+        // title even though its payload above is the dead block.
+        payload.log = Some(LogFacts::track(observed_at, &dropfile));
         let should_emit = !self
             .blocks
             .get(&identity)
@@ -265,9 +278,13 @@ impl DropWatcher {
     }
 
     fn dead_payloads(&self) -> Vec<LiveValuePayload> {
+        // One read time for the whole transition (ADR 0017 §The Time
+        // Source): every target's dead block marks the same moment the
+        // producer went missing.
+        let observed_at = SystemTime::now();
         self.targets
             .values()
-            .map(|target| dead_payload(&target.event_guid, &fresh_guid()))
+            .map(|target| dead_payload_with_log(&target.event_guid, observed_at))
             .collect()
     }
 }
@@ -333,4 +350,13 @@ fn path_identity(path: &Path) -> PathBuf {
 
 fn fresh_guid() -> String {
     Uuid::new_v4().to_string()
+}
+
+/// Builds the dead block for `event_guid` with a fresh block GUID and the
+/// show log facts of a `clear` entry (ADR 0017, show log task 002): the
+/// drop file is gone, or was never there, at `observed_at`.
+fn dead_payload_with_log(event_guid: &str, observed_at: SystemTime) -> LiveValuePayload {
+    let mut payload = dead_payload(event_guid, &fresh_guid());
+    payload.log = Some(LogFacts::clear(observed_at));
+    payload
 }

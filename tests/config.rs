@@ -355,6 +355,7 @@ fn config_show_json_outputs_redacted_shape() -> Result<()> {
 
     assert_eq!(value["watch_dir"], watch_dir.display().to_string());
     assert_eq!(value["endpoint"], "https://api.example.test");
+    assert_eq!(value["show_log_retention_days"], 365);
     assert_eq!(value["targets"][0]["name"], "default");
     assert_eq!(value["targets"][0]["event_id"], "event-default");
     assert_eq!(
@@ -1328,6 +1329,80 @@ fn config_stream_delay_above_the_ceiling_is_error() -> Result<()> {
     // A millisecond value typed into a seconds field is the mistake this
     // catches: it would park every payload well past the end of the show.
     assert!(delay_error("12000")?.contains("exceeds the 300 second maximum"));
+    Ok(())
+}
+
+/// Inserts a top-level `show_log_retention_days` line after `endpoint`.
+fn config_text_with_show_log_retention_days(
+    watch_dir: &Path,
+    token: &Path,
+    literal: &str,
+) -> String {
+    config_text(watch_dir, token, None).replace(
+        "endpoint = \"https://api.example.test\"",
+        &format!("endpoint = \"https://api.example.test\"\nshow_log_retention_days = {literal}"),
+    )
+}
+
+fn show_log_retention_days_error(literal: &str) -> Result<String> {
+    let temp = TempDir::new()?;
+    let watch_dir = temp.path().join("watch");
+    let token = write_token(temp.path(), "default.token", "secret-token")?;
+    let config_path = write_config(
+        temp.path(),
+        &config_text_with_show_log_retention_days(&watch_dir, &token, literal),
+    )?;
+
+    let error = load_config(&config_path, ConfigOverrides::default())
+        .err()
+        .ok_or_else(|| anyhow!("expected show_log_retention_days {literal} to be rejected"))?;
+    Ok(format!("{error:#}"))
+}
+
+#[test]
+fn config_with_no_show_log_retention_days_gives_365() -> Result<()> {
+    let temp = TempDir::new()?;
+    let watch_dir = temp.path().join("watch");
+    let token = write_token(temp.path(), "default.token", "secret-token")?;
+    let config_path = write_config(temp.path(), &config_text(&watch_dir, &token, None))?;
+
+    let config = load_config(&config_path, ConfigOverrides::default())?;
+
+    assert_eq!(config.show_log_retention_days, 365);
+    Ok(())
+}
+
+#[test]
+fn config_show_log_retention_days_resolves_a_configured_value() -> Result<()> {
+    let temp = TempDir::new()?;
+    let watch_dir = temp.path().join("watch");
+    let token = write_token(temp.path(), "default.token", "secret-token")?;
+    let config_path = write_config(
+        temp.path(),
+        &config_text_with_show_log_retention_days(&watch_dir, &token, "30"),
+    )?;
+
+    let config = load_config(&config_path, ConfigOverrides::default())?;
+
+    assert_eq!(config.show_log_retention_days, 30);
+    Ok(())
+}
+
+#[test]
+fn config_show_log_retention_days_zero_or_less_is_error_naming_the_key() -> Result<()> {
+    assert!(show_log_retention_days_error("0")?.contains("show_log_retention_days"));
+    assert!(show_log_retention_days_error("-1")?.contains("show_log_retention_days"));
+    Ok(())
+}
+
+#[test]
+fn template_unit_declares_state_directory_and_the_state_dir_flag() -> Result<()> {
+    let unit_path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("systemd/musicindex-live-publisher@.service");
+    let text = fs::read_to_string(unit_path)?;
+
+    assert!(text.contains("StateDirectory=musicindex-live-publisher/%i"));
+    assert!(text.contains("--state-dir %S/musicindex-live-publisher/%i"));
     Ok(())
 }
 

@@ -1,16 +1,17 @@
 use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
-use std::sync::mpsc;
+use std::sync::{Arc, mpsc};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use anyhow::{Context, Result, anyhow};
 use musicindex_live_publisher::{
-    ConfigEditError, ConfigOverrides, DEFAULT_CONFIG_PATH, DEFAULT_DEBOUNCE_WINDOW,
-    DISPLAY_FILE_NAME, DisplayEntry, DisplayState, DropEvent, DropEventKind, DropWatcher,
-    LiveValuePayload, ProducerState, PublisherConfig, RedactedPublisherConfig, RelayClient,
-    RelayPublisher, TargetConfigEdit, TargetConfigSummary, add_target_to_config,
+    Artwork, ConfigEditError, ConfigOverrides, DEFAULT_CONFIG_PATH, DEFAULT_DEBOUNCE_WINDOW,
+    DEFAULT_INITIAL_BACKOFF, DEFAULT_MAX_BACKOFF, DISPLAY_FILE_NAME, DisplayEntry, DisplayState,
+    DropEvent, DropEventKind, DropWatcher, LiveValuePayload, ProducerState, PublisherConfig,
+    RedactedPublisherConfig, RelayClient, RelayPublisher, ShowLog, ShowLogArtwork, ShowLogEntry,
+    ShowLogEntryKind, TargetConfigEdit, TargetConfigSummary, add_target_to_config,
     check_event_ownership, list_config_targets, load_config, probe_producer, read_display_state,
     remove_target_from_config, show_config, write_token_file,
 };
@@ -91,10 +92,20 @@ fn run_cli(cli: Cli) -> Result<()> {
     }
     let mut display = DisplayPath::from_config(&config);
 
+    let show_log = open_show_log(
+        cli.dry_run,
+        cli.state_dir.as_deref(),
+        config.show_log_retention_days,
+    );
     let publisher = if cli.dry_run {
         None
     } else {
-        Some(RelayPublisher::start(&config)?)
+        Some(RelayPublisher::start_with_show_log(
+            &config,
+            DEFAULT_INITIAL_BACKOFF,
+            DEFAULT_MAX_BACKOFF,
+            show_log.clone(),
+        )?)
     };
     let targets = config
         .targets
@@ -128,7 +139,7 @@ fn run_cli(cli: Cli) -> Result<()> {
     )?;
     // The display state follows the same recovery rule, after the payloads.
     emit_items(
-        display.startup_items(producer_state),
+        display.startup_items(producer_state, show_log.as_deref()),
         publisher.as_ref(),
         &mut pending_missing,
         producer_state,
@@ -140,6 +151,7 @@ fn run_cli(cli: Cli) -> Result<()> {
         publisher.as_ref(),
         producer_state,
         pending_missing,
+        show_log.as_deref(),
     )
 }
 
@@ -185,12 +197,18 @@ struct DisplayDir {
 struct DisplayPath {
     dirs: Vec<DisplayDir>,
     last: HashMap<String, DisplayState>,
+    /// The target name of each event, for the `target` field of a show log
+    /// `display` entry (ADR 0017, show log task 003).
+    names: HashMap<String, String>,
 }
 
 impl DisplayPath {
     fn from_config(config: &PublisherConfig) -> Self {
         let mut display = Self::default();
         for target in &config.targets {
+            display
+                .names
+                .insert(target.event_id.clone(), target.name.clone());
             let Some(path) = &target.display_dir else {
                 continue;
             };
@@ -215,8 +233,13 @@ impl DisplayPath {
     /// The display state of each target at startup, for a direct send.
     ///
     /// A running producer gives the state in `display.json`. A missing
-    /// producer gives `null`.
-    fn startup_items(&mut self, producer: ProducerState) -> Vec<EmitItem> {
+    /// producer gives `null`. `show_log` writes one `display` entry for each
+    /// changed entry (ADR 0017, show log task 003).
+    fn startup_items(
+        &mut self,
+        producer: ProducerState,
+        show_log: Option<&ShowLog>,
+    ) -> Vec<EmitItem> {
         let mut items = Vec::new();
         for index in 0..self.dirs.len() {
             let state = match producer {
@@ -224,8 +247,9 @@ impl DisplayPath {
                 ProducerState::Missing => Some(DisplayState::null()),
             };
             if let Some(state) = state {
+                let observed_at = SystemTime::now();
                 items.extend(
-                    self.changed_entries(index, &state)
+                    self.changed_entries(index, &state, observed_at, show_log)
                         .into_iter()
                         .map(EmitItem::Display),
                 );
@@ -235,24 +259,30 @@ impl DisplayPath {
     }
 
     /// Reads `display.json` of one directory and gives its changed entries,
-    /// ready to send through `emit_items` at once (ADR 0011).
-    fn items_for_dir(&mut self, index: usize) -> Vec<EmitItem> {
+    /// ready to send through `emit_items` at once (ADR 0011). `show_log`
+    /// writes one `display` entry for each changed entry, with `observed_at`
+    /// the read time of `display.json` (ADR 0017, show log task 003).
+    fn items_for_dir(&mut self, index: usize, show_log: Option<&ShowLog>) -> Vec<EmitItem> {
         let Some(state) = read_display_state(&self.dirs[index].path) else {
             return Vec::new();
         };
-        self.changed_entries(index, &state)
+        let observed_at = SystemTime::now();
+        self.changed_entries(index, &state, observed_at, show_log)
             .into_iter()
             .map(EmitItem::Display)
             .collect()
     }
 
     /// Gives the display state `null` for each display target, ready to send
-    /// through `emit_items` at once (ADR 0008, ADR 0011).
-    fn null_items(&mut self) -> Vec<EmitItem> {
+    /// through `emit_items` at once (ADR 0008, ADR 0011). `show_log` writes
+    /// one `display` entry for each changed entry (ADR 0017, show log task
+    /// 003).
+    fn null_items(&mut self, show_log: Option<&ShowLog>) -> Vec<EmitItem> {
         let mut items = Vec::new();
+        let observed_at = SystemTime::now();
         for index in 0..self.dirs.len() {
             items.extend(
-                self.changed_entries(index, &DisplayState::null())
+                self.changed_entries(index, &DisplayState::null(), observed_at, show_log)
                     .into_iter()
                     .map(EmitItem::Display),
             );
@@ -261,14 +291,38 @@ impl DisplayPath {
     }
 
     /// The entries for the targets of one directory whose last sent state is
-    /// not `state`. A state that did not change costs no request.
-    fn changed_entries(&mut self, index: usize, state: &DisplayState) -> Vec<DisplayEntry> {
+    /// not `state`. A state that did not change costs no request and no show
+    /// log entry.
+    ///
+    /// For each entry that does change, `show_log` appends one `display`
+    /// entry with `observed_at` (ADR 0017, show log task 003). This is the
+    /// one place a changed display entry becomes an [`EmitItem::Display`], so
+    /// every caller's entries pass through here and get logged the same way.
+    fn changed_entries(
+        &mut self,
+        index: usize,
+        state: &DisplayState,
+        observed_at: SystemTime,
+        show_log: Option<&ShowLog>,
+    ) -> Vec<DisplayEntry> {
         let mut entries = Vec::new();
         for event_id in &self.dirs[index].event_ids {
             if self.last.get(event_id) == Some(state) {
                 continue;
             }
             self.last.insert(event_id.clone(), state.clone());
+            if let Some(show_log) = show_log {
+                let target_name = self
+                    .names
+                    .get(event_id)
+                    .map_or(event_id.as_str(), String::as_str);
+                show_log.append(&display_log_entry(
+                    target_name,
+                    event_id,
+                    state,
+                    observed_at,
+                ));
+            }
             entries.push(DisplayEntry {
                 event_id: event_id.clone(),
                 state: state.clone(),
@@ -307,6 +361,48 @@ impl DisplayPath {
     }
 }
 
+/// Builds the show log `display` entry for one changed display state (ADR
+/// 0017 §Entries, show log task 003).
+///
+/// `target_name` and `event_id` give `target` and `event_guid`. A state with
+/// no track gives an entry with none of `play_id`, `artist`, `title`,
+/// `album`, `song_line` or `artwork` (ADR 0017 §Entries, the `display`
+/// entry).
+fn display_log_entry(
+    target_name: &str,
+    event_id: &str,
+    state: &DisplayState,
+    observed_at: SystemTime,
+) -> ShowLogEntry {
+    let mut entry = ShowLogEntry::new(
+        ShowLogEntryKind::Display,
+        observed_at,
+        target_name.to_owned(),
+        event_id.to_owned(),
+    );
+    if let Some(track) = &state.track {
+        entry.play_id = track.play_id.clone();
+        entry.artist = Some(track.artist.clone());
+        entry.title = Some(track.title.clone());
+        entry.album = track.album.clone();
+        entry.song_line = Some(track.song_line.clone());
+        entry.artwork = track.artwork.as_ref().map(show_log_artwork);
+    }
+    entry
+}
+
+/// The show log reference of a display track's artwork (ADR 0017 §The Art
+/// Is A Reference, show log task 003).
+fn show_log_artwork(artwork: &Artwork) -> ShowLogArtwork {
+    match artwork {
+        Artwork::Url(url) => ShowLogArtwork::Url { url: url.clone() },
+        Artwork::Image(image) => ShowLogArtwork::Image {
+            sha256: image.sha256().to_owned(),
+            mime: image.mime().as_str().to_owned(),
+        },
+    }
+}
+
 /// Divides watch events into drop file events and display directory changes.
 ///
 /// An event in a display directory is never a drop file event, so it never
@@ -339,6 +435,9 @@ struct Cli {
     dry_run: bool,
     config: Option<PathBuf>,
     verbose: bool,
+    /// The state directory of this instance (show log task 002). With no
+    /// flag, the publisher writes no show log.
+    state_dir: Option<PathBuf>,
     command: Command,
 }
 
@@ -350,6 +449,7 @@ impl Default for Cli {
             dry_run: false,
             config: None,
             verbose: false,
+            state_dir: None,
             command: Command::Run,
         }
     }
@@ -469,6 +569,7 @@ impl Cli {
                 Some("--dry-run") => cli.dry_run = true,
                 Some("--config") => cli.config = Some(next_path(&mut args, "--config")?),
                 Some("--verbose") => cli.verbose = true,
+                Some("--state-dir") => cli.state_dir = Some(next_path(&mut args, "--state-dir")?),
                 Some(flag) if flag.starts_with("--") => return Err(anyhow!("unknown flag {flag}")),
                 Some(value) => return Err(anyhow!("unexpected argument {value}")),
                 None => {
@@ -805,9 +906,10 @@ fn render_config_show_json(config: &RedactedPublisherConfig) -> Result<String> {
 
 fn render_config_show_text(config: &RedactedPublisherConfig) -> String {
     let mut output = format!(
-        "watch_dir={}\nendpoint={}\n",
+        "watch_dir={}\nendpoint={}\nshow_log_retention_days={}\n",
         config.watch_dir.display(),
-        config.endpoint
+        config.endpoint,
+        config.show_log_retention_days
     );
     for target in &config.targets {
         output.push_str(&format!(
@@ -847,6 +949,41 @@ fn wait_for_watch_dir(watch_dir: &Path) -> Result<()> {
     }
 }
 
+/// Opens the show log of ADR 0017 at `<state_dir>/showlog`, with the
+/// configured retention, and removes each expired file at once (show log
+/// task 002, show log task 003).
+///
+/// Gives `None` with no warning for a dry run, or with no `--state-dir`:
+/// the service then writes no show log, because `RelayPublisher` writes no
+/// entry when its show log is `None`. Gives `None` with a `tracing::warn!`
+/// when the directory cannot be opened. A log failure must never stop a
+/// publish (ADR 0017 §The Log Never Stops A Publish), so the service runs
+/// with no show log rather than fail to start.
+fn open_show_log(
+    dry_run: bool,
+    state_dir: Option<&Path>,
+    retention_days: u32,
+) -> Option<Arc<ShowLog>> {
+    if dry_run {
+        return None;
+    }
+    let log_dir = state_dir?.join("showlog");
+    match ShowLog::open(&log_dir, retention_days) {
+        Ok(log) => {
+            log.remove_expired(SystemTime::now());
+            Some(Arc::new(log))
+        }
+        Err(error) => {
+            tracing::warn!(
+                path = %log_dir.display(),
+                %error,
+                "cannot open show log; the publisher runs with no show log"
+            );
+            None
+        }
+    }
+}
+
 fn run_watch_loop(
     watch_dir: &Path,
     processor: &mut DropWatcher,
@@ -854,6 +991,7 @@ fn run_watch_loop(
     publisher: Option<&RelayPublisher>,
     mut producer_state: ProducerState,
     mut pending_missing: HashMap<String, String>,
+    show_log: Option<&ShowLog>,
 ) -> Result<()> {
     let (sender, receiver) = mpsc::channel();
     let mut watcher = notify::recommended_watcher(sender).context("create filesystem watcher")?;
@@ -894,6 +1032,7 @@ fn run_watch_loop(
                 publisher,
                 &mut pending_missing,
                 producer_state,
+                show_log,
             )?;
             producer_state = state;
             items.extend(transition_items);
@@ -922,7 +1061,7 @@ fn run_watch_loop(
             }
         }
         for index in display_changes {
-            items.extend(display.items_for_dir(index));
+            items.extend(display.items_for_dir(index, show_log));
         }
         emit_items(items, publisher, &mut pending_missing, producer_state)?;
     }
@@ -975,6 +1114,7 @@ fn update_producer_state(
     publisher: Option<&RelayPublisher>,
     pending_missing: &mut HashMap<String, String>,
     previous: ProducerState,
+    show_log: Option<&ShowLog>,
 ) -> Result<(ProducerState, Vec<EmitItem>)> {
     let current = probe_producer(watch_dir)?;
     if current == previous {
@@ -992,7 +1132,7 @@ fn update_producer_state(
                 pending_missing.insert(payload.event_guid.clone(), payload.block_guid.clone());
                 items.push(EmitItem::Payload(payload));
             }
-            items.extend(display.null_items());
+            items.extend(display.null_items(show_log));
         }
         ProducerState::Running => {
             tracing::info!(
@@ -1351,6 +1491,7 @@ mod tests {
                 watched: true,
             }],
             last: HashMap::new(),
+            names: HashMap::new(),
         }
     }
 
@@ -1419,6 +1560,7 @@ mod tests {
             None,
             &mut pending_missing,
             ProducerState::Running,
+            None,
         )?;
 
         assert_eq!(state, ProducerState::Missing);
@@ -1514,7 +1656,7 @@ mod tests {
         )?;
         let mut display = display_path(dir.path(), &["event"]);
 
-        let items = display.items_for_dir(0);
+        let items = display.items_for_dir(0, None);
 
         assert_eq!(
             items,
@@ -1538,16 +1680,26 @@ mod tests {
     #[test]
     fn an_unchanged_display_state_is_not_scheduled_again() {
         let mut display = display_path(Path::new("/display"), &["event-a", "event-b"]);
+        let now = SystemTime::now();
 
-        assert_eq!(display.changed_entries(0, &DisplayState::null()).len(), 2);
-        assert!(display.changed_entries(0, &DisplayState::null()).is_empty());
+        assert_eq!(
+            display
+                .changed_entries(0, &DisplayState::null(), now, None)
+                .len(),
+            2
+        );
+        assert!(
+            display
+                .changed_entries(0, &DisplayState::null(), now, None)
+                .is_empty()
+        );
     }
 
     #[test]
     fn startup_with_a_missing_producer_gives_the_display_state_null() {
         let mut display = display_path(Path::new("/nonexistent/display"), &["event"]);
 
-        let items = display.startup_items(ProducerState::Missing);
+        let items = display.startup_items(ProducerState::Missing, None);
 
         assert_eq!(
             items,
@@ -1556,6 +1708,145 @@ mod tests {
                 state: DisplayState::null(),
             })]
         );
+    }
+
+    // The show log `display` entry (ADR 0017, show log task 003).
+
+    fn show_log_lines(log_dir: &Path) -> Result<Vec<serde_json::Value>> {
+        let mut lines = Vec::new();
+        for entry in std::fs::read_dir(log_dir)? {
+            let path = entry?.path();
+            if path
+                .extension()
+                .is_some_and(|extension| extension == "jsonl")
+            {
+                for line in std::fs::read_to_string(path)?.lines() {
+                    lines.push(serde_json::from_str(line)?);
+                }
+            }
+        }
+        Ok(lines)
+    }
+
+    fn write_display_json_with_embedded_image(dir: &Path) -> Result<String> {
+        let bytes = {
+            let mut bytes = vec![0xFF, 0xD8, 0xFF, 0xE0];
+            bytes.extend_from_slice(b"show log task 003 fixture");
+            bytes
+        };
+        let sha256 = musicindex_live_publisher::ArtworkImage::from_bytes(
+            musicindex_live_publisher::ImageMime::Jpeg,
+            bytes.clone(),
+        )
+        .sha256()
+        .to_owned();
+        std::fs::write(dir.join(format!("{sha256}.jpg")), &bytes)?;
+        std::fs::write(
+            dir.join(DISPLAY_FILE_NAME),
+            serde_json::json!({
+                "schema": musicindex_live_publisher::DISPLAY_SCHEMA,
+                "track": {
+                    "artist": "Alice",
+                    "title": "Track One",
+                    "artwork": { "sha256": sha256, "mime": "image/jpeg" },
+                    "song_line": "Alice - Track One",
+                    "play_id": "42"
+                }
+            })
+            .to_string(),
+        )?;
+        Ok(sha256)
+    }
+
+    #[test]
+    fn a_display_json_with_an_embedded_image_logs_play_id_song_line_and_artwork() -> Result<()> {
+        let display_dir = tempfile::TempDir::new()?;
+        let state_dir = tempfile::TempDir::new()?;
+        let sha256 = write_display_json_with_embedded_image(display_dir.path())?;
+        let mut display = display_path(display_dir.path(), &["event"]);
+        let log_dir = state_dir.path().join("showlog");
+        let log = ShowLog::open(&log_dir, 365)?;
+
+        let items = display.items_for_dir(0, Some(&log));
+
+        assert_eq!(items.len(), 1);
+        let entries = show_log_lines(&log_dir)?;
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0]["kind"], "display");
+        assert_eq!(entries[0]["play_id"], "42");
+        assert_eq!(entries[0]["song_line"], "Alice - Track One");
+        assert_eq!(entries[0]["artwork"]["sha256"], sha256);
+        assert_eq!(entries[0]["artwork"]["mime"], "image/jpeg");
+        Ok(())
+    }
+
+    #[test]
+    fn a_display_json_with_an_image_url_logs_artwork_url() -> Result<()> {
+        let display_dir = tempfile::TempDir::new()?;
+        let state_dir = tempfile::TempDir::new()?;
+        std::fs::write(
+            display_dir.path().join(DISPLAY_FILE_NAME),
+            serde_json::json!({
+                "schema": musicindex_live_publisher::DISPLAY_SCHEMA,
+                "track": {
+                    "artist": "Alice",
+                    "title": "Track One",
+                    "artwork": { "url": "https://img.example/a.png" },
+                    "song_line": "Alice - Track One",
+                    "play_id": "42"
+                }
+            })
+            .to_string(),
+        )?;
+        let mut display = display_path(display_dir.path(), &["event"]);
+        let log_dir = state_dir.path().join("showlog");
+        let log = ShowLog::open(&log_dir, 365)?;
+
+        display.items_for_dir(0, Some(&log));
+
+        let entries = show_log_lines(&log_dir)?;
+        assert_eq!(entries.len(), 1);
+        assert_eq!(
+            entries[0]["artwork"],
+            serde_json::json!({ "url": "https://img.example/a.png" })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn a_null_display_state_logs_an_entry_with_no_track_fields() -> Result<()> {
+        let state_dir = tempfile::TempDir::new()?;
+        let mut display = display_path(Path::new("/nonexistent/display"), &["event"]);
+        let log_dir = state_dir.path().join("showlog");
+        let log = ShowLog::open(&log_dir, 365)?;
+
+        display.null_items(Some(&log));
+
+        let entries = show_log_lines(&log_dir)?;
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0]["kind"], "display");
+        assert!(entries[0].get("artist").is_none());
+        assert!(entries[0].get("title").is_none());
+        assert!(entries[0].get("artwork").is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn rewriting_the_same_display_json_gives_no_second_log_entry() -> Result<()> {
+        let display_dir = tempfile::TempDir::new()?;
+        let state_dir = tempfile::TempDir::new()?;
+        write_display_json_with_embedded_image(display_dir.path())?;
+        let mut display = display_path(display_dir.path(), &["event"]);
+        let log_dir = state_dir.path().join("showlog");
+        let log = ShowLog::open(&log_dir, 365)?;
+
+        display.items_for_dir(0, Some(&log));
+        let unchanged = display.items_for_dir(0, Some(&log));
+
+        assert!(unchanged.is_empty());
+        let entries = show_log_lines(&log_dir)?;
+        assert_eq!(entries.len(), 1);
+        Ok(())
     }
 
     #[test]
@@ -1747,6 +2038,55 @@ mod tests {
     }
 
     #[test]
+    fn state_dir_defaults_to_none() -> Result<()> {
+        let cli = Cli::parse(["publisher"])?;
+
+        assert_eq!(cli.state_dir, None);
+        Ok(())
+    }
+
+    #[test]
+    fn state_dir_flag_is_parsed() -> Result<()> {
+        let cli = Cli::parse(["publisher", "--state-dir", "/var/lib/musicindex"])?;
+
+        assert_eq!(cli.state_dir, Some(PathBuf::from("/var/lib/musicindex")));
+        Ok(())
+    }
+
+    #[test]
+    fn open_show_log_with_no_state_dir_gives_none_and_creates_nothing() -> Result<()> {
+        let base = tempfile::TempDir::new()?;
+
+        let log = open_show_log(false, None, 365);
+
+        assert!(log.is_none());
+        assert!(!base.path().join("showlog").exists());
+        Ok(())
+    }
+
+    #[test]
+    fn open_show_log_in_a_dry_run_gives_none_even_with_a_state_dir() -> Result<()> {
+        let base = tempfile::TempDir::new()?;
+
+        let log = open_show_log(true, Some(base.path()), 365);
+
+        assert!(log.is_none());
+        assert!(!base.path().join("showlog").exists());
+        Ok(())
+    }
+
+    #[test]
+    fn open_show_log_with_a_state_dir_opens_the_showlog_subdirectory() -> Result<()> {
+        let base = tempfile::TempDir::new()?;
+
+        let log = open_show_log(false, Some(base.path()), 365);
+
+        assert!(log.is_some());
+        assert!(base.path().join("showlog").is_dir());
+        Ok(())
+    }
+
+    #[test]
     fn provision_json_output_redacts_token() -> Result<()> {
         let item = musicindex_live_publisher::ProvisionedLiveItem {
             event_id: "created-event".to_owned(),
@@ -1773,6 +2113,7 @@ mod tests {
         let config = RedactedPublisherConfig {
             watch_dir: PathBuf::from("/tmp/watch"),
             endpoint: "https://api.example.test".to_owned(),
+            show_log_retention_days: 365,
             targets: vec![musicindex_live_publisher::RedactedPublisherTarget {
                 name: "default".to_owned(),
                 event_id: "event-default".to_owned(),

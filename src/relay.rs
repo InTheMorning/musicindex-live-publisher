@@ -18,7 +18,7 @@ use serde_json::Value;
 
 use crate::{
     ArtworkImage, DisplayEntry, DisplayState, LiveValuePayload, Pairing, ProducerState,
-    PublisherConfig, PublisherTarget,
+    PublishResult, PublisherConfig, PublisherTarget, ShowLog, ShowLogEntry,
 };
 
 /// Default per-request timeout for relay calls.
@@ -594,7 +594,11 @@ impl RelayPublisher {
         Self::start_with_backoff(config, DEFAULT_INITIAL_BACKOFF, DEFAULT_MAX_BACKOFF)
     }
 
-    /// Starts relay workers with explicit backoff settings.
+    /// Starts relay workers with explicit backoff settings and no show log
+    /// (ADR 0017, show log task 002).
+    ///
+    /// Equivalent to [`RelayPublisher::start_with_show_log`] with
+    /// `show_log` of `None`: no worker ever writes a show log entry.
     ///
     /// # Errors
     ///
@@ -603,6 +607,26 @@ impl RelayPublisher {
         config: &PublisherConfig,
         initial_backoff: Duration,
         max_backoff: Duration,
+    ) -> Result<Self> {
+        Self::start_with_show_log(config, initial_backoff, max_backoff, None)
+    }
+
+    /// Starts relay workers with explicit backoff settings and a show log
+    /// (ADR 0017, show log task 002).
+    ///
+    /// Each worker gets its own clone of `show_log` and writes a `track` or
+    /// `clear` entry after each publish outcome of its own payload. `None`
+    /// writes no entry anywhere: this is what a dry run, or a service
+    /// started with no `--state-dir`, uses.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the relay HTTP client cannot be initialized.
+    pub fn start_with_show_log(
+        config: &PublisherConfig,
+        initial_backoff: Duration,
+        max_backoff: Duration,
+        show_log: Option<Arc<ShowLog>>,
     ) -> Result<Self> {
         let client = RelayClient::new(DEFAULT_REQUEST_TIMEOUT)?;
         let mut senders = HashMap::new();
@@ -618,6 +642,7 @@ impl RelayPublisher {
                 .as_ref()
                 .filter(|_| target.display_dir.is_some())
                 .cloned();
+            let show_log = show_log.clone();
             thread::Builder::new()
                 .name(format!("relay-publisher-{}", relay_target.name))
                 .spawn({
@@ -625,13 +650,16 @@ impl RelayPublisher {
                     let fatal = Arc::clone(&fatal);
                     move || {
                         publish_worker(
-                            client,
-                            relay_target,
-                            receiver,
-                            initial_backoff,
-                            max_backoff,
+                            PublishWorkerInputs {
+                                client,
+                                target: relay_target,
+                                receiver,
+                                initial_backoff,
+                                max_backoff,
+                                display,
+                                show_log,
+                            },
                             &fatal,
-                            display,
                         )
                     }
                 })
@@ -754,6 +782,9 @@ struct WorkerContext<'a> {
     /// The display worker, for a target with a display path. The payload
     /// worker only sends it a command. It never sends a display request.
     display: Option<&'a mpsc::Sender<DisplayCommand>>,
+    /// The show log of this worker's instance, when the service runs with
+    /// `--state-dir` (ADR 0017, show log task 002). `None` writes no entry.
+    show_log: Option<&'a ShowLog>,
 }
 
 /// Outcome of retrying one payload until it settles.
@@ -781,6 +812,12 @@ enum PublishAttempt {
 /// retried and restarts the backoff, the same as before this task. A
 /// `Producer` command received while retrying updates `*producer_state` in
 /// place and does not affect the retry.
+///
+/// Writes one show log entry after each outcome of `ctx.client.publish`
+/// (ADR 0017, show log task 002): see [`record_show_log_entry`]. A
+/// retryable outcome writes its own entry and loops, so a payload retried
+/// twice writes two entries, one for each attempt, both with the facts of
+/// this same payload: the same `observed_at` and the same `block_guid`.
 fn run_publish(
     ctx: &WorkerContext<'_>,
     mut payload: LiveValuePayload,
@@ -800,6 +837,13 @@ fn run_publish(
                     seq,
                     "published live value payload"
                 );
+                record_show_log_entry(
+                    ctx.show_log,
+                    target,
+                    &payload,
+                    PublishResult::Accepted,
+                    Some(seq),
+                );
                 return PublishAttempt::Accepted {
                     payload: Box::new(payload),
                     keepalive_interval: keepalive_interval_secs.map(Duration::from_secs),
@@ -812,6 +856,7 @@ fn run_publish(
                     %reason,
                     "dropping live value payload"
                 );
+                record_show_log_entry(ctx.show_log, target, &payload, PublishResult::Dropped, None);
                 return PublishAttempt::Dropped;
             }
             // A fatal outcome must never leave a live-looking daemon that
@@ -827,6 +872,7 @@ fn run_publish(
                     %reason,
                     "fatal relay publish failure; stopping publisher"
                 );
+                record_show_log_entry(ctx.show_log, target, &payload, PublishResult::Fatal, None);
                 if let Ok(mut fatal) = ctx.fatal.lock() {
                     *fatal = Some(format!("target {}: {reason}", target.name));
                 }
@@ -839,6 +885,13 @@ fn run_publish(
                     %reason,
                     delay_ms = backoff.as_millis(),
                     "relay publish failed; backing off"
+                );
+                record_show_log_entry(
+                    ctx.show_log,
+                    target,
+                    &payload,
+                    PublishResult::Retryable,
+                    None,
                 );
                 let retry_delay = jittered_delay(backoff);
                 match ctx.receiver.recv_timeout(retry_delay) {
@@ -866,6 +919,54 @@ fn run_publish(
             }
         }
     }
+}
+
+/// Writes one show log `track` or `clear` entry after one publish attempt
+/// (ADR 0017, show log task 002).
+///
+/// Does nothing when `show_log` is `None` (a dry run, or no `--state-dir`),
+/// or when `payload` carries no [`LogFacts`](crate::LogFacts): a payload
+/// that the watcher did not build from a drop file, for example a payload a
+/// test builds directly, logs nothing.
+///
+/// `target`, `block_guid` and `value` come from `payload` and `target`.
+/// `listener_delay_secs` comes from `target`, the value this worker sends
+/// in `Listener-Delay-Secs`. `result` and `seq` come from the publish
+/// outcome. Every other field comes from the payload's log facts.
+fn record_show_log_entry(
+    show_log: Option<&ShowLog>,
+    target: &RelayTarget,
+    payload: &LiveValuePayload,
+    result: PublishResult,
+    seq: Option<u64>,
+) {
+    let Some(show_log) = show_log else {
+        return;
+    };
+    let Some(facts) = payload.log.as_ref() else {
+        return;
+    };
+    let mut entry = ShowLogEntry::new(
+        facts.kind,
+        facts.observed_at,
+        target.name.clone(),
+        payload.event_guid.clone(),
+    );
+    entry.block_guid = Some(payload.block_guid.clone());
+    entry.payable = facts.payable;
+    entry.play_id = facts.play_id.clone();
+    entry.artist = facts.artist.clone();
+    entry.title = facts.title.clone();
+    entry.album = facts.album.clone();
+    entry.duration_secs = facts.duration_secs;
+    entry.feed_guid = facts.feed_guid.clone();
+    entry.track_guid = facts.track_guid.clone();
+    entry.image_url = facts.image_url.clone();
+    entry.value = Some(payload.value.clone());
+    entry.listener_delay_secs = Some(target.listener_delay_secs);
+    entry.publish_result = Some(result);
+    entry.seq = seq;
+    show_log.append(&entry);
 }
 
 /// Outcome of one keepalive cycle, including a 409 republish when needed.
@@ -1042,15 +1143,34 @@ fn keepalive_wait(interval: Option<Duration>, producer_state: ProducerState) -> 
     }
 }
 
-fn publish_worker(
+/// The owned inputs of one [`publish_worker`] thread, bundled into one
+/// parameter.
+///
+/// `show_log` (ADR 0017, show log task 002) pushed the parameter count of
+/// `publish_worker` past clippy's argument-count lint; a struct carries the
+/// per-target inputs instead, next to `fatal`, which stays a separate
+/// parameter because it is shared by every target's worker, not owned by
+/// one of them.
+struct PublishWorkerInputs {
     client: RelayClient,
     target: RelayTarget,
     receiver: mpsc::Receiver<WorkerCommand>,
     initial_backoff: Duration,
     max_backoff: Duration,
-    fatal: &Mutex<Option<String>>,
     display: Option<mpsc::Sender<DisplayCommand>>,
-) {
+    show_log: Option<Arc<ShowLog>>,
+}
+
+fn publish_worker(inputs: PublishWorkerInputs, fatal: &Mutex<Option<String>>) {
+    let PublishWorkerInputs {
+        client,
+        target,
+        receiver,
+        initial_backoff,
+        max_backoff,
+        display,
+        show_log,
+    } = inputs;
     let ctx = WorkerContext {
         client: &client,
         target: &target,
@@ -1059,6 +1179,7 @@ fn publish_worker(
         max_backoff,
         fatal,
         display: display.as_ref(),
+        show_log: show_log.as_deref(),
     };
     let mut last_accepted: Option<LiveValuePayload> = None;
     let mut keepalive_interval: Option<Duration> = None;

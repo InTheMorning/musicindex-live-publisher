@@ -1,14 +1,16 @@
 //! Podcasting 2.0 live value payload assembly.
 
+use std::time::SystemTime;
+
 use serde::{Deserialize, Serialize};
 
-use crate::{DropFile, PaymentRoute};
+use crate::{DropFile, PaymentRoute, ShowLogEntryKind};
 
 /// A direct live value payload for the MusicIndex relay.
 ///
 /// This is the raw payload shape consumed by remote value listeners. It is not
 /// the relay's wrapped `{event_id, metadata}` form.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct LiveValuePayload {
     pub title: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -39,6 +41,143 @@ pub struct LiveValuePayload {
     /// This field is not serialized; it is used only for pairing with display state.
     #[serde(skip)]
     pub play_id: Option<String>,
+    /// The show log facts of this payload (ADR 0017, show log task 002).
+    ///
+    /// `DropWatcher` fills this field when it builds the payload. The relay
+    /// worker reads it to write a `track` or `clear` show log entry after
+    /// each publish attempt. Not serialized: a listener app never sees it.
+    #[serde(skip)]
+    pub log: Option<LogFacts>,
+}
+
+/// Equality ignores `log` (ADR 0017, show log task 002).
+///
+/// The watcher compares a freshly built payload against the last one it
+/// built for a path, to skip an unchanged payload
+/// (`DropWatcher::payload_for_upsert`). `log` carries the read time of the
+/// drop file, so comparing it would make every read of an unchanged file
+/// look like a change.
+///
+/// The destructuring of `self` names every field. A new field is then a
+/// compile error here, so it cannot silently drop out of the comparison. A
+/// missing field would make two different blocks look equal, and the
+/// watcher would not publish the new one.
+impl PartialEq for LiveValuePayload {
+    fn eq(&self, other: &Self) -> bool {
+        let Self {
+            title,
+            image,
+            description,
+            kind,
+            start_time,
+            duration,
+            event_guid,
+            block_guid,
+            feed_guid,
+            item_guid,
+            line,
+            author,
+            podcast_name,
+            value,
+            play_id,
+            log: _,
+        } = self;
+        *title == other.title
+            && *image == other.image
+            && *description == other.description
+            && *kind == other.kind
+            && *start_time == other.start_time
+            && *duration == other.duration
+            && *event_guid == other.event_guid
+            && *block_guid == other.block_guid
+            && *feed_guid == other.feed_guid
+            && *item_guid == other.item_guid
+            && *line == other.line
+            && *author == other.author
+            && *podcast_name == other.podcast_name
+            && *value == other.value
+            && *play_id == other.play_id
+    }
+}
+
+/// The show log facts of one payload, carried from the watcher to the relay
+/// worker (ADR 0017, show log task 002).
+///
+/// `DropWatcher` fills this when it reads a drop file, or finds it gone.
+/// `observed_at` is the read time of that moment, not the time of a later
+/// publish outcome: a retried payload keeps the facts it was built with, so
+/// each of its log entries shares the same `observed_at` and the same
+/// `kind`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LogFacts {
+    /// The read time of the drop file, or the time the drop file was found
+    /// gone.
+    pub observed_at: SystemTime,
+    /// `track` or `clear` (ADR 0017 §Entries). A `display` entry never
+    /// carries `LogFacts`; a later task writes it on its own path.
+    pub kind: ShowLogEntryKind,
+    /// `true` when the drop file has value routes. `None` for a `clear`
+    /// entry.
+    pub payable: Option<bool>,
+    /// From the drop file, when present.
+    pub artist: Option<String>,
+    /// From the drop file, when present.
+    pub title: Option<String>,
+    /// From the drop file, when present.
+    pub album: Option<String>,
+    /// From the drop file, when present.
+    pub play_id: Option<String>,
+    /// From the drop file, when present.
+    pub duration_secs: Option<f64>,
+    /// From the drop file, when present.
+    pub feed_guid: Option<String>,
+    /// From the drop file, when present.
+    pub track_guid: Option<String>,
+    /// The `image` of the drop file, when present.
+    pub image_url: Option<String>,
+}
+
+impl LogFacts {
+    /// Builds the facts of a `clear` entry: the drop file is gone, and no
+    /// track plays (ADR 0017 §Entries).
+    pub fn clear(observed_at: SystemTime) -> Self {
+        Self {
+            observed_at,
+            kind: ShowLogEntryKind::Clear,
+            payable: None,
+            artist: None,
+            title: None,
+            album: None,
+            play_id: None,
+            duration_secs: None,
+            feed_guid: None,
+            track_guid: None,
+            image_url: None,
+        }
+    }
+
+    /// Builds the facts of a `track` entry from a parsed drop file
+    /// (ADR 0017 §Entries).
+    ///
+    /// `payable` is `true` when the drop file carries at least one value
+    /// route. These facts come from the drop file itself, so a non-payable
+    /// track keeps its artist, title and other facts even though its
+    /// payload is the dead block.
+    pub fn track(observed_at: SystemTime, dropfile: &DropFile) -> Self {
+        Self {
+            observed_at,
+            kind: ShowLogEntryKind::Track,
+            payable: Some(!dropfile.value_routes.is_empty()),
+            artist: Some(dropfile.artist.clone()),
+            title: Some(dropfile.title.clone()),
+            album: dropfile.album.clone(),
+            play_id: dropfile.play_id.clone(),
+            duration_secs: dropfile.duration_secs,
+            feed_guid: dropfile.feed_guid.clone(),
+            track_guid: dropfile.track_guid.clone(),
+            image_url: dropfile.image.clone(),
+        }
+    }
 }
 
 /// Live value payment routing information.
@@ -111,6 +250,7 @@ pub fn payload_from_dropfile(
         podcast_name: album.map(str::to_owned),
         value: live_value_from_routes(&dropfile.value_routes),
         play_id: dropfile.play_id.clone(),
+        log: None,
     }
 }
 
@@ -166,6 +306,7 @@ pub fn dead_payload(event_guid: &str, block_guid: &str) -> LiveValuePayload {
             }],
         },
         play_id: None,
+        log: None,
     }
 }
 

@@ -1,6 +1,6 @@
 # Show Log Task 002: The Track And Clear Entries
 
-Status: Ready - 2026-10-19. It needs task 001.
+Status: Implemented - 2026-10-19. It needs task 001.
 
 Every criterion is mechanical.
 
@@ -164,3 +164,29 @@ At the end, report:
 3. behavior changed
 4. deviations from task
 5. unresolved concerns
+
+## Review Result
+
+Reviewed 2026-10-19. The full gate passes with 537 tests in the workspace.
+Task 001 ended with 523. `Cargo.toml`, `Cargo.lock` and `tests/golden.rs` did
+not change.
+
+- The watcher takes the read time after it reads the drop file. A
+  non-payable track keeps its drop-file facts with the dead block. A remove,
+  a startup with no file, and a missing producer give `clear`.
+- The worker writes one entry after each outcome of `run_publish`. The
+  keepalive republish after a `409` goes through `run_publish`, so it writes
+  an entry too. A retry keeps the first read time.
+- `target` comes from the name of the relay target. `event_guid`,
+  `block_guid` and `value` come from the payload. That agrees with ADR 0017.
+- The agent added `RelayPublisher::start_with_show_log`. `start_with_backoff`
+  keeps its signature and passes `None`. The packet said to change
+  `start_with_backoff`. The new function keeps the display tests unchanged,
+  and the result is the same.
+- The agent grouped the worker inputs in `PublishWorkerInputs`, to stay
+  under the clippy argument limit.
+- The review found one risk and corrected it. The hand-written `PartialEq`
+  of `LiveValuePayload` named each field. A field added later and missing
+  from that list would make two different blocks equal, and the watcher
+  would not publish the new block. The review changed `eq` to destructure
+  `self` with every field. A new field is now a compile error there.
