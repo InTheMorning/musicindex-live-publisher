@@ -270,6 +270,8 @@ one before it.
   — Implemented - 2026-10-19
 - [003 — The display entries, the unit and the documents](tasks/show-log-task-003-display-entries-and-unit.md)
   — Implemented - 2026-10-19
+- [004 — The off switch](tasks/show-log-task-004-off-switch.md)
+  — Ready - 2026-10-19. The amendment of ADR 0017 that adds `show_log`
 
 ## Reviews
 

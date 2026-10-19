@@ -28,6 +28,9 @@ packet.
   - With `--state-dir`, the publisher writes the log. The template unit and
     the unit of `scripts/setup-mixxx-musicindex.sh` pass it.
   - The log is in `~/.local/state/musicindex-live-publisher/<instance>/showlog/`.
+  - The amendment of 2026-10-19 adds the key `show_log`, which turns the log
+    off for one instance. Its task,
+    `docs/tasks/show-log-task-004-off-switch.md`, is open.
   - The export of an episode from the log is a `v4vmm` decision. No `v4vmm`
     ADR exists for it yet. The time of each entry is the read time of this service. Each
   entry holds the published `value`. The art is a reference that `v4vmm`

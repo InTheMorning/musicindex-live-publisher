@@ -7,6 +7,12 @@ Implemented 2026-10-19: tasks 001 to 003 of `docs/plans/show-log.md`. The
 named artifact is `docs/reviews/show-log-review-checklist.md`, which has no
 open item.
 
+Amended 2026-10-19: the configuration key `show_log` turns the log off for
+one instance. The default is `true`, so the log stays on unless an operator
+turns it off. The operator needs no log for some streams. The amendment adds
+a choice and reverses no decision. The implementation is
+`docs/tasks/show-log-task-004-off-switch.md`.
+
 Accepted 2026-10-19 by the operator. This record supersedes ADR 0003, which
 moved to `docs/archive/adr/`.
 
@@ -74,6 +80,10 @@ same name, but no version 1 file was ever written, so the name is free.
   `showlog-YYYY-MM-DD.jsonl`.
 - A configuration value sets the retention, with a default of 365 days. At
   startup, the service removes each log file that is older.
+- The top-level key `show_log` turns the log on or off for the instance. The
+  default is `true`. With `false`, the service writes no entry, makes no
+  directory and removes no file, also when it gets `--state-dir`. The files
+  that exist stay until the operator removes them.
 - The service does not know when a show starts or ends. `v4vmm` starts and
   stops the recording, so it gives the time range of the show.
 

@@ -54,6 +54,8 @@ display state that it sends. `v4vmm` can then export an episode from the log.
    `track` and `clear` entries from the publish loop, and `--state-dir`.
 3. [Task 003](../tasks/show-log-task-003-display-entries-and-unit.md): the
    `display` entries, the unit, the retention setting and the documents.
+4. [Task 004](../tasks/show-log-task-004-off-switch.md): the key `show_log`,
+   from the amendment of ADR 0017 on 2026-10-19.
 
 Each task needs the one before it. Tasks 002 and 003 can ship by themselves.
 
