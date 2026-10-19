@@ -285,8 +285,7 @@ struct CurrentTrack {
     /// False for a non-V4V track, or a V4V track with tags the producer
     /// could not read (ADR 0014). `write_current` then ignores `tags` and
     /// writes an empty `value_routes`, so a MusicIndex tag of a non-V4V
-    /// file can never become a route. The display `play_id` ignores this
-    /// track too, as it did before ADR 0014.
+    /// file can never become a route.
     payable: bool,
 }
 
@@ -488,16 +487,13 @@ impl<'a> Runtime<'a> {
                 ..
             } => {
                 let song_line = render_now_playing_line(&artist, &title, self.cli.strip_hyphens);
-                // ADR 0014: `current` now also holds a non-payable track, so
-                // that `write_current` can render its drop file. The display
-                // pairing of ADR 0012 stays as it was: only a payable track
-                // gets a `play_id` here.
-                let play_id = self
-                    .state
-                    .current
-                    .as_ref()
-                    .filter(|current| current.payable)
-                    .map(|current| current.hist_id);
+                // ADR 0012: the display `play_id` is the `play_id` of the
+                // drop file of this play. Since ADR 0014, a non-payable track
+                // has a drop file with a `play_id` too, so it gets one here.
+                // The show log of ADR 0017 joins the two by this value. The
+                // publisher still pairs no `value` with a non-payable track,
+                // because its dead block has no `play_id`.
+                let play_id = self.state.current.as_ref().map(|current| current.hist_id);
                 let track = ShownTrack {
                     artist: &artist,
                     title: &title,

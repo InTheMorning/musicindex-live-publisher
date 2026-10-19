@@ -757,6 +757,13 @@ fn lifecycle_display_non_v4v_track_with_album() -> Result<()> {
     );
     let display = read_display(&display_dir)?;
     assert_eq!(display["track"]["album"], "Non-V4V Album");
+    // ADR 0012 and ADR 0017: a non-V4V track has the `play_id` of its drop
+    // file, so the show log can join its display entry to its track entry.
+    assert!(
+        display["track"]["play_id"].is_string(),
+        "play_id: {}",
+        display["track"]["play_id"]
+    );
     Ok(())
 }
 

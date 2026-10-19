@@ -48,3 +48,25 @@ The operator ran the check on 2026-10-19 with the unit that
   16:47:25.771Z and 16:47:27.977Z.
 - Three tracks gave a `track` entry and a `display` entry each: "Nothing Is
   Easy", "Kick Your Arse" and "Bipolar". Each publish was `accepted`.
+
+## Field Check
+
+The operator printed the fields of each entry of the same file on
+2026-10-19.
+
+- Each V4V `track` entry ("Kick Your Arse", "Bipolar") has `payable: true`,
+  `play_id`, `feed_guid`, `track_guid`, `image_url` and the recipients. Its
+  `display` entry has the same `play_id` and an art URL.
+- Each non-V4V `track` entry ("Nothing Is Easy", "Critical Mass") has
+  `payable: false`, `play_id` and the dead block.
+- Defect: the `display` entry of each non-V4V track had `play_id: null`. So a
+  reader could not join its embedded art (`sha256`) to its track. The
+  producer wrote the display `play_id` for a payable track only. That rule
+  came from track reporting task 001. ADR 0012 defines the display `play_id`
+  as the `play_id` of the drop file, and since ADR 0014 a non-V4V drop file
+  has one.
+- The fix on 2026-10-19: the producer writes `play_id` in the display state
+  of each track. `lifecycle_display_non_v4v_track_with_album` checks it. The
+  publisher still pairs no `value` with a non-V4V display state, because its
+  dead block has no `play_id`. `pairing_after_dead_block_has_no_value` shows
+  this.
