@@ -13,11 +13,11 @@ pub mod showlog;
 pub mod watcher;
 
 pub use config::{
-    ConfigEditError, ConfigOverrides, DEFAULT_CONFIG_PATH, DEFAULT_SHOW_LOG_RETENTION_DAYS,
-    PublisherConfig, PublisherTarget, RedactedPublisherConfig, RedactedPublisherTarget,
-    TargetConfigEdit, TargetConfigSummary, add_target_to_config, check_event_ownership,
-    list_config_targets, list_config_targets_from_str, load_config, load_config_bytes,
-    remove_target_from_config, show_config, show_config_from_str,
+    ConfigEditError, ConfigOverrides, DEFAULT_CONFIG_PATH, DEFAULT_SHOW_LOG,
+    DEFAULT_SHOW_LOG_RETENTION_DAYS, PublisherConfig, PublisherTarget, RedactedPublisherConfig,
+    RedactedPublisherTarget, TargetConfigEdit, TargetConfigSummary, add_target_to_config,
+    check_event_ownership, list_config_targets, list_config_targets_from_str, load_config,
+    load_config_bytes, remove_target_from_config, show_config, show_config_from_str,
 };
 pub use display::{
     Artwork, ArtworkImage, DISPLAY_FILE_NAME, DISPLAY_SCHEMA, DisplayEntry, DisplayState,

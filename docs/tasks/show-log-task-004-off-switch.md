@@ -1,6 +1,6 @@
 # Show Log Task 004: The Off Switch
 
-Status: Ready - 2026-10-19. It needs task 003.
+Status: Implemented - 2026-10-19. It needs task 003.
 
 Every criterion is mechanical.
 
@@ -131,3 +131,18 @@ At the end, report:
 3. behavior changed
 4. deviations from task
 5. unresolved concerns
+
+## Review Result
+
+Reviewed 2026-10-19. The full gate passes with 550 tests in the workspace.
+Task 003 ended with 545. `Cargo.lock` and `tests/golden.rs` did not change.
+
+- `open_show_log` returns `None` before it uses the state directory when
+  `show_log` is `false`. It makes no directory and removes no file.
+- An absent key gives `true`. A string is an error that names `show_log`.
+  `config show` prints the key in text and in JSON.
+- `target add` keeps the line `show_log = false`. A test proves it.
+- The agent added the public constant `DEFAULT_SHOW_LOG`, as for
+  `DEFAULT_SHOW_LOG_RETENTION_DAYS`.
+- The review changed one log message. It had a semicolon, and it now has two
+  sentences.

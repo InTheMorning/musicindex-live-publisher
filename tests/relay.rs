@@ -268,6 +268,7 @@ fn config(endpoint: &str) -> PublisherConfig {
         endpoint: endpoint.to_owned(),
         targets: vec![publisher_target_with_stream_delay(Duration::ZERO)],
         show_log_retention_days: 365,
+        show_log: true,
     }
 }
 

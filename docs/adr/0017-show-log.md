@@ -11,7 +11,7 @@ Amended 2026-10-19: the configuration key `show_log` turns the log off for
 one instance. The default is `true`, so the log stays on unless an operator
 turns it off. The operator needs no log for some streams. The amendment adds
 a choice and reverses no decision. The implementation is
-`docs/tasks/show-log-task-004-off-switch.md`.
+`docs/tasks/show-log-task-004-off-switch.md`, done on 2026-10-19.
 
 Accepted 2026-10-19 by the operator. This record supersedes ADR 0003, which
 moved to `docs/archive/adr/`.

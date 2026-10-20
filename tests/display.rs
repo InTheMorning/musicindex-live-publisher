@@ -386,6 +386,7 @@ fn display_config(endpoint: &str) -> PublisherConfig {
             display_dir: Some(PathBuf::from("/nonexistent/display")),
         }],
         show_log_retention_days: 365,
+        show_log: true,
     }
 }
 

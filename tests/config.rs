@@ -356,6 +356,7 @@ fn config_show_json_outputs_redacted_shape() -> Result<()> {
     assert_eq!(value["watch_dir"], watch_dir.display().to_string());
     assert_eq!(value["endpoint"], "https://api.example.test");
     assert_eq!(value["show_log_retention_days"], 365);
+    assert_eq!(value["show_log"], true);
     assert_eq!(value["targets"][0]["name"], "default");
     assert_eq!(value["targets"][0]["event_id"], "event-default");
     assert_eq!(
@@ -1392,6 +1393,87 @@ fn config_show_log_retention_days_resolves_a_configured_value() -> Result<()> {
 fn config_show_log_retention_days_zero_or_less_is_error_naming_the_key() -> Result<()> {
     assert!(show_log_retention_days_error("0")?.contains("show_log_retention_days"));
     assert!(show_log_retention_days_error("-1")?.contains("show_log_retention_days"));
+    Ok(())
+}
+
+/// Inserts a top-level `show_log` line after `endpoint`.
+fn config_text_with_show_log(watch_dir: &Path, token: &Path, literal: &str) -> String {
+    config_text(watch_dir, token, None).replace(
+        "endpoint = \"https://api.example.test\"",
+        &format!("endpoint = \"https://api.example.test\"\nshow_log = {literal}"),
+    )
+}
+
+#[test]
+fn config_with_no_show_log_gives_true() -> Result<()> {
+    let temp = TempDir::new()?;
+    let watch_dir = temp.path().join("watch");
+    let token = write_token(temp.path(), "default.token", "secret-token")?;
+    let config_path = write_config(temp.path(), &config_text(&watch_dir, &token, None))?;
+
+    let config = load_config(&config_path, ConfigOverrides::default())?;
+
+    assert!(config.show_log);
+    Ok(())
+}
+
+#[test]
+fn config_show_log_false_gives_false() -> Result<()> {
+    let temp = TempDir::new()?;
+    let watch_dir = temp.path().join("watch");
+    let token = write_token(temp.path(), "default.token", "secret-token")?;
+    let config_path = write_config(
+        temp.path(),
+        &config_text_with_show_log(&watch_dir, &token, "false"),
+    )?;
+
+    let config = load_config(&config_path, ConfigOverrides::default())?;
+
+    assert!(!config.show_log);
+    Ok(())
+}
+
+#[test]
+fn config_show_log_not_a_boolean_is_error_naming_the_key() -> Result<()> {
+    let temp = TempDir::new()?;
+    let watch_dir = temp.path().join("watch");
+    let token = write_token(temp.path(), "default.token", "secret-token")?;
+    let config_path = write_config(
+        temp.path(),
+        &config_text_with_show_log(&watch_dir, &token, "\"no\""),
+    )?;
+
+    let error = load_config(&config_path, ConfigOverrides::default())
+        .err()
+        .ok_or_else(|| anyhow!("expected show_log \"no\" to be rejected"))?;
+
+    assert!(format!("{error:#}").contains("show_log"));
+    Ok(())
+}
+
+#[test]
+fn target_add_keeps_the_show_log_false_line() -> Result<()> {
+    let temp = TempDir::new()?;
+    let watch_dir = temp.path().join("watch");
+    let default_token = write_token(temp.path(), "default.token", "default-secret")?;
+    let aux_token = write_token(temp.path(), "aux.token", "aux-secret")?;
+    let config_path = write_config(
+        temp.path(),
+        &config_text_with_show_log(&watch_dir, &default_token, "false"),
+    )?;
+
+    add_target_to_config(
+        &config_path,
+        &target_edit("aux", "event-aux", &aux_token),
+        false,
+    )?;
+
+    let text = fs::read_to_string(&config_path)?;
+    let config = load_config(&config_path, ConfigOverrides::default())?;
+
+    assert!(text.contains("show_log = false"));
+    assert!(!config.show_log);
+    assert_eq!(config.targets.len(), 2);
     Ok(())
 }
 

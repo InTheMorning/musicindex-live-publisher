@@ -18,6 +18,10 @@ pub const DEFAULT_CONFIG_PATH: &str = "/etc/musicindex-live-publisher/config.tom
 /// Default retention of the show log, in days (ADR 0017, show log task 003).
 pub const DEFAULT_SHOW_LOG_RETENTION_DAYS: u32 = 365;
 
+/// Default value of the `show_log` on/off switch (ADR 0017 amendment, show
+/// log task 004). The log stays on unless an operator turns it off.
+pub const DEFAULT_SHOW_LOG: bool = true;
+
 /// Ceiling for a configured stream delay.
 ///
 /// Chosen well above any real broadcast buffer. Its job is to catch a units
@@ -40,6 +44,10 @@ pub struct PublisherConfig {
     /// The retention of the show log, in days (ADR 0017, show log task 003).
     /// `--state-dir` uses this value for [`crate::ShowLog::open`].
     pub show_log_retention_days: u32,
+    /// Turns the show log on or off for this instance (ADR 0017 amendment,
+    /// show log task 004). With `false`, the publisher writes no log, also
+    /// with `--state-dir`.
+    pub show_log: bool,
 }
 
 /// A configured publishing target with its loaded broadcaster token.
@@ -113,6 +121,9 @@ pub struct RedactedPublisherConfig {
     pub endpoint: String,
     /// The retention of the show log, in days (ADR 0017, show log task 003).
     pub show_log_retention_days: u32,
+    /// Turns the show log on or off for this instance (ADR 0017 amendment,
+    /// show log task 004).
+    pub show_log: bool,
     pub targets: Vec<RedactedPublisherTarget>,
 }
 
@@ -152,6 +163,9 @@ struct RawConfig {
     /// The show log retention, in days (ADR 0017, show log task 003). `None`
     /// takes the default of [`DEFAULT_SHOW_LOG_RETENTION_DAYS`].
     show_log_retention_days: Option<i64>,
+    /// Turns the show log on or off for this instance (ADR 0017 amendment,
+    /// show log task 004). `None` takes the default of [`DEFAULT_SHOW_LOG`].
+    show_log: Option<bool>,
     #[serde(rename = "target")]
     targets: Vec<RawTarget>,
 }
@@ -179,6 +193,7 @@ struct RawPublisherConfigSummary {
     watch_dir: PathBuf,
     endpoint: String,
     show_log_retention_days: Option<i64>,
+    show_log: Option<bool>,
     #[serde(rename = "target")]
     targets: Vec<RawTargetSummary>,
 }
@@ -467,6 +482,7 @@ pub fn show_config_from_str(text: &str) -> Result<RedactedPublisherConfig> {
         return Err(anyhow!("config must define at least one target"));
     }
     let show_log_retention_days = resolve_show_log_retention_days(raw.show_log_retention_days)?;
+    let show_log = raw.show_log.unwrap_or(DEFAULT_SHOW_LOG);
 
     let mut seen = HashSet::new();
     let targets = raw
@@ -479,6 +495,7 @@ pub fn show_config_from_str(text: &str) -> Result<RedactedPublisherConfig> {
         watch_dir: raw.watch_dir,
         endpoint: raw.endpoint,
         show_log_retention_days,
+        show_log,
         targets,
     })
 }
@@ -562,6 +579,7 @@ fn resolve_config(raw: RawConfig, overrides: ConfigOverrides) -> Result<Publishe
         return Err(anyhow!("config must define at least one target"));
     }
     let show_log_retention_days = resolve_show_log_retention_days(raw.show_log_retention_days)?;
+    let show_log = raw.show_log.unwrap_or(DEFAULT_SHOW_LOG);
 
     let mut seen = HashSet::new();
     let targets = raw
@@ -581,6 +599,7 @@ fn resolve_config(raw: RawConfig, overrides: ConfigOverrides) -> Result<Publishe
         endpoint: overrides.endpoint.unwrap_or(raw.endpoint),
         targets,
         show_log_retention_days,
+        show_log,
     })
 }
 

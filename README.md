@@ -95,6 +95,9 @@ Fields:
   it.
 - `show_log_retention_days`: the retention of the show log, in days (ADR
   0017). Defaults to `365`. The value must be `1` or more.
+- `show_log`: turns the show log on or off for this instance (ADR 0017).
+  Defaults to `true`. With `false`, the publisher writes no log, also with
+  `--state-dir`.
 
 When no payable block plays, the publisher publishes the dead block (ADR
 0005). The dead block pays the fixed `lnaddress` recipient
@@ -106,6 +109,10 @@ ADR 0017 owns the show log contract. With `--state-dir`, the publisher
 writes an append-only log of the show to
 `<state_dir>/showlog/showlog-YYYY-MM-DD.jsonl`, one file for each UTC day.
 The packaged unit sets `--state-dir` and a systemd `StateDirectory`.
+
+The top-level key `show_log` turns the log off for one instance. The
+default is `true`. With `false`, the publisher writes no log, also with
+`--state-dir`. The files that exist stay until the operator removes them.
 
 The log holds the artist and title of each track that the operator played.
 A reader keeps the log for `show_log_retention_days` days, 365 by default.

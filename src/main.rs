@@ -94,6 +94,7 @@ fn run_cli(cli: Cli) -> Result<()> {
 
     let show_log = open_show_log(
         cli.dry_run,
+        config.show_log,
         cli.state_dir.as_deref(),
         config.show_log_retention_days,
     );
@@ -906,10 +907,11 @@ fn render_config_show_json(config: &RedactedPublisherConfig) -> Result<String> {
 
 fn render_config_show_text(config: &RedactedPublisherConfig) -> String {
     let mut output = format!(
-        "watch_dir={}\nendpoint={}\nshow_log_retention_days={}\n",
+        "watch_dir={}\nendpoint={}\nshow_log_retention_days={}\nshow_log={}\n",
         config.watch_dir.display(),
         config.endpoint,
-        config.show_log_retention_days
+        config.show_log_retention_days,
+        config.show_log
     );
     for target in &config.targets {
         output.push_str(&format!(
@@ -953,18 +955,27 @@ fn wait_for_watch_dir(watch_dir: &Path) -> Result<()> {
 /// configured retention, and removes each expired file at once (show log
 /// task 002, show log task 003).
 ///
-/// Gives `None` with no warning for a dry run, or with no `--state-dir`:
-/// the service then writes no show log, because `RelayPublisher` writes no
-/// entry when its show log is `None`. Gives `None` with a `tracing::warn!`
-/// when the directory cannot be opened. A log failure must never stop a
-/// publish (ADR 0017 §The Log Never Stops A Publish), so the service runs
-/// with no show log rather than fail to start.
+/// Gives `None` with no warning for a dry run, with `show_log_enabled`
+/// `false`, or with no `--state-dir`: the service then writes no show log,
+/// because `RelayPublisher` writes no entry when its show log is `None`.
+/// With `show_log_enabled` `false`, this function makes no directory, runs
+/// no `remove_expired`, and opens no file, also with `--state-dir` (ADR 0017
+/// amendment, show log task 004). It logs one `tracing::info!` line instead.
+/// Gives `None` with a `tracing::warn!` when the directory cannot be opened.
+/// A log failure must never stop a publish (ADR 0017 §The Log Never Stops A
+/// Publish), so the service runs with no show log rather than fail to
+/// start.
 fn open_show_log(
     dry_run: bool,
+    show_log_enabled: bool,
     state_dir: Option<&Path>,
     retention_days: u32,
 ) -> Option<Arc<ShowLog>> {
     if dry_run {
+        return None;
+    }
+    if !show_log_enabled {
+        tracing::info!("the configuration turns the show log off. The publisher writes no log");
         return None;
     }
     let log_dir = state_dir?.join("showlog");
@@ -2057,7 +2068,7 @@ mod tests {
     fn open_show_log_with_no_state_dir_gives_none_and_creates_nothing() -> Result<()> {
         let base = tempfile::TempDir::new()?;
 
-        let log = open_show_log(false, None, 365);
+        let log = open_show_log(false, true, None, 365);
 
         assert!(log.is_none());
         assert!(!base.path().join("showlog").exists());
@@ -2068,7 +2079,7 @@ mod tests {
     fn open_show_log_in_a_dry_run_gives_none_even_with_a_state_dir() -> Result<()> {
         let base = tempfile::TempDir::new()?;
 
-        let log = open_show_log(true, Some(base.path()), 365);
+        let log = open_show_log(true, true, Some(base.path()), 365);
 
         assert!(log.is_none());
         assert!(!base.path().join("showlog").exists());
@@ -2079,10 +2090,22 @@ mod tests {
     fn open_show_log_with_a_state_dir_opens_the_showlog_subdirectory() -> Result<()> {
         let base = tempfile::TempDir::new()?;
 
-        let log = open_show_log(false, Some(base.path()), 365);
+        let log = open_show_log(false, true, Some(base.path()), 365);
 
         assert!(log.is_some());
         assert!(base.path().join("showlog").is_dir());
+        Ok(())
+    }
+
+    #[test]
+    fn open_show_log_with_show_log_false_gives_none_and_creates_nothing_even_with_a_state_dir()
+    -> Result<()> {
+        let base = tempfile::TempDir::new()?;
+
+        let log = open_show_log(false, false, Some(base.path()), 365);
+
+        assert!(log.is_none());
+        assert!(!base.path().join("showlog").exists());
         Ok(())
     }
 
@@ -2114,6 +2137,7 @@ mod tests {
             watch_dir: PathBuf::from("/tmp/watch"),
             endpoint: "https://api.example.test".to_owned(),
             show_log_retention_days: 365,
+            show_log: true,
             targets: vec![musicindex_live_publisher::RedactedPublisherTarget {
                 name: "default".to_owned(),
                 event_id: "event-default".to_owned(),

@@ -67,6 +67,9 @@ Optional top-level fields:
   0017). Defaults to `365`. The value must be an integer of `1` or more. A
   value of `0` or less is a load error that names the key. See "Show Log"
   below.
+- `show_log`: turns the show log on or off for this instance (ADR 0017).
+  Defaults to `true`. A value that is not a boolean is a load error that
+  names the key. See "Show Log" below.
 
 Required target fields:
 
@@ -457,6 +460,11 @@ The top-level configuration key `show_log_retention_days` sets the
 retention, in days. The default is `365`. At startup, the publisher
 removes each log file older than the retention.
 
+The top-level configuration key `show_log` turns the log off for this
+instance. The default is `true`. With `false`, the publisher writes no
+log. It makes no `showlog` directory and removes no file, also with
+`--state-dir`. The files that exist stay until the operator removes them.
+
 A log line is one of three kinds:
 
 - `track`: one entry each time the publisher tries to publish a track,
@@ -499,8 +507,9 @@ Options:
 - `--watch-dir <path>`: override the config `watch_dir`.
 - `--endpoint <url>`: override the config `endpoint`.
 - `--state-dir <path>`: the state directory of this instance. The publisher
-  writes the show log to `<path>/showlog/`. Without this flag, the
-  publisher writes no show log. See "Show Log" above.
+  writes the show log to `<path>/showlog/`. Without this flag, or with the
+  config key `show_log` set to `false`, the publisher writes no show log.
+  See "Show Log" above.
 - `--dry-run`: print live value payloads to stdout instead of publishing.
 - `--verbose`: enable debug logging.
 - `--version`: print the package version and exit.

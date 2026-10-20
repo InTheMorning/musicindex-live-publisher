@@ -171,6 +171,7 @@ fn config(endpoint: &str) -> PublisherConfig {
             display_dir: None,
         }],
         show_log_retention_days: 365,
+        show_log: true,
     }
 }
 
