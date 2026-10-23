@@ -8,7 +8,7 @@ arch=('x86_64')
 _pkgbase=musicindex-live-publisher
 _repo="${MUSICINDEX_LIVE_PUBLISHER_REPO:-$(realpath "$startdir/../..")}"
 url="file://${_repo}"
-license=('LicenseRef-UNKNOWN')
+license=('AGPL-3.0-only')
 depends=('bash' 'ca-certificates' 'gcc-libs' 'glibc' 'openssl' 'systemd')
 makedepends=('cargo' 'git' 'pkgconf')
 optdepends=('mixxx: source history database for mixxx-now-playing')
@@ -25,9 +25,6 @@ sha256sums=()
 # fails with "undefined symbol: sqlite3_open_v2" and friends. Rust already does
 # its own LTO via the release profile; makepkg's C-level LTO buys nothing here.
 options=(!lto)
-
-# This checkout does not declare an upstream license yet. Keep this package for
-# local testing until the repo has a real LICENSE file and SPDX license value.
 
 pkgver() {
   cd "$_repo"
@@ -105,7 +102,7 @@ package() {
     "$pkgdir/usr/share/doc/musicindex-live-publisher/examples/config.toml"
   install -Dm0644 packaging/arch/v4vmm.example.toml \
     "$pkgdir/usr/share/doc/musicindex-live-publisher/examples/v4vmm-config.toml"
-  install -Dm0644 packaging/arch/LICENSE.upstream-unknown \
+  install -Dm0644 LICENSE \
     "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 
   install -Dm0644 README.md \

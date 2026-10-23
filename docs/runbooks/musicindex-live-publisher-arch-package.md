@@ -244,8 +244,6 @@ Pacman removes package-owned files only. User config and token files under
 
 Do not publish this package as-is. First:
 
-- Add an upstream `LICENSE` file.
-- Replace `license=('LicenseRef-UNKNOWN')` with the real SPDX identifier.
 - Replace the local working-tree source with a public release or VCS URL.
 - For a stable package, drop the `-git` suffix and use a fixed release tarball
   with real checksums.
