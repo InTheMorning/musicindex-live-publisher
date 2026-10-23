@@ -12,7 +12,7 @@ end to end.
 
 - `docs/plans/musicindex-live-publisher-plan.md` — Service hardening, Phase 4
 - `docs/adr/0002-nowplaying-drop-file-contract.md` — task 001's contract
-- `~/build/splitkit/systemd/musicindex-live-relay.service` — the hardening template
+- `~/build/musicindex-live-relay/systemd/musicindex-live-relay.service` — the hardening template
 - `mixxx-now-playing/src/render.rs` — its JSON output path
 
 ## Files Likely To Change

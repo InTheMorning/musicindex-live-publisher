@@ -137,7 +137,7 @@ outputs in the same call (`mixxx-now-playing/src/main.rs:178-185, 202`):
   Alignment is inherited, not computed.
 - The live value block reaches the client out of band: drop file, inotify
   (75 ms debounce, `src/watcher.rs:16`), HTTPS POST, then
-  `splitkit/src/lib.rs:231-250`, which stores and fans out on Socket.IO and SSE
+  `musicindex-live-relay/src/lib.rs:231-250`, which stores and fans out on Socket.IO and SSE
   with no scheduling. It shares no buffer with the audio.
 
 Publisher-side latency is under a second (0.5 s Mixxx poll, 75 ms debounce, one
@@ -163,7 +163,7 @@ and [task 002](../tasks/musicindex-live-publisher-task-002-live-value-transform.
 both record "`startTime` is `0` for music blocks. No stream-elapsed clock is
 needed." That is true of the payload shape and was read as timing being out of
 scope entirely. Curiohoster does keep a broadcast clock: in example 3 of
-`splitkit/docs/research/curiohoster-livevalue-socketio-examples.md`,
+`musicindex-live-relay/docs/research/curiohoster-livevalue-socketio-examples.md`,
 `broadcastTimestamp - eventTimestamp` is 1723.160 s against a `startTime` of
 1723.151 s.
 
@@ -180,7 +180,7 @@ Medium, no packet written:
   `mixxx-now-playing --id3-file /run/.../default.json` as yourself. That is
   `EACCES`. Needs a `User=`/`Group=` shared with the producer and `0770`. Second-tier
   hardening (`SystemCallFilter`, `RestrictAddressFamilies`, `PrivateDevices`,
-  `CapabilityBoundingSet`) is also absent — inherited from the splitkit
+  `CapabilityBoundingSet`) is also absent — inherited from the relay
   template, not introduced here.
 - **No scheme check on the publisher endpoint.** `relay.rs:build_url` accepts
   `http://` and sends the broadcaster token as a bearer header in cleartext. The

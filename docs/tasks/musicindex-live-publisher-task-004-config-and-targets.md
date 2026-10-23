@@ -10,7 +10,7 @@ of publish targets with their event IDs, tokens, and fallback splits.
 ## Files To Inspect
 
 - `docs/plans/musicindex-live-publisher-plan.md` — Configuration
-- `~/build/splitkit/README.md` — how the broadcaster token is issued and stored
+- `~/build/musicindex-live-relay/README.md` — how the broadcaster token is issued and stored
 
 ## Files Likely To Change
 

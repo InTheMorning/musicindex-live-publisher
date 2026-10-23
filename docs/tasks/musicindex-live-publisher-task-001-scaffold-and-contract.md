@@ -11,7 +11,7 @@ contract, and implement parsing for it. No transform, no watching, no network.
 
 - `docs/plans/musicindex-live-publisher-plan.md` — Input: the drop-file contract
 - `~/build/v4vmm/src/api.rs:238` — `PaymentRoute`, whose field names the contract reuses
-- `~/build/splitkit/README.md` — relay API, for context on what this feeds
+- `~/build/musicindex-live-relay/README.md` — relay API, for context on what this feeds
 
 ## Files Likely To Change
 
@@ -23,7 +23,7 @@ contract, and implement parsing for it. No transform, no watching, no network.
 ## Do Not Touch
 
 - `mixxx-now-playing/` — a separate crate, currently in flight
-- `~/build/v4vmm/` and `~/build/splitkit/` — read only, never edit
+- `~/build/v4vmm/` and `~/build/musicindex-live-relay/` — read only, never edit
 - The repository root. **Do not create a Cargo workspace.** Converting would move
   `mixxx-now-playing/Cargo.lock` to the root and conflict with in-flight work.
 

@@ -15,9 +15,8 @@ output side.
 
 ## Naming
 
-The working name for this was "splitkit", but `~/build/splitkit` is already the
-**relay** — package `musicindex-live-relay`, the server this publishes *to*.
-Reusing the name for the client would be actively confusing.
+`~/build/musicindex-live-relay` is the **relay** — package `musicindex-live-relay`,
+the server this publishes *to*.
 
 This plan uses **`musicindex-live-publisher`**: the symmetric client to
 `musicindex-live-relay`. Rename freely, but keep it distinct from the relay.
@@ -38,10 +37,10 @@ This plan uses **`musicindex-live-publisher`**: the symmetric client to
 
 | Component | Location | Role |
 |---|---|---|
-| `musicindex-live-relay` | `~/build/splitkit` | Server. Socket.IO + SSE + HTTP, memory-only. No v4vmm dependency. |
+| `musicindex-live-relay` | `~/build/musicindex-live-relay` | Server. Socket.IO + SSE + HTTP, memory-only. No v4vmm dependency. |
 | Live client | `v4vmm/src/api.rs`, `v4vmm/src/cli.rs` | Creates live items and reads snapshots. The publish half is withdrawn by `v4vmm` ADR 0059. ~350 lines. |
 | Control surface | `v4vmm` `Broadcast` frame | Registers events, starts and stops services, shows listener truth. `v4vmm` ADR 0059. Planned. |
-| Payload examples | `~/build/splitkit/hgh-example-{1,2,3}.json` | Real Curiohoster live value payloads. |
+| Payload examples | `~/build/musicindex-live-relay/hgh-example-{1,2,3}.json` | Real Curiohoster live value payloads. |
 | Metadata producer | `mixxx-now-playing` (in flight) | Emits V4V track metadata with `Value Routes`. Presence means a track is playing. |
 
 ### The gap this project closes
@@ -256,7 +255,7 @@ to paste, so the one-time step is not a manual curl.
 
 ### Service hardening
 
-Model the unit on the relay's own at `~/build/splitkit/systemd/`:
+Model the unit on the relay's own at `~/build/musicindex-live-relay/systemd/`:
 `NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome`, `PrivateTmp`,
 `Restart=on-failure`. Add `ReadWritePaths` for the watch directory and
 `LoadCredential=` for the token so it is not readable process-wide.
@@ -280,7 +279,7 @@ fallback payload on remove. Still no network: `--dry-run` prints the payload.
 
 The relay client, config, token loading, status-code handling, and backoff. The
 `provision` subcommand. Integration tests against a local relay instance built
-from `~/build/splitkit`.
+from `~/build/musicindex-live-relay`.
 
 ### Phase 4 — deploy
 
@@ -335,7 +334,7 @@ writes `musicindex.nowplaying/1` drop files like any other producer.
   malformed JSON. Driven with `tempfile`, no real inotify races.
 - Clear semantics: removing the drop file publishes the fallback, with a
   different `blockGuid` than the track it replaced.
-- Relay integration: build `~/build/splitkit`, run on a loopback port, assert
+- Relay integration: build `~/build/musicindex-live-relay`, run on a loopback port, assert
   published payloads come back over the `remoteValue` HTTP snapshot endpoint.
 - Status codes: 401, 403, 404, 413, 429 each produce the documented behaviour.
   Stubbed, no real API calls.

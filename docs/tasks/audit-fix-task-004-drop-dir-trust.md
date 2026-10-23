@@ -34,7 +34,7 @@ user who can create a `*.json` file in the watched directory can redirect boosts
 
 ## Do-Not-Touch List
 
-- `~/build/v4vmm/` and `~/build/splitkit/` — read only, never edit.
+- `~/build/v4vmm/` and `~/build/musicindex-live-relay/` — read only, never edit.
 - `mixxx-now-playing/` — consumer-side only.
 - Clear semantics: removal publishes the fallback; malformed or unknown-schema
   files do not. A file rejected for *ownership* must behave like a malformed

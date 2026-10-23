@@ -37,7 +37,7 @@ track2 title=Track Two block=09049e19-45bf-4806-9a3a-b065e0b64eee
 
 ## Do-Not-Touch List
 
-- `~/build/v4vmm/` and `~/build/splitkit/` — read only, never edit.
+- `~/build/v4vmm/` and `~/build/musicindex-live-relay/` — read only, never edit.
 - `mixxx-now-playing/` — consumer-side fix only.
 - `livevalue.rs` transform functions and their signatures. `payload_from_dropfile`
   must stay a pure function taking `event_guid` and `block_guid`.

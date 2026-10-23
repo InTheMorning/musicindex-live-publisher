@@ -30,7 +30,7 @@ track — it is not a reason to display the previous song.
 
 ## Do-Not-Touch List
 
-- `~/build/v4vmm/` and `~/build/splitkit/` — read only, never edit.
+- `~/build/v4vmm/` and `~/build/musicindex-live-relay/` — read only, never edit.
 - `musicindex-live-publisher/` — producer-side only.
 - The schema assumption itself. The Mixxx 2.5.6 schema is pinned:
   `Playlists.hidden = 2` is the history playlist and `library.location` is an FK

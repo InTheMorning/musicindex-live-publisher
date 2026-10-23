@@ -52,7 +52,7 @@ configured per publish target and applied by the publisher.
 
 ## Do-Not-Touch List
 
-- `~/build/v4vmm/` and `~/build/splitkit/` — read only, never edit. The relay
+- `~/build/v4vmm/` and `~/build/musicindex-live-relay/` — read only, never edit. The relay
   must not learn about broadcast delay; it is a pass-through fan-out and staying
   that way is what keeps it reusable.
 - `mixxx-now-playing/` — the producer keeps emitting at track-change time. Do

@@ -11,7 +11,7 @@ item.
 ## Files To Inspect
 
 - `docs/plans/musicindex-live-publisher-plan.md` — Output: publishing
-- `~/build/splitkit/README.md` — status codes, body-form discrimination, token issuance
+- `~/build/musicindex-live-relay/README.md` — status codes, body-form discrimination, token issuance
 - `~/build/v4vmm/src/api.rs:581` — `publish_live_metadata_with_token`, the existing client for reference
 - Tasks 002, 003 and 004 output
 
@@ -24,7 +24,7 @@ item.
 ## Do Not Touch
 
 - Task 002's payload assembly — this task transports it, it does not reshape it
-- `~/build/splitkit/src/` — the relay is not modified by this project
+- `~/build/musicindex-live-relay/src/` — the relay is not modified by this project
 
 ## Constraints
 
@@ -75,7 +75,7 @@ item.
 - The pre-send assertion rejects a payload with exactly `{event_id, metadata}`.
 - `provision` creates a live item against a locally built relay and writes a
   `0600` token file.
-- Integration test: build `~/build/splitkit`, run it on a loopback port, publish,
+- Integration test: build `~/build/musicindex-live-relay`, run it on a loopback port, publish,
   and read the payload back from
   `GET /v1/liveitems/{event_id}/remoteValue`.
 - No test contacts `api.musicindex.org`.
@@ -105,6 +105,6 @@ Stop and ask before proceeding if:
 
 - The relay rejects a payload that the task 002 golden tests accept — that is a
   contract disagreement, not something to patch around in transport.
-- `~/build/splitkit` does not build, blocking the integration test.
+- `~/build/musicindex-live-relay` does not build, blocking the integration test.
 - A fatal code appears recoverable in practice and the classification above looks
   wrong.

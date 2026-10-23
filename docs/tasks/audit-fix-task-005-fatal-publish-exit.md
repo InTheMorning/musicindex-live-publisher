@@ -37,7 +37,7 @@ not as an endless stream of warnings from a live-looking daemon.
 
 ## Do-Not-Touch List
 
-- `~/build/v4vmm/` and `~/build/splitkit/` — read only, never edit.
+- `~/build/v4vmm/` and `~/build/musicindex-live-relay/` — read only, never edit.
 - `mixxx-now-playing/` — consumer-side only.
 - The status-code classification. 401/403/404 stay fatal, 413 stays dropped, 429
   and 5xx stay retryable. This packet changes what *happens* on fatal, not what

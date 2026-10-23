@@ -28,7 +28,7 @@ unrelated file with attacker-chosen content, running as the producer's user.
 
 ## Do-Not-Touch List
 
-- `~/build/v4vmm/` and `~/build/splitkit/` — read only, never edit.
+- `~/build/v4vmm/` and `~/build/musicindex-live-relay/` — read only, never edit.
 - `musicindex-live-publisher/` — this packet is producer-side only.
 - The `Presence` enum and the presence-is-the-API contract. Removal on `Absent`,
   no-op on unchanged content, and the absence of a trailing newline in the

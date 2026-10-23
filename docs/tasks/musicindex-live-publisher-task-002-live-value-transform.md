@@ -12,8 +12,8 @@ This is the substance of the project. Get it exactly right.
 ## Files To Inspect
 
 - `docs/plans/musicindex-live-publisher-plan.md` — Transform, Verified payload semantics
-- `~/build/splitkit/hgh-example-2.json` and `hgh-example-3.json` — the two `type: "music"` reference payloads
-- `~/build/splitkit/README.md` — the wrapped-versus-direct discrimination rule
+- `~/build/musicindex-live-relay/hgh-example-2.json` and `hgh-example-3.json` — the two `type: "music"` reference payloads
+- `~/build/musicindex-live-relay/README.md` — the wrapped-versus-direct discrimination rule
 - Task 001's `DropFile`
 
 ## Files Likely To Change
@@ -24,7 +24,7 @@ This is the substance of the project. Get it exactly right.
 ## Do Not Touch
 
 - Task 001's drop-file schema
-- `~/build/splitkit/hgh-example-*.json` — read as fixtures, never edit
+- `~/build/musicindex-live-relay/hgh-example-*.json` — read as fixtures, never edit
 
 ## Constraints
 
