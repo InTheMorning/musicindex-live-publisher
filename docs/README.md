@@ -174,6 +174,11 @@ broadcast control surface (`v4vmm` ADR 0059). Task 001 gates `v4vmm` task 014.
 - [001 — Target management commands](tasks/control-surface-task-001-target-management.md)
 - [002 — Machine-readable CLI surface](tasks/control-surface-task-002-machine-readable-cli.md)
 
+Studio client packets. ADR 0018 governs them after packet a writes it. Studio
+ADR 0110 owns the interface. The task waits for Studio task 073.
+
+- [001 — Start and end a show through Studio](tasks/studio-client-task-001-studio-client.md)
+
 Relay lease packets. ADR 0005 governs them. Tasks 001 and 002 can go in either
 order. Task 003 needs both. Task 004 needs task 003 and `musicindex-live-relay`
 tasks 001 and 002.

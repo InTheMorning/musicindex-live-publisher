@@ -91,6 +91,10 @@ packet.
   needs a `v4vmm` ADR before acceptance.
 - This item needs a new ADR before work starts: a track identity source that
   is earlier than the Mixxx history row.
+- Studio client task 001 is not started. The publisher will start and end a
+  show in its Studio feed through the crate `studio-app-client`. The task waits
+  for Studio task 073. Its packet a writes ADR 0018 first. Studio ADR 0110 owns
+  the interface.
 
 ## Build / Lint / Test Commands
 
