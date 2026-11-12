@@ -22,7 +22,7 @@ Publisher tokens:
 Producer config:
 
 ```text
-~/.config/v4vmm/config.toml
+~/.config/hitit/config.toml
 ```
 
 Drop directory under the packaged systemd user units:
@@ -595,11 +595,15 @@ with an `error` field. The exit code stays the same as the non-JSON command.
 
 ## Producer TOML
 
-`mixxx-now-playing` reads optional V4V Music Manager settings from:
+`mixxx-now-playing` reads optional HitIt settings from:
 
 ```text
-~/.config/v4vmm/config.toml
+~/.config/hitit/config.toml
 ```
+
+If there is no file at that path, the producer reads
+`~/.config/v4vmm/config.toml`. If there is no file at the two paths, the
+producer writes a warning and uses the defaults (ADR 0018).
 
 Example:
 

@@ -280,10 +280,10 @@ fn musicindex_once_mode_waits_for_api_routes_before_exit() -> Result<()> {
     let txt_file = temp.path().join("now-playing.txt");
     let metadata_file = temp.path().join("metadata.txt");
     let xdg_config = temp.path().join("xdg-config");
-    let v4vmm_config_dir = xdg_config.join("v4vmm");
-    fs::create_dir_all(&v4vmm_config_dir)?;
+    let hitit_config_dir = xdg_config.join("hitit");
+    fs::create_dir_all(&hitit_config_dir)?;
     fs::write(
-        v4vmm_config_dir.join("config.toml"),
+        hitit_config_dir.join("config.toml"),
         format!("musicindex_endpoint = {:?}\n", server.base_url()),
     )?;
 

@@ -27,7 +27,7 @@ pub(crate) struct ResolvedConfig {
 }
 
 #[derive(Debug, Default, Deserialize)]
-struct V4vmmConfig {
+struct HititConfig {
     music_dir: Option<String>,
     musicindex_endpoint: Option<String>,
 }
@@ -59,7 +59,7 @@ impl ResolvedConfig {
     }
 
     fn resolve_with_env(cli: &Cli, env: &ResolutionEnv) -> Result<Self> {
-        let file_config = load_v4vmm_config(&env.config_path);
+        let file_config = load_hitit_config(&env.config_path);
         let db_file = resolve_path_override(&cli.db_file, &env.home_dir)
             .unwrap_or_else(|| env.home_dir.join(".mixxx").join("mixxxdb.sqlite"));
         let default_output_dir = default_output_dir(env);
@@ -125,16 +125,16 @@ fn resolve_path_override(path: &Option<PathBuf>, home_dir: &Path) -> Option<Path
         .map(|path| expand_home_path(path, home_dir).unwrap_or_else(|| path.to_path_buf()))
 }
 
-fn load_v4vmm_config(path: &Path) -> Option<V4vmmConfig> {
+fn load_hitit_config(path: &Path) -> Option<HititConfig> {
     fs::read_to_string(path)
         .ok()
-        .and_then(|raw| toml::from_str::<V4vmmConfig>(&raw).ok())
+        .and_then(|raw| toml::from_str::<HititConfig>(&raw).ok())
 }
 
 fn resolve_v4v_root(
     cli: &Cli,
     env: &ResolutionEnv,
-    file_config: Option<&V4vmmConfig>,
+    file_config: Option<&HititConfig>,
 ) -> Result<PathBuf> {
     let candidate = cli
         .v4v_root
@@ -158,10 +158,34 @@ fn resolve_v4v_root(
     }
 }
 
+/// Returns the HitIt configuration file (ADR 0018). The `v4vmm` file is the
+/// fallback until HitIt removes its move code (HitIt ADR 0096 Decision 5).
 fn config_path() -> Result<PathBuf> {
-    let proj = ProjectDirs::from("xyz", "HeyCitizen", "v4vmm")
+    let hitit = app_config_path("hitit")?;
+    let v4vmm = app_config_path("v4vmm")?;
+    if let Some(path) = select_config_path(&hitit, &v4vmm) {
+        return Ok(path);
+    }
+    eprintln!(
+        "warning: no HitIt configuration at {} or {}. ADR 0018: the producer uses the default V4V root and MusicIndex endpoint",
+        hitit.display(),
+        v4vmm.display()
+    );
+    Ok(hitit)
+}
+
+fn app_config_path(app: &str) -> Result<PathBuf> {
+    let proj = ProjectDirs::from("xyz", "HeyCitizen", app)
         .ok_or_else(|| anyhow!("could not determine user config directory"))?;
     Ok(proj.config_dir().join("config.toml"))
+}
+
+/// Selects the first configuration file that exists: `hitit`, then `v4vmm`.
+fn select_config_path(hitit: &Path, v4vmm: &Path) -> Option<PathBuf> {
+    [hitit, v4vmm]
+        .into_iter()
+        .find(|path| path.is_file())
+        .map(Path::to_path_buf)
 }
 
 fn home_dir() -> Result<PathBuf> {
@@ -415,6 +439,39 @@ mod tests {
         let resolved = ResolvedConfig::resolve_with_env(&cli, &env)?;
 
         assert_eq!(resolved.display_dir, Some(temp.path().join("display")));
+        Ok(())
+    }
+
+    #[test]
+    fn config_path_prefers_hitit_over_v4vmm() -> Result<()> {
+        let temp = TempDir::new()?;
+        let hitit = temp.path().join("hitit.toml");
+        let v4vmm = temp.path().join("v4vmm.toml");
+        write_config(&hitit, "")?;
+        write_config(&v4vmm, "")?;
+
+        assert_eq!(select_config_path(&hitit, &v4vmm), Some(hitit));
+        Ok(())
+    }
+
+    #[test]
+    fn config_path_falls_back_to_v4vmm() -> Result<()> {
+        let temp = TempDir::new()?;
+        let hitit = temp.path().join("hitit.toml");
+        let v4vmm = temp.path().join("v4vmm.toml");
+        write_config(&v4vmm, "")?;
+
+        assert_eq!(select_config_path(&hitit, &v4vmm), Some(v4vmm));
+        Ok(())
+    }
+
+    #[test]
+    fn config_path_is_none_without_either_file() -> Result<()> {
+        let temp = TempDir::new()?;
+        let hitit = temp.path().join("hitit.toml");
+        let v4vmm = temp.path().join("v4vmm.toml");
+
+        assert_eq!(select_config_path(&hitit, &v4vmm), None);
         Ok(())
     }
 

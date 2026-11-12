@@ -36,16 +36,16 @@ This service is one part of a chain that four repositories build separately.
 
 | Component | Repository | Role |
 |---|---|---|
-| `v4vmm` | `v4vmm` | Writes the MusicIndex tags this chain reads. Registers live items. Starts and stops these services. Shows status. |
+| HitIt | `HitIt` | Writes the MusicIndex tags this chain reads. Registers live items. Starts and stops these services. Shows status. |
 | `musicindex-live-relay` | `musicindex-live-relay` | Receives the payloads this service sends and passes them to listener apps. |
 
 This repository has no build dependency on either one. The contracts are the
 drop file, the relay HTTP API, the audio file tags, and the systemd units.
 
 See `docs/architecture/broadcast-chain-boundaries.md` for each boundary, and
-`v4vmm/docs/architecture/broadcast-chain.md` for the full chain.
+`HitIt/docs/architecture/broadcast-chain.md` for the full chain.
 
-`v4vmm` sends no payloads. This service is the only sender.
+HitIt sends no payloads. This service is the only sender.
 
 ## Configuration
 

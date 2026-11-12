@@ -127,12 +127,12 @@ Edit `~/.config/musicindex-live-publisher/mixxx/config.toml`:
 Optional producer config:
 
 ```bash
-install -d -m 0755 ~/.config/v4vmm
-cp /usr/share/doc/musicindex-live-publisher/examples/v4vmm-config.toml \
-  ~/.config/v4vmm/config.toml
+install -d -m 0755 ~/.config/hitit
+cp /usr/share/doc/musicindex-live-publisher/examples/hitit-config.toml \
+  ~/.config/hitit/config.toml
 ```
 
-Edit `~/.config/v4vmm/config.toml` if your V4V music directory is not
+Edit `~/.config/hitit/config.toml` if your V4V music directory is not
 `~/V4Vmusic`.
 
 See [configuration options](musicindex-live-publisher-configuration.md) for all

@@ -34,7 +34,7 @@ pub struct DropFile {
 
 /// A payment route using the producer-facing MusicIndex field names.
 ///
-/// The field names intentionally match `v4vmm::api::PaymentRoute` so producers
+/// The field names intentionally match `hitit::api::PaymentRoute` so producers
 /// can serialize that type without a translation layer.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PaymentRoute {

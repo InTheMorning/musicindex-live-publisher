@@ -3,10 +3,10 @@
 ## Order Of Work
 
 The packets here belong to a system that spans three repositories. The
-cross-repository order lives in `v4vmm`:
+cross-repository order lives in the HitIt repository, `HitIt`:
 `docs/plans/broadcast-chain-delivery-order.md`. Read it before you start.
 
-Control-surface tasks 001 and 002 are complete. The v4vmm attach-event packet is
+Control-surface tasks 001 and 002 are complete. The HitIt attach-event packet is
 also complete. Follow the current cross-repository order for new work.
 
 Show-log tasks 001 and 002 remain unstarted. Writer 001 first needs a decision
@@ -29,7 +29,7 @@ the next priority. Confirm that logging works before the show.
 - [ADR 0002: Now-playing drop-file contract](adr/0002-nowplaying-drop-file-contract.md)
   — Implemented
 - [ADR 0004: Publisher control CLI](adr/0004-publisher-control-cli.md) —
-  Implemented. The target and JSON commands that let `v4vmm` control this
+  Implemented. The target and JSON commands that let HitIt control this
   repository without writing its configuration file
 - [ADR 0005: Producer liveness, the dead block and the relay lease](adr/0005-producer-liveness-and-dead-block.md)
   — Implemented. The producer lock, the dead block that replaces the configured
@@ -67,16 +67,19 @@ the next priority. Confirm that logging works before the show.
 - [ADR 0014: One assembler, and each producer reports each track](adr/0014-one-assembler-and-track-reporting.md)
   — Implemented. Only this repository assembles and publishes
   blocks. Drop file version 3: each producer reports each track that plays, payable or not
-- [ADR 0015: Live segments from v4vmm](adr/0015-live-segments-from-v4vmm.md)
-  — Proposed. `v4vmm` starts a talk break or a live set through `segment`
+- [ADR 0015: Live segments from HitIt](adr/0015-live-segments-from-v4vmm.md)
+  — Proposed. HitIt starts a talk break or a live set through `segment`
   commands over `ssh`, with a split that it sets for each show
 - [ADR 0016: Instances, events and the producer lock](adr/0016-instances-events-and-producer-lock.md)
   — Implemented. One instance for each show and for each event, and the rules
   of the producer lock. The binding of a drop file to the lock is deferred
 - [ADR 0017: The show log](adr/0017-show-log.md)
-  — Implemented. The log that `v4vmm` reads to export an
+  — Implemented. The log that HitIt reads to export an
   episode. The time is the read time of this service, and the art is a
   reference. It supersedes ADR 0003
+- [ADR 0018: The HitIt configuration path](adr/0018-hitit-configuration-path.md)
+  — Proposed. The producer reads the `hitit` configuration file first, then
+  the `v4vmm` file. With no file, it writes a warning and uses the defaults
 
 ## Plans
 
@@ -168,8 +171,8 @@ each can be done alone, but 002, 004, and 005 gate any run against a live relay.
 - [006 — Compensate for stream latency before publishing](tasks/audit-fix-task-006-stream-delay-compensation.md)
 
 
-Control surface packets. ADR 0004 governs them. They support the `v4vmm`
-broadcast control surface (`v4vmm` ADR 0059). Task 001 gates `v4vmm` task 014.
+Control surface packets. ADR 0004 governs them. They support the HitIt
+broadcast control surface (HitIt ADR 0059). Task 001 gates HitIt task 014.
 
 - [001 — Target management commands](tasks/control-surface-task-001-target-management.md)
 - [002 — Machine-readable CLI surface](tasks/control-surface-task-002-machine-readable-cli.md)

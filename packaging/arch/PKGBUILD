@@ -100,8 +100,8 @@ package() {
 
   install -Dm0644 packaging/arch/musicindex-live-publisher.example.toml \
     "$pkgdir/usr/share/doc/musicindex-live-publisher/examples/config.toml"
-  install -Dm0644 packaging/arch/v4vmm.example.toml \
-    "$pkgdir/usr/share/doc/musicindex-live-publisher/examples/v4vmm-config.toml"
+  install -Dm0644 packaging/arch/hitit.example.toml \
+    "$pkgdir/usr/share/doc/musicindex-live-publisher/examples/hitit-config.toml"
   install -Dm0644 LICENSE \
     "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 

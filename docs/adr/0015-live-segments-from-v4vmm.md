@@ -1,4 +1,4 @@
-# ADR 0015: Live Segments From v4vmm
+# ADR 0015: Live Segments From HitIt
 
 Status: Proposed
 Date: 2026-10-18
@@ -10,7 +10,7 @@ the segment command or the segment file.
 
 When Mixxx stops, the publisher sends the dead block (ADR 0005), which pays
 nobody. A boost during talk or during a live act pays nobody. The list of
-items that need a new ADR names this "talk break block from `v4vmm`".
+items that need a new ADR names this "talk break block from HitIt".
 
 The operator recorded a show of thesplitkit.com on 2026-10-17. The research
 note is
@@ -30,7 +30,7 @@ ADR 0014 makes the publisher the only assembler, and makes each producer
 report each track that plays, payable or not.
 
 Publisher ADR 0004 says that its CLI sends no live payload, and it rejects a
-remote API. `v4vmm` ADR 0059 §Remote Control Uses SSH First controls a remote
+remote API. HitIt ADR 0059 §Remote Control Uses SSH First controls a remote
 host through `ssh`.
 
 ## Decision
@@ -42,7 +42,7 @@ Two inputs tell the publisher what to publish and when:
 | Input | Writer | What it states |
 |---|---|---|
 | The drop file (ADR 0014) | A producer | Which track plays, and its routes, or that the track is not payable |
-| The segment file | `v4vmm`, through the `segment` commands | That a talk break or a live set starts or ends, and its routes |
+| The segment file | HitIt, through the `segment` commands | That a talk break or a live set starts or ends, and its routes |
 
 The publisher selects one block from the two inputs (§Selection).
 
@@ -51,7 +51,7 @@ The publisher selects one block from the two inputs (§Selection).
 A live segment is a time in which no track plays and the operator wants a
 known split. Examples are a talk break and a live set.
 
-`v4vmm` starts and ends a segment with these commands. It runs them through
+HitIt starts and ends a segment with these commands. It runs them through
 `ssh` on the publisher host:
 
 ```
@@ -84,11 +84,11 @@ changes a route. It never derives a route from `title`.
 
 ### The Split Of A Segment Is Set For Each Show
 
-`v4vmm` holds the setting for each show. The setting selects one of these:
+HitIt holds the setting for each show. The setting selects one of these:
 
-- **The dead block:** `v4vmm` sends an empty `value_routes`. This is the
+- **The dead block:** HitIt sends an empty `value_routes`. This is the
   default for a show with no setting.
-- **The show split:** `v4vmm` sends the routes of the show in
+- **The show split:** HitIt sends the routes of the show in
   `value_routes`.
 
 The publisher does not keep this setting. It uses only the routes of the
@@ -156,14 +156,14 @@ recipients.
 1. **A talk show with no Mixxx.** The selection table ends a segment when the
    producer lock is free. A show with no producer gets no segment. A segment
    lease of its own would change ADR 0005.
-2. **`show` in `line`.** The segment object has no show name. `v4vmm` can
+2. **`show` in `line`.** The segment object has no show name. HitIt can
    send it, or the publisher can read it from the target configuration.
 
 ## Before Acceptance
 
 - ADR 0014 is accepted. Without its drop file version 3, a segment can pay
   the station for a non-V4V track. Done on 2026-10-18.
-- `v4vmm` records the per-show setting and the `ssh` call in its own ADR,
+- HitIt records the per-show setting and the `ssh` call in its own ADR,
   which cites this ADR.
 
 ## Alternatives Considered
@@ -185,7 +185,7 @@ collect payments for a non-V4V track.
 
 ## Consequences
 
-- `v4vmm` can start a talk break or a live set with a known split and a band
+- HitIt can start a talk break or a live set with a known split and a band
   name, and the publisher stays the only writer.
 - The publisher gets a second watched file and three commands.
 
@@ -193,7 +193,7 @@ collect payments for a non-V4V track.
 
 - ADR 0004, ADR 0005, ADR 0008, ADR 0011, ADR 0012, ADR 0014, ADR 0016 of
   this repository
-- `v4vmm` ADR 0059
+- HitIt ADR 0059
 - `musicindex-live-relay` ADR 0002, ADR 0003 and ADR 0004
 - `~/build/musicindex-research/reports/2026-10-17-pixel-palace-curiohoster-show.md`
 - `~/build/musicindex-research/reports/curiohoster-architecture.md`

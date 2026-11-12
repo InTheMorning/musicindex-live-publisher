@@ -30,9 +30,9 @@ packet.
   - The log is in `~/.local/state/musicindex-live-publisher/<instance>/showlog/`.
   - The top-level key `show_log = false` turns the log off for one instance.
     The default is `true` (amendment of 2026-10-19).
-  - The export of an episode from the log is a `v4vmm` decision. No `v4vmm`
+  - The export of an episode from the log is a HitIt decision. No HitIt
     ADR exists for it yet. The time of each entry is the read time of this service. Each
-  entry holds the published `value`. The art is a reference that `v4vmm`
+  entry holds the published `value`. The art is a reference that HitIt
   resolves.
 - `mixxx-now-playing command fade-now` starts an AutoDJ fade through the
   connector (ADR 0007).
@@ -74,7 +74,7 @@ packet.
   display state with `album`.
 - ADR 0014 has the status `Implemented`.
   - Only this repository assembles and publishes a block or a display state.
-    `v4vmm` and each producer do not make a block.
+    HitIt and each producer do not make a block.
   - Each producer reports each track that plays, payable or not, through
     version 3 of the drop file. The producer writes version 3. For a non-V4V
     track, it writes a file with an empty `value_routes`.
@@ -87,8 +87,11 @@ packet.
   - `target add` and the startup of the publisher refuse an event that a
     different instance on the same host holds.
 - ADR 0015 has the status `Proposed`, and no implementation exists. In it,
-  `v4vmm` starts a talk break or a live set through `segment` commands. It
-  needs a `v4vmm` ADR before acceptance.
+  HitIt starts a talk break or a live set through `segment` commands. It
+  needs a HitIt ADR before acceptance.
+- ADR 0018 has the status `Proposed`. The code follows it. It needs acceptance.
+  `mixxx-now-playing` reads `~/.config/hitit/config.toml` first, then
+  `~/.config/v4vmm/config.toml`. With no file, it writes a warning.
 - This item needs a new ADR before work starts: a track identity source that
   is earlier than the Mixxx history row.
 - Studio client task 001 is not started. The publisher will start and end a
@@ -214,8 +217,13 @@ This service routes money. These rules are not style preferences.
 
 | Repository | Relation |
 |---|---|
-| `v4vmm` | Writes the MusicIndex tags this chain reads. Registers events. Starts and stops these services. Sends no payloads. |
+| HitIt | Writes the MusicIndex tags this chain reads. Registers events. Starts and stops these services. Sends no payloads. |
 | `musicindex-live-relay` | The relay. Receives the payloads this service sends. |
 
 Do not add a build dependency on either one. Every contract is a file format,
 an HTTP call, or a command-line interface.
+
+HitIt ADR 0096 renamed the app v4vmm to HitIt. In archived records, finished
+tasks, reviews, dated captures and accepted ADRs, the name v4vmm means HitIt.
+The checkout is `~/build/HitIt/` and the repository is `InTheMorning/HitIt`.
+In those records, the path `~/build/v4vmm/` means `~/build/HitIt/`.

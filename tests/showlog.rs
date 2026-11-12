@@ -3,7 +3,7 @@
 //!
 //! Each test drives the public watcher and relay publisher APIs with a
 //! real drop file and a stub HTTP relay, then reads the show log file the
-//! relay worker wrote, the same way an operator or `v4vmm` would.
+//! relay worker wrote, the same way an operator or HitIt would.
 
 use std::collections::VecDeque;
 use std::fs;

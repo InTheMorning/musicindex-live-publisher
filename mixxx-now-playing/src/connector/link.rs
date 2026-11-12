@@ -538,11 +538,10 @@ impl Coordinator {
             }
             // A resume takes effect after `RESUME_SETTLE`, in
             // `apply_settled_resumes`. A load in that time ends the link.
-            Some(LinkEffect::Resume) => {
-                if !self.present {
-                    row.resume_at = Some(now + RESUME_SETTLE);
-                }
+            Some(LinkEffect::Resume) if !self.present => {
+                row.resume_at = Some(now + RESUME_SETTLE);
             }
+            Some(LinkEffect::Resume) => {}
         }
     }
 
@@ -556,11 +555,10 @@ impl Coordinator {
                 display.shown = false;
                 display.resume_at = None;
             }
-            Some(LinkEffect::Resume) => {
-                if !display.shown {
-                    display.resume_at = Some(now + RESUME_SETTLE);
-                }
+            Some(LinkEffect::Resume) if !display.shown => {
+                display.resume_at = Some(now + RESUME_SETTLE);
             }
+            Some(LinkEffect::Resume) => {}
         }
     }
 
