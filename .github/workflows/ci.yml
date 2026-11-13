@@ -1,0 +1,58 @@
+# The AGENTS.md "Build / Lint / Test Commands" checks on each push and each
+# pull request. AGENTS.md owns these commands. Change them there first.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  check:
+    name: Format, lint and tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      # The repository has no rust-toolchain.toml. The PKGBUILD builds with
+      # the stable toolchain, so this job uses it too.
+      - name: Install the stable Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt,clippy
+          rustup default stable
+          cargo --version
+
+      - uses: Swatinem/rust-cache@v2
+
+      # The mapping tests use ES module syntax in a .js file with no
+      # package.json. Node 22.12 and later detect that syntax.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: cargo fmt --all -- --check
+        run: cargo fmt --all -- --check
+
+      - name: cargo clippy --workspace -- -D warnings
+        run: cargo clippy --workspace -- -D warnings
+
+      # The tests need no display, no network and no local data. They use
+      # temporary folders, a stub systemctl and a stub relay. The one test
+      # that needs a local relay has #[ignore] in tests/relay.rs, and
+      # cargo test does not run it.
+      - name: cargo test --workspace
+        run: cargo test --workspace
+
+      - name: node --test mixxx/tests/
+        run: node --test mixxx/tests/

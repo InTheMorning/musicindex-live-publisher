@@ -199,7 +199,8 @@ provision a new live item, replace that target stanza, and advertise the new
 
 ## Arch Package
 
-For an Arch local test install, use the packaged `PKGBUILD`:
+For an Arch install, use the packaged `PKGBUILD`. It builds the newest
+commit of `master` from GitHub:
 
 ```bash
 cd packaging/arch

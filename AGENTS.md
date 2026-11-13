@@ -20,9 +20,15 @@ packet.
 - The producer uses the Mixxx MIDI connector when the V4V card and the mapping
   are present (ADR 0006). The manual checks with Mixxx 2.5.6 passed. Without
   the connector, the producer uses the history-only mode of ADR 0005.
-- The operator deferred the packaging pass. The package files exist, but no
-  one built or installed a package that holds them. `docs/plans/packaging-pass.md` lists
-  the open gates. ADR 0006 becomes `Implemented` after that pass.
+- The operator deferred the packaging pass. `docs/plans/packaging-pass.md`
+  lists the open gates. ADR 0006 becomes `Implemented` after that pass.
+  - `packaging/arch/PKGBUILD` builds the package
+    `musicindex-live-publisher-git` from the GitHub repository, not from the
+    working tree. It provides `musicindex-live-publisher`, the name in the
+    HitIt optional dependencies.
+  - An agent built the package with `makepkg` from a local commit. The
+    package holds each path of the plan. No one installed it. `namcap` did not
+    run.
 - ADR 0017, the show log, has the status `Implemented`. The review is
   `docs/reviews/show-log-review-checklist.md`, with no open item.
   - With `--state-dir`, the publisher writes the log. The template unit and
@@ -111,6 +117,10 @@ cargo fmt --all                    # Auto-format
 cargo clippy --workspace -- -D warnings
 node --test mixxx/tests/           # Tests for the Mixxx mapping script
 ```
+
+`.github/workflows/ci.yml` runs `cargo fmt`, `cargo clippy`,
+`cargo test --workspace` and `node --test` on each push and each pull
+request. Change a command here and in the workflow in the same commit.
 
 The workspace holds the publisher at the root and `mixxx-now-playing` as a
 member. Always pass `--workspace` so a change in one crate cannot break the

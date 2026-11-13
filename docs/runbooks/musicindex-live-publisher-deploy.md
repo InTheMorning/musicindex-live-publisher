@@ -25,7 +25,8 @@ The publisher uses a fixed dead block while idle or playing non-V4V audio
 
 ## Arch Package Install
 
-On Arch Linux, prefer the local package:
+On Arch Linux, prefer the Arch package. It builds the newest commit of
+`master` from GitHub:
 
 ```bash
 cd path/to/musicindex-live-publisher/packaging/arch

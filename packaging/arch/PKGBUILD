@@ -1,4 +1,4 @@
-# Maintainer: Local tester <you@example.invalid>
+# Maintainer: HeyCitizen <4637290+InTheMorning@users.noreply.github.com>
 
 pkgname=musicindex-live-publisher-git
 pkgver=0.1.0
@@ -6,8 +6,7 @@ pkgrel=1
 pkgdesc='Publish Mixxx now-playing MusicIndex live value updates'
 arch=('x86_64')
 _pkgbase=musicindex-live-publisher
-_repo="${MUSICINDEX_LIVE_PUBLISHER_REPO:-$(realpath "$startdir/../..")}"
-url="file://${_repo}"
+url='https://github.com/InTheMorning/musicindex-live-publisher'
 license=('AGPL-3.0-only')
 depends=('bash' 'ca-certificates' 'gcc-libs' 'glibc' 'openssl' 'systemd')
 makedepends=('cargo' 'git' 'pkgconf')
@@ -15,8 +14,8 @@ optdepends=('mixxx: source history database for mixxx-now-playing')
 provides=("${_pkgbase}=${pkgver}" "mixxx-now-playing=${pkgver}")
 conflicts=("${_pkgbase}" 'mixxx-now-playing')
 install=musicindex-live-publisher.install
-source=()
-sha256sums=()
+source=("${_pkgbase}::git+${url}.git")
+sha256sums=('SKIP')
 
 # makepkg's default options=(lto) puts -flto=auto into CFLAGS. rusqlite is built
 # with the "bundled" feature, so the cc crate compiles sqlite3.c using those
@@ -27,24 +26,19 @@ sha256sums=()
 options=(!lto)
 
 pkgver() {
-  cd "$_repo"
+  cd "$_pkgbase"
 
   local _crate_ver
-  local _dirty
   _crate_ver=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml)
-
-  if [[ -n $(git status --porcelain) ]]; then
-    _dirty=.local
-  fi
 
   printf '%s.r%s.g%s' \
     "$_crate_ver" \
     "$(git rev-list --count HEAD)" \
-    "$(git rev-parse --short=7 HEAD)${_dirty}"
+    "$(git rev-parse --short=7 HEAD)"
 }
 
 prepare() {
-  cd "$_repo"
+  cd "$_pkgbase"
 
   export RUSTUP_TOOLCHAIN=stable
   local _host
@@ -54,7 +48,7 @@ prepare() {
 }
 
 build() {
-  cd "$_repo"
+  cd "$_pkgbase"
 
   export RUSTUP_TOOLCHAIN=stable
   export CARGO_TARGET_DIR="$srcdir/target"
@@ -63,7 +57,7 @@ build() {
 }
 
 check() {
-  cd "$_repo"
+  cd "$_pkgbase"
 
   export RUSTUP_TOOLCHAIN=stable
   export CARGO_TARGET_DIR="$srcdir/target"
@@ -72,7 +66,7 @@ check() {
 }
 
 package() {
-  cd "$_repo"
+  cd "$_pkgbase"
 
   install -Dm0755 "$srcdir/target/release/musicindex-live-publisher" \
     -t "$pkgdir/usr/bin/"

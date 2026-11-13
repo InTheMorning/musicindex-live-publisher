@@ -114,8 +114,7 @@ Each item needs a decision or a check in the pass.
    output. The packaging pass decides it.
 10. **Before publishing to AUR.** The list in
    `docs/runbooks/musicindex-live-publisher-arch-package.md` §Before
-   Publishing To AUR still applies: a license, a public source, a release
-   without `-git`, and `namcap`.
+   Publishing To AUR still applies: a release without `-git`, and `namcap`.
 
 ## Acceptance Criteria For The Pass
 

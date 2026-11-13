@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Build and install a local Arch package for testing the two binaries:
+Build and install the Arch package of the two binaries:
 
 - `musicindex-live-publisher`
 - `mixxx-now-playing`
@@ -11,11 +11,13 @@ The package also installs the systemd user units and example configuration.
 
 ## Package Type
 
-`packaging/arch/PKGBUILD` is a local working-tree package:
+`packaging/arch/PKGBUILD` is a VCS package. It builds the newest commit of
+the `master` branch from GitHub:
 
 - Package name: `musicindex-live-publisher-git`
-- Source: the checkout that contains `packaging/arch/PKGBUILD`, or
-  `$MUSICINDEX_LIVE_PUBLISHER_REPO` when set
+- Provides: `musicindex-live-publisher` and `mixxx-now-playing`. HitIt names
+  `musicindex-live-publisher` as an optional dependency.
+- Source: `git+https://github.com/InTheMorning/musicindex-live-publisher.git`
 - Installed binaries: `/usr/bin/musicindex-live-publisher` and
   `/usr/bin/mixxx-now-playing`
 - Installed user units:
@@ -40,9 +42,10 @@ In Mixxx, also set Preferences, then Library, "Track duplicate distance" to
 0. Without it, a track that plays again within six tracks pays nobody. See
 [Mixxx History Setup](musicindex-live-publisher-configuration.md#mixxx-history-setup).
 
-The package builds the working tree on disk. If the tree is dirty, the generated
-package version ends in `.local`. Commit local edits first when you need a
-traceable package version.
+The package does not build the working tree on disk. A change that is not
+on GitHub is not in the package. To test a local change, use the manual
+build path in the
+[deploy runbook](musicindex-live-publisher-deploy.md).
 
 ## Prerequisites
 
@@ -58,19 +61,28 @@ For runtime testing, install Mixxx and make sure it has created
 
 ## Build And Install
 
+The package needs two files: `PKGBUILD` and
+`musicindex-live-publisher.install`. Download the two files into an empty
+directory:
+
+```bash
+mkdir -p ~/build/musicindex-live-publisher-pkg
+cd ~/build/musicindex-live-publisher-pkg
+curl -fLO https://raw.githubusercontent.com/InTheMorning/musicindex-live-publisher/master/packaging/arch/PKGBUILD
+curl -fLO https://raw.githubusercontent.com/InTheMorning/musicindex-live-publisher/master/packaging/arch/musicindex-live-publisher.install
+makepkg -Csi
+```
+
+In a checkout, you can also use the two files in `packaging/arch`:
+
 ```bash
 cd path/to/musicindex-live-publisher/packaging/arch
 makepkg -Csi
 ```
 
-`makepkg -Csi` cleans the previous build directory, builds the package, installs
-missing build dependencies with pacman, and installs the resulting package.
-
-If you keep the package directory somewhere else, point it at this checkout:
-
-```bash
-MUSICINDEX_LIVE_PUBLISHER_REPO=path/to/musicindex-live-publisher makepkg -Csi
-```
+`makepkg -Csi` cleans the earlier build directory and gets the source from
+GitHub. It installs missing build dependencies with pacman. Then it builds
+the package and installs it.
 
 ## Configure
 
@@ -195,10 +207,11 @@ mixxx-now-playing \
 
 ## Upgrade
 
-Build and install the new package:
+Build and install the new package in the directory of the two package files.
+`makepkg` gets the newest commit of `master`:
 
 ```bash
-cd path/to/musicindex-live-publisher/packaging/arch
+cd ~/build/musicindex-live-publisher-pkg
 makepkg -Csi
 ```
 
@@ -244,7 +257,6 @@ Pacman removes package-owned files only. User config and token files under
 
 Do not publish this package as-is. First:
 
-- Replace the local working-tree source with a public release or VCS URL.
 - For a stable package, drop the `-git` suffix and use a fixed release tarball
   with real checksums.
 - Run `namcap PKGBUILD` and `namcap *.pkg.tar.zst`.
