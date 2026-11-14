@@ -96,8 +96,8 @@ Each item needs a decision or a check in the pass.
    has no `--connector-card` or `--no-connector` option. ADR 0006 says that
    the helper stops. A change needs an ADR amendment.
 7. **The mapping tests in the package build.** `check()` runs only
-   `cargo test`. Decide if `node --test mixxx/tests/` runs in `check()`, with
-   `nodejs` in `checkdepends`.
+   `cargo test`. Decide if `node --test 'mixxx/tests/*.test.js'` runs in
+   `check()`, with `nodejs` in `checkdepends`.
 8. **Removal.** `pacman -R` leaves the V4V card until the next reboot. The
    operator file in `/etc/modprobe.d` stays. Say so in the package runbook.
 9. **The display directory of the producer (ADR 0008).** The producer unit

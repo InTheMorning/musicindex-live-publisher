@@ -115,7 +115,7 @@ cargo test --test golden           # One integration test file
 cargo fmt --all -- --check         # Check formatting
 cargo fmt --all                    # Auto-format
 cargo clippy --workspace -- -D warnings
-node --test mixxx/tests/           # Tests for the Mixxx mapping script
+node --test 'mixxx/tests/*.test.js' # Tests for the Mixxx mapping script
 ```
 
 `.github/workflows/ci.yml` runs `cargo fmt`, `cargo clippy`,

@@ -55,7 +55,7 @@ Scope:
 - `cargo build --workspace`
 - `cargo test --workspace`
 - `cargo clippy --workspace --all-targets -- -D warnings`
-- `node --test mixxx/tests/`
+- `node --test 'mixxx/tests/*.test.js'`
 
 ## Manual Checks
 

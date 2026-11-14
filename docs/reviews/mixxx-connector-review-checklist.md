@@ -60,7 +60,7 @@ Contracts and scope:
 
 ## Test Commands
 
-- `node --test mixxx/tests/`
+- `node --test 'mixxx/tests/*.test.js'`
 - `cargo fmt --all -- --check`
 - `cargo build --workspace`
 - `cargo test --workspace`

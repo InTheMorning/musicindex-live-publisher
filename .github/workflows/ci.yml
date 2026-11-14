@@ -54,5 +54,5 @@ jobs:
       - name: cargo test --workspace
         run: cargo test --workspace
 
-      - name: node --test mixxx/tests/
-        run: node --test mixxx/tests/
+      - name: node --test 'mixxx/tests/*.test.js'
+        run: node --test 'mixxx/tests/*.test.js'
