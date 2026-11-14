@@ -7,16 +7,20 @@ Implemented 2026-10-19: tasks 001 to 003 of `docs/plans/show-log.md`. The
 named artifact is `docs/reviews/show-log-review-checklist.md`, which has no
 open item.
 
-Amended 2026-10-19: the configuration key `show_log` turns the log off for
+- Revised: 2026-10-19.
+
+The configuration key `show_log` turns the log off for
 one instance. The default is `true`, so the log stays on unless an operator
-turns it off. The operator needs no log for some streams. The amendment adds
+turns it off. The operator needs no log for some streams. The revision adds
 a choice and reverses no decision. The implementation is
 `docs/tasks/show-log-task-004-off-switch.md`, done on 2026-10-19.
 
 Accepted 2026-10-19 by the operator. This record supersedes ADR 0003, which
 moved to `docs/archive/adr/`.
 
-Amended 2026-10-19: `song_line` and `artwork` move from the `track` entry
+- Revised: 2026-10-19.
+
+`song_line` and `artwork` move from the `track` entry
 to a new `display` entry. The producer writes the drop file and
 `display.json` in no fixed order (ADR 0012), and a separate worker publishes
 the display state. So a `track` entry often comes before the display state of

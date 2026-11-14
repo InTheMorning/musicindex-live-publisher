@@ -3,6 +3,8 @@
 Status: Accepted
 Date: 2026-10-06
 
+- Changes: ADR 0012 items: version 3 of `display.json`.
+
 Accepted 2026-10-06 by the operator. The item of §Before Acceptance is done:
 relay ADR 0006 is accepted.
 

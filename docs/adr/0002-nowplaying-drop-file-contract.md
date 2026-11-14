@@ -10,24 +10,32 @@ crates. The status was corrected on 2026-09-30.
 
 Accepted 2026-09-04.
 
-Amended 2026-10-18: version 3 of the drop file, `musicindex.nowplaying/3`,
+- Changed by: ADR 0014, 2026-10-18.
+
+Version 3 of the drop file, `musicindex.nowplaying/3`,
 is accepted. ADR 0014 owns it. It has the fields of version 2. For version 3,
 a present file means that a track plays, an empty `value_routes` means that
 the track is not payable, and removing a file means that no track plays. The
 meaning below applies to versions 1 and 2. The producer writes version 3
 from 2026-10-18.
 
-Amended 2026-10-06: version 2 of the drop file, `musicindex.nowplaying/2`,
+- Changed by: ADR 0010, 2026-10-06.
+
+Version 2 of the drop file, `musicindex.nowplaying/2`,
 exists. ADR 0010 owns it. It adds `album` and `play_id`. The publisher reads
 version 2 only. This ADR still owns each version 1 field.
 
-Amended 2026-09-06: `v4vmm` accepted its ADR 0059 and became the control
+- Revised: 2026-09-06.
+
+`v4vmm` accepted its ADR 0059 and became the control
 surface for this chain. Two statements below now have a known outcome. The
 `v4vmm` live client loses its publish half, and `v4vmm` becomes a producer for
 its built-in `mpv` player. This contract does not change. See
 `docs/architecture/broadcast-chain-boundaries.md`.
 
-Amended 2026-09-27: a producer holds an exclusive lock on `.producer.lock` in
+- Changed by: ADR 0005, 2026-09-27.
+
+A producer holds an exclusive lock on `.producer.lock` in
 its drop directory for the life of the process. ADR 0005 names this lock as
 the source of truth for producer liveness. `duration_secs` comes from the
 audio stream headers. No code checks it.

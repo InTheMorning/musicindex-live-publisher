@@ -3,6 +3,9 @@
 Status: Implemented
 Date: 2026-10-18
 
+- Changes: ADR 0002 items: version 3 of the drop file.
+- Changes: ADR 0005 items: the rejected alternative §A Non-Payable Drop File For Each Non-V4V Track.
+
 Implemented 2026-10-18: packets 001 and 002 of `docs/plans/track-reporting.md`
 are done. The named artifact is
 `docs/reviews/track-reporting-review-checklist.md`, with no open item. The

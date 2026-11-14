@@ -3,6 +3,8 @@
 Status: Implemented
 Date: 2026-09-30
 
+- Changes: ADR 0006 items: §Protocol, the non-goal about commands.
+
 Implemented 2026-10-01: connector task 006 is merged, and its visual checks
 with Mixxx passed. See `docs/tasks/mixxx-connector-task-006-commands.md`
 §Review Result. The package install of the mapping and the binary belongs to
@@ -11,7 +13,9 @@ with Mixxx passed. See `docs/tasks/mixxx-connector-task-006-commands.md`
 Accepted 2026-09-30 by the operator. The checks in §Verification Before
 Acceptance passed.
 
-Amended 2026-09-30 at acceptance: exit code 4 also covers a raw device that
+- Revised: 2026-09-30, at acceptance.
+
+Exit code 4 also covers a raw device that
 the command line cannot find or open. In that case too, the command was not
 sent. No decision changed.
 

@@ -3,6 +3,8 @@
 Status: Implemented
 Date: 2026-10-18
 
+- Changes: ADR 0005 items: the wait limit of the producer lock.
+
 Implemented 2026-10-18: packets 001 and 002 of
 `docs/plans/instances-and-producer-lock.md`. The named artifact is
 `docs/reviews/instances-review-checklist.md`, which has no open item.

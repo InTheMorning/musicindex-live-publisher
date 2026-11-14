@@ -3,11 +3,15 @@
 Status: Accepted
 Date: 2026-10-06
 
+- Changes: ADR 0002 items: version 2 of the drop file.
+
 Accepted 2026-10-06 by the operator. Item 3 of §Before Acceptance, the app
 check, stays open as an item of the review checklist. Item 2 was done on
 2026-10-06 on the Mixxx host.
 
-Amended 2026-10-06. The operator decided that `link` stays absent until a
+- Revised: 2026-10-06.
+
+The operator decided that `link` stays absent until a
 source for it exists, so this ADR no longer adds `link`, `link_url` or
 `link_text`. A later ADR adds them with their source. The drop file version 2
 gets `play_id`, because ADR 0012 pairs a display state with its payload by

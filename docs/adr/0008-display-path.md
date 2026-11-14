@@ -6,11 +6,15 @@ Date: 2026-10-04
 Accepted 2026-10-04 by the operator. The items in §Before Acceptance are
 done.
 
-Amended 2026-10-06: a resume of the display-linked deck shows the track again
+- Revised: 2026-10-06.
+
+A resume of the display-linked deck shows the track again
 only after the settle time of ADR 0006 §A Resume Settles. The title line and
 the artwork come back 2 seconds after a resume.
 
-Amended 2026-10-06 by ADR 0011, at its implementation review. ADR 0011
+- Changed by: ADR 0011, 2026-10-06, at its implementation review.
+
+ADR 0011
 replaces two items:
 
 - the invariant that the display state and the payload of one target pass
@@ -20,7 +24,9 @@ replaces two items:
 The publisher now sends each display state at once. The display
 routes of the relay are instant.
 
-Amended 2026-10-06: version 2 of `display.json`, `musicindex.display/2`,
+- Changed by: ADR 0012, 2026-10-06.
+
+Version 2 of `display.json`, `musicindex.display/2`,
 exists. ADR 0012 owns it. It adds `song_line` and `play_id`, and the display
 body adds `songLine` and `value`. The publisher reads version 2 only.
 

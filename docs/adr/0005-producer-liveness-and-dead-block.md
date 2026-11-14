@@ -3,20 +3,29 @@
 Status: Implemented
 Date: 2026-09-27
 
+- Changes: ADR 0002 items: the producer lock, the source of `duration_secs`.
+- Changes: ADR 0004 items: `config show --json` loses `fallback_configured`.
+
 Implemented 2026-09-28: relay lease tasks 001 to 004 are merged. The review
 is `docs/reviews/relay-lease-review-checklist.md`.
 
-Amended 2026-10-18 by ADR 0016. A producer waits at most 2 seconds for the
+- Changed by: ADR 0016, 2026-10-18.
+
+A producer waits at most 2 seconds for the
 producer lock, and then exits with an error. The lock stays a kernel lock. No
 other rule of this ADR changes.
 
-Amended 2026-10-18 by ADR 0014. ADR 0014 adopts the rejected alternative
+- Changed by: ADR 0014, 2026-10-18.
+
+ADR 0014 adopts the rejected alternative
 §A Non-Payable Drop File For Each Non-V4V Track. It uses it for a different
 fact: if a track plays. The reason for the rejection stays correct for
 producer liveness, and the producer lock stays its source. §Publisher Behavior does not change: a
 present file with no routes, and an absent file, give the dead block.
 
-Amended 2026-10-06 by ADR 0011, at its implementation review. ADR 0011
+- Changed by: ADR 0011, 2026-10-06, at its implementation review.
+
+ADR 0011
 replaces three rules of §Invariants:
 
 - a block goes through `PublishSchedule`,
@@ -31,16 +40,22 @@ Accepted 2026-09-27 by the operator. Only §Publisher Behavior depends on the
 relay. The keepalive rules in that section use `musicindex-live-relay` ADR
 0002, which defines the keepalive route and the interval.
 
-Amended 2026-09-27: the acceptance no longer waits for the relay ADR or the
+- Revised: 2026-09-27.
+
+The acceptance no longer waits for the relay ADR or the
 Mixxx duration check. The Mixxx check gives evidence for a future MIDI ADR,
 not for a rule here. The startup rule now publishes one block for each target.
 No decision changed.
 
-Amended 2026-09-28: ADR 0006 is accepted. §Payment Timing Without The MIDI
+- Revised: 2026-09-28.
+
+ADR 0006 is accepted. §Payment Timing Without The MIDI
 Connector stays in force as the history-only mode of ADR 0006. No decision
 changed.
 
-Amended 2026-09-27 at acceptance: the keepalive stops only after the dead block
+- Revised: 2026-09-27, at acceptance.
+
+The keepalive stops only after the dead block
 for a missing producer goes out. A stream delay longer than the lease can then
 not let the lease expire first. The MIDI text cites ADR 0006, and §Verification
 cites the result of the Mixxx duration check. No decision was reversed.

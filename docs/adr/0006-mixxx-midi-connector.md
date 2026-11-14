@@ -3,43 +3,59 @@
 Status: Accepted
 Date: 2026-09-27
 
+- Changes: ADR 0001 items: the non-goal "Detecting pause or exact audio output state".
+
 Accepted 2026-09-28 by the operator. The four checks in §Verification Before
 Acceptance are done.
 
-Amended 2026-10-06: a resume of the linked deck takes effect only after the
+- Revised: 2026-10-06.
+
+A resume of the linked deck takes effect only after the
 deck plays for 2 seconds. §A Resume Settles gives the rule. A load into a
 playing deck sent the old track live again for some milliseconds. The rule
 adds a time to the resume and reverses no decision.
 
-Amended 2026-09-28: the producer links a history row to the loudest deck that
+- Revised: 2026-09-28.
+
+The producer links a history row to the loudest deck that
 the mapping reports, not to a deck with the same duration. Check 1 showed that
 the Mixxx library keeps the stream header duration of a new track, so a
 duration link fails for exactly the tracks whose header is wrong. The ADR was
 Proposed, so no accepted decision was reversed.
 
-Amended 2026-09-28 in `docs/plans/mixxx-midi-connector.md`: §Entering And
+- Revised: 2026-09-28, in `docs/plans/mixxx-midi-connector.md`.
+
+§Entering And
 Leaving The Connector Mode adds rules that this ADR did not state. They add to
 the decision and reverse none. The runbook change moves from acceptance to the
 packaging task, because the setup that it describes does not exist before that
 task.
 
-Amended 2026-09-29 in the review of connector task 003: §Entering And Leaving
+- Revised: 2026-09-29, in the review of connector task 003.
+
+§Entering And Leaving
 The Connector Mode names the row that existed before the entry, not the row
 that the producer read. At startup the producer reads the latest row only
 after the entry, and that row can come from an earlier Mixxx session. The
 rule does not change.
 
-Amended 2026-09-30: ADR 0007 is accepted. It adds commands from a consumer to
+- Changed by: ADR 0007, 2026-09-30.
+
+ADR 0007 is accepted. It adds commands from a consumer to
 Mixxx, and the protocol becomes version 3. §Protocol points to ADR 0007 for
 the command messages. The non-goal about commands no longer applies to the
 commands of ADR 0007. No other decision here changes.
 
-Amended 2026-09-30: §Context no longer names the global PortMidi error flag
+- Revised: 2026-09-30.
+
+§Context no longer names the global PortMidi error flag
 as the cause of the output stop. `Pm_Write` clears that flag at its start. The
 probable cause is the shared ALSA sequencer handle. The tested behavior and
 the decision do not change.
 
-Amended 2026-09-29 by the operator: this amendment changes one decision.
+- Revised: 2026-09-29, by the operator.
+
+This revision changes one decision.
 Before it, a row that existed before the entry into the connector mode never
 linked. Now the producer links such a row again after an outage, when the
 same track still plays on the same deck (§Relink After An Outage). The deck
@@ -486,7 +502,7 @@ has no users, so the new version costs nothing.
 
 ### No Relink After An Outage
 
-Replaced 2026-09-29. This was the rule before the amendment. It paid nothing
+Replaced 2026-09-29. This was the rule before the revision. It paid nothing
 for the rest of the track after an outage of a few seconds.
 
 ### A Different Track Identity Source

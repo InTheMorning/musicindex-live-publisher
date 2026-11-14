@@ -3,21 +3,29 @@
 Status: Proposed
 Date: 2026-10-05
 
-Amended 2026-10-06 after the research report on live metadata paths. §Two
+- Revised: 2026-10-06, after the research report on live metadata paths.
+
+§Two
 Paths no longer calls `podcast:liveValue` a Podcasting 2.0 standard. §Context
 names the ID3v2.3 defect of the test stack. ADR 0010 now owns the shape of the
 compatibility payload.
 
-Amended 2026-10-06 a second time. With the delay in the publisher, each
+- Revised: 2026-10-06, a second time.
+
+With the delay in the publisher, each
 display state arrived late at the tagger, by almost the full delay. §The Join
 Point now requires the instant routes of `musicindex-live-relay` ADR 0004.
 ADR 0011 removes the delay from the publisher.
 
-Amended 2026-10-06 a fourth time. The operator decided the tagger home and
+- Revised: 2026-10-06, a fourth time.
+
+The operator decided the tagger home and
 accepted the pairing. §The Value Identity names ADR 0010, ADR 0012 and relay
 ADR 0005.
 
-Amended 2026-10-06 a third time. §Where The Tagger Runs records that the
+- Revised: 2026-10-06, a third time.
+
+§Where The Tagger Runs records that the
 tagger serves other broadcasters, and that it can run on any host that reads
 their Icecast mount.
 

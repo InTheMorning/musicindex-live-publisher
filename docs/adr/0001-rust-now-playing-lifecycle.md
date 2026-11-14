@@ -11,7 +11,9 @@ reviewed the implementation against the task packets in
 
 Accepted 2026-09-03.
 
-Amended 2026-09-28: ADR 0006 supersedes the non-goal "Detecting pause or exact
+- Changed by: ADR 0006, 2026-09-28.
+
+ADR 0006 supersedes the non-goal "Detecting pause or exact
 audio output state" when the MIDI connector is available. Without the
 connector, the producer still cannot detect a pause.
 

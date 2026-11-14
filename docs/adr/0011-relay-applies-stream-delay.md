@@ -3,6 +3,9 @@
 Status: Accepted
 Date: 2026-10-06
 
+- Changes: ADR 0005 items: three rules of §Invariants.
+- Changes: ADR 0008 items: the stream delay invariant, the schedule rules in §The Publisher.
+
 Accepted 2026-10-06 by the operator, as written. Item 1 of §Before
 Acceptance is done: relay ADR 0004 is accepted. Items 2 and 3, the `v4vmm`
 view and the app fallback, stay open as requests in those repositories. At
@@ -10,7 +13,9 @@ acceptance, §What This Replaces moved its changes to ADR 0005 and ADR 0008 to
 the implementation review. Before that review, those rules still describe the
 running code.
 
-Amended 2026-10-06: the implementation review passed for each mechanical
+- Revised: 2026-10-06.
+
+The implementation review passed for each mechanical
 item. ADR 0005 and ADR 0008 now have the dated sentences of §What This
 Replaces, and their replaced rules give the present behavior. The review is
 `docs/reviews/relay-applies-stream-delay-review-checklist.md`. The `v4vmm`
