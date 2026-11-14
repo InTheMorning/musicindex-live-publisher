@@ -35,7 +35,7 @@ packet.
     the unit of `scripts/setup-mixxx-musicindex.sh` pass it.
   - The log is in `~/.local/state/musicindex-live-publisher/<instance>/showlog/`.
   - The top-level key `show_log = false` turns the log off for one instance.
-    The default is `true` (amendment of 2026-10-19).
+    The default is `true` (revision of 2026-10-19).
   - The export of an episode from the log is a HitIt decision. No HitIt
     ADR exists for it yet. The time of each entry is the read time of this service. Each
   entry holds the published `value`. The art is a reference that HitIt
@@ -116,11 +116,16 @@ cargo fmt --all -- --check         # Check formatting
 cargo fmt --all                    # Auto-format
 cargo clippy --workspace -- -D warnings
 node --test 'mixxx/tests/*.test.js' # Tests for the Mixxx mapping script
+python3 ~/.agents/skills/project-baseline/scripts/check_adr_links.py --counts .  # ADR link guard
 ```
 
 `.github/workflows/ci.yml` runs `cargo fmt`, `cargo clippy`,
 `cargo test --workspace` and `node --test` on each push and each pull
 request. Change a command here and in the workflow in the same commit.
+
+The ADR link guard is part of the gate before each commit. The
+project-baseline skill owns it (§A Binding Rule Lives In A Decision Record).
+The workflow does not include it, because the runner has no `~/.agents`.
 
 The workspace holds the publisher at the root and `mixxx-now-playing` as a
 member. Always pass `--workspace` so a change in one crate cannot break the
