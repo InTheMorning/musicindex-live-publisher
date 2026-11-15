@@ -8,6 +8,10 @@
 use std::path::PathBuf;
 use std::process::Command;
 
+/// The first ADR number that must have a `- Bar:` line. `AGENTS.md` gives
+/// the same number.
+const BAR_FROM: &str = "0019";
+
 #[test]
 fn adr_link_guard_passes() {
     let home = std::env::var_os("HOME").expect("HOME is set");
@@ -30,6 +34,8 @@ fn adr_link_guard_passes() {
     let output = Command::new("python3")
         .arg(&script)
         .arg("--counts")
+        .arg("--bar-from")
+        .arg(BAR_FROM)
         .arg(env!("CARGO_MANIFEST_DIR"))
         .output()
         .expect("python3 starts");

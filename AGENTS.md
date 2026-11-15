@@ -123,8 +123,9 @@ node --test 'mixxx/tests/*.test.js' # Tests for the Mixxx mapping script
 request. Change a command here and in the workflow in the same commit.
 
 `tests/adr_guard.rs` runs the ADR link guard of the project-baseline skill
-(§A Binding Rule Lives In A Decision Record). On CI the runner has no
-`~/.agents`, and the test passes without the guard.
+(§A Binding Rule Lives In A Decision Record). The test gives
+`--bar-from 0019` to the guard. The guard requires a `- Bar:` line in each
+current ADR from number 0019. On CI the runner has no `~/.agents`, and the test passes without the guard.
 
 The workspace holds the publisher at the root and `mixxx-now-playing` as a
 member. Always pass `--workspace` so a change in one crate cannot break the
