@@ -116,16 +116,15 @@ cargo fmt --all -- --check         # Check formatting
 cargo fmt --all                    # Auto-format
 cargo clippy --workspace -- -D warnings
 node --test 'mixxx/tests/*.test.js' # Tests for the Mixxx mapping script
-python3 ~/.agents/skills/project-baseline/scripts/check_adr_links.py --counts .  # ADR link guard
 ```
 
 `.github/workflows/ci.yml` runs `cargo fmt`, `cargo clippy`,
 `cargo test --workspace` and `node --test` on each push and each pull
 request. Change a command here and in the workflow in the same commit.
 
-The ADR link guard is part of the gate before each commit. The
-project-baseline skill owns it (§A Binding Rule Lives In A Decision Record).
-The workflow does not include it, because the runner has no `~/.agents`.
+`tests/adr_guard.rs` runs the ADR link guard of the project-baseline skill
+(§A Binding Rule Lives In A Decision Record). On CI the runner has no
+`~/.agents`, and the test passes without the guard.
 
 The workspace holds the publisher at the root and `mixxx-now-playing` as a
 member. Always pass `--workspace` so a change in one crate cannot break the
