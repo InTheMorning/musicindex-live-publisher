@@ -1,7 +1,9 @@
 # ADR 0019: The Debian Package And The Docker Image
 
-- Status: Proposed on 2026-11-18. The operator must accept this record.
+- Status: Accepted on 2026-11-18 by the operator. The orchestrator session relayed the decision.
 - Date: 2026-11-18
+- Operator choice, 2026-11-18: the Docker image builds only on GitHub through `release.yml`. No host build is
+  necessary.
 - Bar: crosses repositories. musicindex ADR 0084 R-PACKAGE-5 asks each repository for its packaging record. The
   Docker image also changes where the producer and the publisher run.
 
@@ -95,6 +97,12 @@ Manual, because the CI has no test computer:
 
 1. The image has no `linux/arm64` build.
 2. The image tag `latest` and a candidate scheme, as in stophammer, are not decided.
+
+These checks stay open until the first run of `release.yml`:
+
+1. The job `image` builds the Docker image.
+2. `dpkg-shlibdeps` on the Ubuntu runner adds the library entries to `Depends` of the `.deb`. A local build on
+   2026-11-18 at commit `cf3e146` had no `dpkg-shlibdeps`. Its `Depends` had only `bash, ca-certificates, systemd`.
 
 ## Consequences
 

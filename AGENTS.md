@@ -98,11 +98,12 @@ packet.
 - ADR 0018 has the status `Proposed`. The code follows it. It needs acceptance.
   `mixxx-now-playing` reads `~/.config/hitit/config.toml` first, then
   `~/.config/v4vmm/config.toml`. With no file, it writes a warning.
-- ADR 0019 has the status `Proposed`. It applies musicindex ADR 0084.
+- ADR 0019 has the status `Accepted`. It applies musicindex ADR 0084.
   cargo-deb makes the `.deb` from `[package.metadata.deb]` in `Cargo.toml`.
   `Dockerfile` makes an image with the publisher only. A tag `v*` starts
-  `.github/workflows/release.yml`, which builds the two packages. No one
-  built the `.deb` or the image yet.
+  `.github/workflows/release.yml`, which builds the two packages. A local
+  build of the `.deb` passed. Two checks stay open until the first run of
+  `release.yml`: the image build and the library entries in `Depends`.
 - musicindex ADR 0083 owns the version form. `build.rs` calls the crate
   `musicindex-build-info` with the prefix `MUSICINDEX_LIVE_PUBLISHER`.
   `--version` prints the line of R-VERSION-2. The publisher has no HTTP
