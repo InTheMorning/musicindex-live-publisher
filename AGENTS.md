@@ -111,7 +111,7 @@ packet.
   is earlier than the Mixxx history row.
 - Studio client task 001 is not started. The publisher will start and end a
   show in its Studio feed through the crate `studio-app-client`. The task waits
-  for Studio task 073. Its packet a writes ADR 0018 first. Studio ADR 0110 owns
+  for Studio task 073. Its packet a writes ADR 0020 first. Studio ADR 0110 owns
   the interface.
 
 ## Build / Lint / Test Commands

@@ -1,6 +1,6 @@
 # Studio Client Task 001: Start And End A Show Through Studio
 
-Status: Not started - 2026-11-01. It waits for Studio task 073, which makes the crate `studio-app-client`. Packet a writes ADR 0018 first. Do not write code before ADR 0018 is `Accepted`.
+Status: Not started - 2026-11-01. It waits for Studio task 073, which makes the crate `studio-app-client`. Packet a writes ADR 0020 first. Do not write code before ADR 0020 is `Accepted`.
 
 Each criterion states if it is mechanical or visual.
 
@@ -26,11 +26,11 @@ The publisher starts and ends a live show in its Studio feed, and sets the `podc
 
 ## Packets
 
-### a: ADR 0018, The Publisher Writes The Live Item Through Studio
+### a: ADR 0020, The Publisher Writes The Live Item Through Studio
 
-Write ADR 0018 with the status `Proposed`, and get the operator's decision on each point. The recommendation of this task is in parentheses.
+Write ADR 0020 with the status `Proposed`, and get the operator's decision on each point. The recommendation of this task is in parentheses.
 
-1. The dependency: the publisher depends on `studio-app-client` through a Git tag of the Studio repository. AGENTS.md §Neighbors forbids a build dependency on `v4vmm` and the relay only. ADR 0018 records the new dependency and why. (Accept: the crate is the owner of the Studio contract.)
+1. The dependency: the publisher depends on `studio-app-client` through a Git tag of the Studio repository. AGENTS.md §Neighbors forbids a build dependency on `v4vmm` and the relay only. ADR 0020 records the new dependency and why. (Accept: the crate is the owner of the Studio contract.)
 2. The key storage: which `AppSigner` the publisher uses. (`FileSigner`, with the key in the state folder of the instance, mode 0600, in a folder with mode 0700, as the token files.)
 3. The configuration: where the publisher keeps the Studio origin and the path of the key for each target. (A `studio` table in the target. The publisher owns its configuration.)
 4. The pairing command: its name and its options. (`studio connect --target NAME`. It reads the clipboard by default, and `--prompt` reads a prompt with no echo. `--json` prints one result object for `v4vmm`. The live value origin comes from the relay `endpoint` of the target.)
@@ -41,22 +41,22 @@ Write ADR 0018 with the status `Proposed`, and get the operator's decision on ea
 9. Studio does not answer at the start or the end of a show. (The relay payloads continue. The publisher retries as item 7 gives, and the status file shows the failure.)
 10. A restart. (The publisher reads the shows again at each start, and at each attach of an event.)
 
-Add ADR 0018 to `docs/README.md` and to the Current State of AGENTS.md in the same change.
+Add ADR 0020 to `docs/README.md` and to the Current State of AGENTS.md in the same change.
 
 ### b: The Pairing Command And The Configuration
 
-1. Add `studio-app-client` to `Cargo.toml` at the Git tag that ADR 0018 names.
-2. Add the configuration of ADR 0018 items 2 and 3. `config show` prints the Studio origin and the short key, never the key file content.
-3. Add the pairing command of ADR 0018 item 4. It uses the crate module `input`. It prints the result and the short key only.
+1. Add `studio-app-client` to `Cargo.toml` at the Git tag that ADR 0020 names.
+2. Add the configuration of ADR 0020 items 2 and 3. `config show` prints the Studio origin and the short key, never the key file content.
+3. Add the pairing command of ADR 0020 item 4. It uses the crate module `input`. It prints the result and the short key only.
 4. On `CodeUsed`, the command prints that a different program possibly used the pairing text, and that the user must remove that app in Studio.
-5. Add the command that sets `studio_live_item_guid` of a target, for `v4vmm` (ADR 0018 item 5).
+5. Add the command that sets `studio_live_item_guid` of a target, for `v4vmm` (ADR 0020 item 5).
 
 ### c: The Show Writes And The Status File
 
-1. When the target starts its event, the publisher reads its grants and finds the grant of ADR 0018 item 5. Then it goes live and sets the live value. The live value `uri` is the form of `v4vmm` ADR 0059 task 019.
+1. When the target starts its event, the publisher reads its grants and finds the grant of ADR 0020 item 5. Then it goes live and sets the live value. The live value `uri` is the form of `v4vmm` ADR 0059 task 019.
 2. When the event ends, the publisher ends the show.
-3. The publisher handles each error as ADR 0018 item 7 gives.
-4. The publisher writes the status file of ADR 0018 item 8 at each change of the Studio state.
+3. The publisher handles each error as ADR 0020 item 7 gives.
+4. The publisher writes the status file of ADR 0020 item 8 at each change of the Studio state.
 5. The Studio work runs apart from the relay worker. A slow or failed Studio request does not delay a payload.
 
 ### d: The Documentation
