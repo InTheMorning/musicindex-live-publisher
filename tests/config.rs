@@ -413,17 +413,31 @@ fn config_show_json_failure_outputs_error_object() -> Result<()> {
     Ok(())
 }
 
+/// musicindex ADR 0083 R-VERSION-9 item 1: the `--version` line contains the
+/// version, the git revision and the build date.
 #[test]
-fn version_command_prints_package_version() -> Result<()> {
+fn version_command_prints_build_values() -> Result<()> {
+    let info = musicindex_build_info::build_info!();
     let output = publisher_command().arg("--version").output()?;
 
     assert!(
         output.status.success(),
         "--version should exit successfully"
     );
+    let line = String::from_utf8(output.stdout)?;
+    let revision = info
+        .git_revision
+        .ok_or_else(|| anyhow!("build.rs gave no git revision"))?;
+    let built_at = info
+        .built_at
+        .ok_or_else(|| anyhow!("build.rs gave no build time"))?;
     assert_eq!(
-        String::from_utf8(output.stdout)?,
-        format!("{}\n", env!("CARGO_PKG_VERSION"))
+        line,
+        format!(
+            "musicindex-live-publisher {} ({revision}, {})\n",
+            env!("CARGO_PKG_VERSION"),
+            &built_at[..10]
+        )
     );
     Ok(())
 }

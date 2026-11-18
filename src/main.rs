@@ -48,7 +48,8 @@ fn run_cli(cli: Cli) -> Result<()> {
         Command::Target(command) => return run_target_command(command),
         Command::Config(command) => return run_config_command(command),
         Command::Version => {
-            println!("{}", env!("CARGO_PKG_VERSION"));
+            // musicindex ADR 0083 R-VERSION-2.
+            println!("{}", musicindex_build_info::build_info!().version_line());
             return Ok(());
         }
         Command::Run => {}
