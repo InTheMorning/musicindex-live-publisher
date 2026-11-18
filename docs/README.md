@@ -80,6 +80,9 @@ the next priority. Confirm that logging works before the show.
 - [ADR 0018: The HitIt configuration path](adr/0018-hitit-configuration-path.md)
   — Proposed. The producer reads the `hitit` configuration file first, then
   the `v4vmm` file. With no file, it writes a warning and uses the defaults
+- [ADR 0019: The Debian package and the Docker image](adr/0019-debian-package-and-docker-image.md)
+  — Proposed. cargo-deb makes the `.deb`. The Docker image holds the
+  publisher only. A tag `v*` starts `.github/workflows/release.yml`
 
 ## Plans
 

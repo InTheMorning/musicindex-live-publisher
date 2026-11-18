@@ -1,0 +1,109 @@
+# ADR 0019 owns this workflow. A tag v* makes the .deb and the Docker image
+# of musicindex ADR 0084 R-PACKAGE-2. The operator makes each tag.
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_DEB_VERSION: 3.8.0
+
+# Each job gets a read-only token unless it states more.
+permissions:
+  contents: read
+
+jobs:
+  deb:
+    name: Build the .deb
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      # No Rust cache: a release build starts from a clean tree.
+      - name: Install the stable Rust toolchain and cargo-deb
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          cargo install --locked cargo-deb --version "$CARGO_DEB_VERSION"
+
+      # build.rs gives these two values to --version (musicindex ADR 0083).
+      - name: Record the commit and the build time
+        run: |
+          echo "MUSICINDEX_LIVE_PUBLISHER_GIT_REVISION=$(printf %.7s "$GITHUB_SHA")" >> "$GITHUB_ENV"
+          echo "MUSICINDEX_LIVE_PUBLISHER_BUILT_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      # One workspace build makes the two binaries with the same flags. Then
+      # cargo deb only packs the files.
+      - name: Build the workspace and the .deb
+        run: |
+          cargo build --release --locked --workspace
+          cargo deb --no-build --locked
+
+      # ADR 0084 R-PACKAGE-2 item 2: the .deb holds the systemd units.
+      - name: Examine the .deb
+        run: |
+          deb="$(ls target/debian/*.deb)"
+          dpkg-deb --info "$deb"
+          contents="$(dpkg-deb --contents "$deb")"
+          echo "$contents"
+          for path in \
+            ./usr/bin/musicindex-live-publisher \
+            ./usr/bin/mixxx-now-playing \
+            ./usr/lib/systemd/user/musicindex-live-publisher.service \
+            ./usr/lib/systemd/user/musicindex-live-publisher@.service \
+            ./usr/lib/systemd/user/mixxx-now-playing.service; do
+            grep -q " ${path}\$" <<< "$contents" || { echo "::error::ADR 0019: the .deb has no ${path}. Add it to [package.metadata.deb] assets in Cargo.toml."; exit 1; }
+          done
+          dpkg-deb --field "$deb" Recommends | grep -qw mixxx || { echo "::error::ADR 0019: the .deb does not recommend mixxx. Set recommends in [package.metadata.deb]."; exit 1; }
+
+      - name: Attach the .deb to the release
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
+        with:
+          files: target/debian/*.deb
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  image:
+    name: Build the Docker image
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Name the image and record the build values
+        id: names
+        run: |
+          echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/musicindex-live-publisher" >> "$GITHUB_OUTPUT"
+          echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          echo "revision=$(printf %.7s "$GITHUB_SHA")" >> "$GITHUB_OUTPUT"
+          echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push the image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: .
+          file: ./Dockerfile
+          target: publisher
+          platforms: linux/amd64
+          build-args: |
+            MUSICINDEX_LIVE_PUBLISHER_GIT_REVISION=${{ steps.names.outputs.revision }}
+            MUSICINDEX_LIVE_PUBLISHER_BUILT_AT=${{ steps.names.outputs.built_at }}
+          provenance: false
+          sbom: false
+          push: true
+          tags: ${{ steps.names.outputs.image }}:${{ steps.names.outputs.version }}
