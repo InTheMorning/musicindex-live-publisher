@@ -1,6 +1,11 @@
 # Producer Template Task 003: The Setup Helper And The Migration
 
-Status: Planned 2026-11-21.
+Status: Implemented - 2026-11-21. The manual checks of the plan are open. Only the operator can run them.
+
+Operator choice in the review, 2026-11-21: `--migrate-units` removes the enable links of the earlier units itself, and
+it stops the earlier producer with `systemctl --user stop`. It reads the unit state before each change, also when
+only a link remains. When the earlier unit was enabled, it enables the template. When the earlier unit was active,
+it starts the template. The helper requires `XDG_RUNTIME_DIR` and has no fallback path.
 
 Every criterion is mechanical.
 

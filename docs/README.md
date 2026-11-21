@@ -93,7 +93,7 @@ the next priority. Confirm that logging works before the show.
 
 - [Mixxx producer template unit](plans/mixxx-producer-template-unit.md) — the
   template producer unit, the Mixxx lock, and the setup helper of ADR 0021
-  — Planned - 2026-11-21
+  — Implemented - 2026-11-21. The manual checks are open.
 - [Rust now-playing utility plan](plans/rust-now-playing-utility-plan.md) — replace
   `mixxx-now-playing.py` with a Rust binary that emits V4V track metadata only
   while a V4V track is playing
@@ -288,7 +288,7 @@ packet needs the one before it.
 - [002 — The template unit and the packages](tasks/producer-template-task-002-template-unit-and-packaging.md)
   — Implemented - 2026-11-21
 - [003 — The setup helper and the migration](tasks/producer-template-task-003-setup-helper-and-migration.md)
-  — Planned - 2026-11-21
+  — Implemented - 2026-11-21
 
 Packets for the show log plan. ADR 0017 governs them. Each packet needs the
 one before it.

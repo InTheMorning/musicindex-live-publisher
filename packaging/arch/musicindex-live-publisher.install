@@ -5,18 +5,17 @@ MusicIndex live publisher was installed.
 Quick Mixxx setup:
   setup-mixxx-musicindex
 
-Temporary test setup for the current login session:
-  setup-mixxx-musicindex --temporary
-
 The publisher uses a fixed dead block while idle or playing non-V4V audio
 (ADR 0005). No configuration changes it.
 
-The setup command provisions a live item, writes the one-time broadcaster token,
-generates musicindex-live-publisher@mixxx.service and mixxx-now-playing.service,
-then starts the user services.
+The setup command provisions a live item, writes the one-time broadcaster token
+and the config, then enables and starts the packaged template units
+musicindex-live-publisher@mixxx.service and mixxx-now-playing@mixxx.service.
+The command writes no unit file (ADR 0021).
 
-Upgrade: run "setup-mixxx-musicindex --units-only" to write the two units again.
-It changes no config and no token, and it sends no relay request.
+Upgrade from units that an earlier setup command wrote: run
+"setup-mixxx-musicindex --migrate-units" one time. It changes no config and no
+token, and it sends no relay request.
 
 MIDI connector (ADR 0006):
   The package installs the V4V MIDI card files. The V4V card exists after the
@@ -28,8 +27,8 @@ MIDI connector (ADR 0006):
   VirMIDI 31-0. Select the mapping "MusicIndex V4V Connector" and enable the
   controller.
 
-Only run one mixxx-now-playing service. Future non-Mixxx producers can use
-separate musicindex-live-publisher@<instance>.service instances.
+Only one Mixxx producer runs at a time. A second mixxx-now-playing@<instance>
+unit exits with status 3 (ADR 0021).
 
 Docs:
   /usr/share/doc/musicindex-live-publisher/musicindex-live-publisher-arch-package.md

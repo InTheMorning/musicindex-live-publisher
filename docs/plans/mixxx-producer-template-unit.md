@@ -1,6 +1,6 @@
 # A Template Unit For The Mixxx Producer: Phase Plan
 
-Status: Planned 2026-11-21. The operator accepted ADR 0021 on 2026-11-21. This plan does not make rules. ADR 0021 owns them.
+Status: Implemented 2026-11-21. The manual checks are open. The operator accepted ADR 0021 on 2026-11-21. This plan does not make rules. ADR 0021 owns them.
 
 ## Goal
 

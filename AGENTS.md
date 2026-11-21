@@ -109,11 +109,15 @@ packet.
   `--version` prints the line of R-VERSION-2. The publisher has no HTTP
   server and no screen, so R-VERSION-3 and R-VERSION-4 do not apply.
 - ADR 0021 has the status `Accepted`. Its three packets in
-  `docs/plans/mixxx-producer-template-unit.md` are not implemented. It changes
-  ADR 0016 §Producer Units: the Mixxx producer becomes the template unit
-  `mixxx-now-playing@<instance>.service`, and one Mixxx producer runs at a
-  time. HitIt waits for it to keep a show stream apart from the private
-  stream.
+  `docs/plans/mixxx-producer-template-unit.md` are implemented. The two manual
+  checks of that plan are open: the operator runs
+  `setup-mixxx-musicindex --migrate-units` on the computer of the private
+  stream, then switches to a show instance and back.
+
+  ADR 0021 changes ADR 0016 §Producer Units. The Mixxx producer is the
+  template unit `mixxx-now-playing@<instance>.service`, and one Mixxx producer
+  runs at a time. HitIt uses these units to keep a show stream apart from the
+  private stream.
 - This item needs a new ADR before work starts: a track identity source that
   is earlier than the Mixxx history row.
 - Studio client task 001 is not started. The publisher will start and end a

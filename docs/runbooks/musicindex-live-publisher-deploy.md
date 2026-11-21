@@ -39,27 +39,21 @@ path below is still useful on non-Arch hosts or while debugging.
 
 ## Quick Mixxx Setup
 
-After the binaries are installed, the setup helper provisions the MusicIndex
-live item, writes the one-time broadcaster token, generates
-`musicindex-live-publisher@mixxx.service` and `mixxx-now-playing.service`, then
-starts the pipeline. The publisher uses a fixed dead block for idle or
-non-V4V playback (ADR 0005). No setup flag changes it:
+After you install the binaries, run the setup helper. It provisions the
+MusicIndex live item and writes the one-time broadcaster token and the config.
+It then starts the packaged units `musicindex-live-publisher@mixxx.service` and
+`mixxx-now-playing@mixxx.service`. The helper writes no unit file. The
+publisher uses a fixed dead block for idle or non-V4V playback (ADR 0005). No setup flag changes it:
 
 ```bash
 setup-mixxx-musicindex
 ```
 
-Use temporary mode for a rehearsal that only lasts for the current login
-session:
-
-```bash
-setup-mixxx-musicindex --temporary
-```
-
-Permanent mode writes config and tokens under
+The helper writes the config and the tokens under
 `~/.config/musicindex-live-publisher/mixxx/` and enables both user services.
-Temporary mode writes config and tokens under `$XDG_RUNTIME_DIR` and only starts
-the services; the generated unit files remain under `~/.config/systemd/user`.
+To use an event that already exists, add `--event-id` and `--token-file`. To
+move units of the earlier helper to the templates, run
+`setup-mixxx-musicindex --migrate-units`.
 
 ## Build
 
@@ -162,7 +156,7 @@ delays. It does not show token content.
 
 ## Future Player Instances
 
-Run only one `mixxx-now-playing.service`; Mixxx has one active desktop history
+Run only one Mixxx producer. Mixxx has one active desktop history
 source. Mixxx uses the `musicindex-live-publisher@mixxx.service` publisher
 instance. If a future non-Mixxx producer needs a separate pipeline, run a
 separate publisher instance instead:
@@ -185,7 +179,7 @@ install -m 0644 systemd/musicindex-live-publisher.service \
   ~/.config/systemd/user/
 install -m 0644 systemd/musicindex-live-publisher@.service \
   ~/.config/systemd/user/
-install -m 0644 systemd/mixxx-now-playing.service \
+install -m 0644 systemd/mixxx-now-playing@.service \
   ~/.config/systemd/user/
 systemctl --user daemon-reload
 systemd-analyze --user verify ~/.config/systemd/user/musicindex-live-publisher@.service
@@ -234,7 +228,7 @@ Check, in order:
 
 ```bash
 systemctl --user enable --now musicindex-live-publisher@mixxx.service
-systemctl --user enable --now mixxx-now-playing.service
+systemctl --user enable --now mixxx-now-playing@mixxx.service
 systemctl --user status musicindex-live-publisher@mixxx.service
 journalctl --user -u musicindex-live-publisher@mixxx.service -f
 ```
@@ -260,7 +254,7 @@ A healthy track change logs `published live value payload` with a rising `seq`.
 ## Rollback
 
 ```bash
-systemctl --user disable --now mixxx-now-playing.service
+systemctl --user disable --now mixxx-now-playing@mixxx.service
 systemctl --user disable --now musicindex-live-publisher@mixxx.service
 ```
 

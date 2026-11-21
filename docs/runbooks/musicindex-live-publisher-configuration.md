@@ -214,34 +214,19 @@ default.
 To turn on the display output for a target with a reserved event:
 
 1. Add this line to the `[[target]]` stanza named `default`:
-   `display_dir = "/run/user/1000/musicindex-live-publisher/mixxx/display"`.
-   Use the user ID of the operator in the path.
-2. Run `setup-mixxx-musicindex --units-only --display`.
+   `display_dir = "$XDG_RUNTIME_DIR/musicindex-live-publisher/mixxx/display"`.
+   Write the path of `$XDG_RUNTIME_DIR` in full in the file.
+2. Restart `mixxx-now-playing@mixxx.service`.
 
-The helper then writes the producer unit with these lines:
+The packaged template unit has no `--display-dir` option. The producer reads
+`display_dir` from the config (ADR 0021). The template `RuntimeDirectory=`
+names the drop directory and the display directory. The unit sets
+`ProtectSystem=strict`, so the producer can write only in these directories.
 
-- `ExecStart=` has `--display-dir` with the display directory.
-- `RuntimeDirectory=` names the drop directory and the display directory. The
-  unit sets `ProtectSystem=strict`, so the producer can write only in these
-  directories.
-
-Each subsequent `--units-only` run reads `display_dir` with `config show --json`.
-If the target has `display_dir`, the producer unit keeps the display output.
-`--display` is then not necessary.
-
-The helper stops and changes no file in these conditions:
-
-- `--units-only --display` and the target has no `display_dir`. The message
-  gives the line to add.
-- The `display_dir` of the target is not the display directory of the
-  helper. The message gives the two paths.
-- The `display_dir` of the target is the drop directory.
-
-A first run with `--display` writes `display_dir` in the new config. That
-run provisions an ephemeral event, so the relay refuses the display requests.
-
-The helper does not write a unit again when its content did not change. That
-unit gets no backup (`AGENTS.md` §6).
+A first run of `setup-mixxx-musicindex --display` writes `display_dir` in the
+new config. That run provisions an ephemeral event, so the relay refuses the
+display requests. With `--event-id` and `--token-file`, the same option writes
+`display_dir` for a reserved event.
 
 Destination fields, for a `value_routes` entry in the drop file:
 
@@ -409,8 +394,8 @@ The Mixxx pipeline uses `musicindex-live-publisher@mixxx.service`. It reads
 $XDG_RUNTIME_DIR/musicindex-live-publisher/mixxx/nowplaying
 ```
 
-Run only one `mixxx-now-playing.service`; Mixxx has one active desktop history
-source. If a future non-Mixxx producer needs its own pipeline, use a separate
+Run only one Mixxx producer, `mixxx-now-playing@mixxx.service`. Mixxx has one
+active desktop history source. If a future non-Mixxx producer needs its own pipeline, use a separate
 publisher instance with its own config and drop directory:
 
 ```text

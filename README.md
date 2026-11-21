@@ -141,13 +141,11 @@ In Mixxx, set Preferences, then Library, "Track duplicate distance" to 0.
 Without it, a track that plays again within six tracks pays nobody. See
 [Mixxx History Setup](docs/runbooks/musicindex-live-publisher-configuration.md#mixxx-history-setup).
 
-Temporary mode keeps config and token under `$XDG_RUNTIME_DIR`, writes the user
-unit files under `~/.config/systemd/user`, and starts services only for the
-current login session:
-
-```bash
-setup-mixxx-musicindex --temporary
-```
+The helper writes no unit file. The package installs the template units
+`musicindex-live-publisher@.service` and `mixxx-now-playing@.service`, and the
+helper enables and starts them for the instance `mixxx` (ADR 0021). A computer
+that has the units of an earlier helper needs one migration. See the package
+runbook, section "Upgrade".
 
 Manual provisioning still works. Create a live item and write the one-time
 broadcaster token:
@@ -214,15 +212,17 @@ publisher and producer configuration option.
 
 ## Systemd
 
-For a manual user-service install, copy both units to
-`~/.config/systemd/user/` and run `systemctl --user daemon-reload`. The
-publisher unit uses `PrivateTmp=true`, so producers must write to
+The package installs two template units. Each instance has the units
+`musicindex-live-publisher@<instance>.service` and
+`mixxx-now-playing@<instance>.service`. The instance reads its config from
+`~/.config/musicindex-live-publisher/<instance>/config.toml`. The publisher
+unit uses `PrivateTmp=true`, so producers must write to
 `$XDG_RUNTIME_DIR/musicindex-live-publisher/<instance>/nowplaying`, not `/tmp`.
 
-Run only one `mixxx-now-playing.service`; a desktop can only have one active
-Mixxx history source. The Mixxx pipeline uses
-`musicindex-live-publisher@mixxx.service`; future non-Mixxx producers should get their own
-`musicindex-live-publisher@<instance>.service` instance and watch directory.
+Only one Mixxx producer runs at a time. A second one exits with status 3, and
+systemd does not start it again (ADR 0021 §One Mixxx Producer At A Time). To
+change the instance, stop the producer of the first instance, then start the
+producer of the second instance.
 
 Run foreground validation before enabling:
 

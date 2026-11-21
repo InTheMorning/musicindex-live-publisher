@@ -98,7 +98,7 @@ of the same play as the newest block has that block's identity in `value`
 ### Service control from `v4vmm`
 
 `v4vmm` starts and stops `musicindex-live-publisher@<instance>.service` and
-`mixxx-now-playing.service`. It uses `systemctl --user` on the local host, and
+`mixxx-now-playing@<instance>.service` (ADR 0021). It uses `systemctl --user` on the local host, and
 the same commands through `ssh` on a remote host.
 
 The unit files in `systemd/` stay in this repository. `v4vmm` does not write

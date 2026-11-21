@@ -20,11 +20,11 @@ the `master` branch from GitHub:
 - Source: `git+https://github.com/InTheMorning/musicindex-live-publisher.git`
 - Installed binaries: `/usr/bin/musicindex-live-publisher` and
   `/usr/bin/mixxx-now-playing`
-- Installed user units:
-  `/usr/lib/systemd/user/musicindex-live-publisher.service` and
-  `/usr/lib/systemd/user/mixxx-now-playing.service`
-- Installed template user unit:
-  `/usr/lib/systemd/user/musicindex-live-publisher@.service`
+- Installed user unit:
+  `/usr/lib/systemd/user/musicindex-live-publisher.service`
+- Installed template user units:
+  `/usr/lib/systemd/user/musicindex-live-publisher@.service` and
+  `/usr/lib/systemd/user/mixxx-now-playing@.service`
 - Installed setup helper: `/usr/bin/setup-mixxx-musicindex`
 - Installed MIDI card files (ADR 0006):
   `/usr/lib/modules-load.d/musicindex-v4v-midi.conf` and
@@ -87,8 +87,9 @@ the package and installs it.
 ## Configure
 
 For Mixxx, use the setup helper. It provisions the live item, writes the token
-and config, generates `musicindex-live-publisher@mixxx.service`, and starts the
-pipeline. The publisher uses a fixed dead block for idle or non-V4V playback
+and config, and starts the pipeline with the packaged units
+`musicindex-live-publisher@mixxx.service` and `mixxx-now-playing@mixxx.service`.
+The helper writes no unit file. The publisher uses a fixed dead block for idle or non-V4V playback
 (ADR 0005). No setup flag changes it:
 
 ```bash
@@ -99,11 +100,15 @@ The helper stops when the config names a real event ID. It then sends no
 relay request and changes no file. Only `--force` replaces that config. See
 [Upgrade](#upgrade).
 
-Use temporary mode for a current-login rehearsal:
+To use an event that already exists, give its ID and its token file. The
+token file must have mode `0600`. The helper sends no relay request:
 
 ```bash
-setup-mixxx-musicindex --temporary
+setup-mixxx-musicindex --event-id EVENT_ID --token-file TOKEN_FILE
 ```
+
+Use `--instance NAME` for a different instance. The helper then runs no
+`systemctl` command. See ADR 0021.
 
 For manual setup, create the user config directory:
 
@@ -155,11 +160,11 @@ settings.
 ```bash
 systemctl --user daemon-reload
 systemctl --user enable --now musicindex-live-publisher@mixxx.service
-systemctl --user enable --now mixxx-now-playing.service
+systemctl --user enable --now mixxx-now-playing@mixxx.service
 ```
 
-Only run one `mixxx-now-playing.service`; Mixxx has one active desktop history
-source. Future non-Mixxx producers can use separate
+Run only one Mixxx producer. Mixxx has one active desktop history
+source. The second producer stops with exit status 3 (ADR 0021). Future non-Mixxx producers can use separate
 `musicindex-live-publisher@<instance>.service` instances with their own configs
 and watch directories.
 
@@ -215,22 +220,30 @@ cd ~/build/musicindex-live-publisher-pkg
 makepkg -Csi
 ```
 
-A package upgrade does not change a unit that the setup helper wrote. Write
-the two units again with the new helper:
+The package installs the template units, and a package upgrade updates them.
+The units that the earlier setup helper wrote in `~/.config/systemd/user/`
+stay in place and hide the package units. Move the private stream to the
+templates one time:
 
 ```bash
-setup-mixxx-musicindex --units-only
+setup-mixxx-musicindex --migrate-units
 ```
 
-This command writes `musicindex-live-publisher@mixxx.service` and
-`mixxx-now-playing.service` again, with a backup of each. It reads no token.
-It does not change the config or a token, and it sends no relay request. It
-needs the config of an earlier run.
+This command stops the earlier producer. It moves `mixxx-now-playing.service`
+and `musicindex-live-publisher@mixxx.service` in `~/.config/systemd/user/` to a
+backup, and it removes their enable links. It then enables
+`musicindex-live-publisher@mixxx.service` and `mixxx-now-playing@mixxx.service`
+when the earlier units were enabled. It starts each one when the earlier unit
+was active.
 
-Then the helper reloads the user manager and restarts the two units. With
-`--no-start`, it runs no `systemctl` command. It prints the commands instead.
+The command does not change the config or a token, and it sends no relay
+request. It stops at a unit file that has no
+generated marker, unless you give `--force`. A second run changes nothing.
 
-Do not use the helper without `--units-only` for an upgrade. When the config
+With `--no-start`, the helper runs no `systemctl` command. It prints the
+commands instead.
+
+Do not run the helper without `--migrate-units` for an upgrade. When the config
 names a real event ID, the helper stops before the relay request. With
 `--force`, it backs up the config and provisions a new live item. The old
 event then leaves the config.
@@ -239,13 +252,13 @@ If you did not use the setup helper, restart the services:
 
 ```bash
 systemctl --user restart musicindex-live-publisher@mixxx.service
-systemctl --user restart mixxx-now-playing.service
+systemctl --user restart mixxx-now-playing@mixxx.service
 ```
 
 ## Remove
 
 ```bash
-systemctl --user disable --now mixxx-now-playing.service
+systemctl --user disable --now mixxx-now-playing@mixxx.service
 systemctl --user disable --now musicindex-live-publisher@mixxx.service
 sudo pacman -R musicindex-live-publisher-git
 ```
