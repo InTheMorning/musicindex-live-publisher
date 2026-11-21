@@ -108,6 +108,11 @@ packet.
   `musicindex-build-info` with the prefix `MUSICINDEX_LIVE_PUBLISHER`.
   `--version` prints the line of R-VERSION-2. The publisher has no HTTP
   server and no screen, so R-VERSION-3 and R-VERSION-4 do not apply.
+- ADR 0021 has the status `Proposed`. No implementation exists. It changes
+  ADR 0016 §Producer Units: the Mixxx producer becomes the template unit
+  `mixxx-now-playing@<instance>.service`, and one Mixxx producer runs at a
+  time. HitIt waits for it to keep a show stream apart from the private
+  stream.
 - This item needs a new ADR before work starts: a track identity source that
   is earlier than the Mixxx history row.
 - Studio client task 001 is not started. The publisher will start and end a

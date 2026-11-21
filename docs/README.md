@@ -83,6 +83,11 @@ the next priority. Confirm that logging works before the show.
 - [ADR 0019: The Debian package and the Docker image](adr/0019-debian-package-and-docker-image.md)
   — Accepted. cargo-deb makes the `.deb`. The Docker image holds the
   publisher only. A tag `v*` starts `.github/workflows/release.yml`
+- [ADR 0021: A template unit for the Mixxx producer](adr/0021-mixxx-producer-template-unit.md)
+  — Proposed. `mixxx-now-playing@<instance>.service` reads its instance
+  configuration. A kernel lock lets one Mixxx producer run at a time. The
+  setup helper gets `--instance`, `--target`, `--event-id`, `--json` and
+  `--migrate-units`. It changes ADR 0016 §Producer Units
 
 ## Plans
 
