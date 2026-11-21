@@ -37,6 +37,9 @@ pub(crate) struct Cli {
     pub(crate) no_connector: bool,
     /// `--display-dir DIR` turns on the display output (ADR 0008).
     pub(crate) display_dir: Option<PathBuf>,
+    /// `--instance NAME` reads the paths, the target and the display
+    /// directory from the instance configuration (ADR 0021).
+    pub(crate) instance: Option<String>,
 }
 
 impl Default for Cli {
@@ -60,7 +63,29 @@ impl Default for Cli {
             connector_card: "V4V".to_owned(),
             no_connector: false,
             display_dir: None,
+            instance: None,
         }
+    }
+}
+
+/// Checks an instance name against `^[a-z0-9][a-z0-9-]{0,31}$` (ADR 0021
+/// §The Unit Names).
+///
+/// # Errors
+///
+/// Returns an error that names ADR 0021 when the name does not match.
+pub(crate) fn validate_instance_name(name: &str) -> Result<()> {
+    let mut chars = name.chars();
+    let first_ok = chars
+        .next()
+        .is_some_and(|c| c.is_ascii_lowercase() || c.is_ascii_digit());
+    let rest_ok = chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
+    if first_ok && rest_ok && name.len() <= 32 {
+        Ok(())
+    } else {
+        Err(anyhow!(
+            "ADR 0021 §The Unit Names: instance name {name:?} must match ^[a-z0-9][a-z0-9-]{{0,31}}$"
+        ))
     }
 }
 
@@ -137,17 +162,33 @@ impl Cli {
         let mut cli = Self::default();
         let mut args = args.into_iter().map(Into::into);
         let _program = args.next();
+        // The flags that ADR 0021 refuses together with `--instance`.
+        let mut refused_flags: Vec<&'static str> = Vec::new();
 
         while let Some(arg) = args.next() {
             match arg.to_str() {
                 Some("--db-file") => cli.db_file = Some(next_path(&mut args, "--db-file")?),
-                Some("--txt-file") => cli.txt_file = Some(next_path(&mut args, "--txt-file")?),
-                Some("--id3-file") => cli.id3_file = Some(next_path(&mut args, "--id3-file")?),
+                Some("--txt-file") => {
+                    refused_flags.push("--txt-file");
+                    cli.txt_file = Some(next_path(&mut args, "--txt-file")?);
+                }
+                Some("--id3-file") => {
+                    refused_flags.push("--id3-file");
+                    cli.id3_file = Some(next_path(&mut args, "--id3-file")?);
+                }
                 Some("--v4v-root") => cli.v4v_root = Some(next_path(&mut args, "--v4v-root")?),
                 Some("--poll-secs") => cli.poll_secs = next_f64(&mut args, "--poll-secs")?,
                 Some("--once") => cli.once = true,
                 Some("--format") => cli.format = next_format(&mut args)?,
-                Some("--target") => cli.target = next_string(&mut args, "--target")?,
+                Some("--target") => {
+                    refused_flags.push("--target");
+                    cli.target = next_string(&mut args, "--target")?;
+                }
+                Some("--instance") => {
+                    let name = next_string(&mut args, "--instance")?;
+                    validate_instance_name(&name)?;
+                    cli.instance = Some(name);
+                }
                 Some("--expiry") => cli.expiry = next_expiry_mode(&mut args)?,
                 Some("--expiry-slack") => {
                     cli.expiry_slack = next_duration(&mut args, "--expiry-slack")?;
@@ -172,6 +213,7 @@ impl Cli {
                 }
                 Some("--no-connector") => cli.no_connector = true,
                 Some("--display-dir") => {
+                    refused_flags.push("--display-dir");
                     cli.display_dir = Some(next_path(&mut args, "--display-dir")?);
                 }
                 Some(flag) if flag.starts_with("--") => return Err(anyhow!("unknown flag {flag}")),
@@ -183,6 +225,14 @@ impl Cli {
                     ));
                 }
             }
+        }
+
+        if cli.instance.is_some() && !refused_flags.is_empty() {
+            return Err(anyhow!(
+                "ADR 0021 §The Producer Reads Its Instance: --instance cannot be used with {}. \
+                 The instance configuration gives these values.",
+                refused_flags.join(", ")
+            ));
         }
 
         Ok(cli)
@@ -270,6 +320,48 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
+
+    #[test]
+    fn instance_flag_sets_the_instance() -> Result<()> {
+        let cli = Cli::parse(["mixxx-now-playing", "--instance", "show-2"])?;
+
+        assert_eq!(cli.instance.as_deref(), Some("show-2"));
+        Ok(())
+    }
+
+    #[test]
+    fn bad_instance_names_name_adr_0021() {
+        let too_long = "a".repeat(33);
+        for name in ["Show", "-show", "a b", "a_b", "a/b", too_long.as_str()] {
+            let error = Cli::parse(["mixxx-now-playing", "--instance", name])
+                .expect_err("a bad instance name must fail");
+            let message = format!("{error:#}");
+            assert!(message.contains("ADR 0021"), "name {name:?}: {message}");
+        }
+        let longest = "a".repeat(32);
+        assert!(Cli::parse(["mixxx-now-playing", "--instance", longest.as_str()]).is_ok());
+    }
+
+    #[test]
+    fn instance_with_a_refused_flag_names_adr_0021() {
+        for (flag, value) in [
+            ("--target", "x"),
+            ("--id3-file", "x"),
+            ("--txt-file", "x"),
+            ("--display-dir", "x"),
+        ] {
+            // Both orders must fail.
+            for args in [
+                ["mixxx-now-playing", "--instance", "show", flag, value],
+                ["mixxx-now-playing", flag, value, "--instance", "show"],
+            ] {
+                let error = Cli::parse(args).expect_err("a refused combination must fail");
+                let message = format!("{error:#}");
+                assert!(message.contains("ADR 0021"), "{flag}: {message}");
+                assert!(message.contains(flag), "{flag}: {message}");
+            }
+        }
+    }
 
     #[test]
     fn expiry_max_sets_the_expiry_max_field() -> Result<()> {

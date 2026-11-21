@@ -1,6 +1,6 @@
 # Producer Template Task 001: `--instance` And The Mixxx Lock
 
-Status: Planned 2026-11-21.
+Status: Implemented - 2026-11-21.
 
 Every criterion is mechanical.
 

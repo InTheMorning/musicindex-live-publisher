@@ -12,7 +12,7 @@ use mixxx_now_playing::display::{
 };
 use mixxx_now_playing::expiry::Expiry;
 use mixxx_now_playing::history::{HistoryWatcher, TrackRow};
-use mixxx_now_playing::lock::ProducerLock;
+use mixxx_now_playing::lock::{MixxxLock, MixxxLockHeld, ProducerLock};
 use mixxx_now_playing::musicindex::{
     ResolvedRouteResult, RouteRequestStatus, ValueRouteResolver, ValueRoutesSource,
     apply_resolution_to_tags, result_matches_current,
@@ -45,9 +45,11 @@ fn main() -> Result<()> {
         process::exit(command_main(&args[2..]));
     }
 
-    let cli = cli::Cli::parse(args)?;
+    let mut cli = cli::Cli::parse(args)?;
     init_tracing()?;
     let config = config::ResolvedConfig::resolve(&cli)?;
+    // With `--instance`, the target comes from the instance configuration.
+    cli.target.clone_from(&config.target);
 
     if cli.verbose {
         println!("Mixxx DB: {}", config.db_file.display());
@@ -61,10 +63,19 @@ fn main() -> Result<()> {
         }
     }
 
-    run(&cli, &config)?;
-
-    Ok(())
+    match run(&cli, &config) {
+        // ADR 0021: a refused Mixxx lock gives exit status 3. The unit
+        // template stops the restart for this status.
+        Err(error) if error.downcast_ref::<MixxxLockHeld>().is_some() => {
+            eprintln!("Error: {error:#}");
+            process::exit(EXIT_MIXXX_LOCK_HELD);
+        }
+        other => other,
+    }
 }
+
+/// The exit code of a producer that does not get the Mixxx lock (ADR 0021).
+const EXIT_MIXXX_LOCK_HELD: i32 = 3;
 
 /// The exit code for a command line that is not correct (ADR 0007).
 const EXIT_USAGE: i32 = 2;
@@ -164,10 +175,31 @@ fn run(cli: &cli::Cli, config: &config::ResolvedConfig) -> Result<()> {
         return Ok(());
     }
 
+    // ADR 0021: the producer takes the Mixxx lock before the producer lock.
+    // The holder name is the instance, or the drop directory without an
+    // instance. The `_mixxx_lock` binding keeps the lock alive for the rest
+    // of this function.
+    let drop_dir = drop_directory(&config.id3_file)?;
+    let holder = cli
+        .instance
+        .clone()
+        .unwrap_or_else(|| drop_dir.display().to_string());
+    let runtime_dir = std::env::var_os("XDG_RUNTIME_DIR")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .ok_or_else(|| {
+            anyhow!("ADR 0021 §One Mixxx Producer At A Time: watch mode needs XDG_RUNTIME_DIR")
+        })?;
+    let _mixxx_lock = MixxxLock::acquire(&runtime_dir, &holder)?;
+
+    // The template unit makes the drop directory. A run by hand can have no
+    // drop directory, so the producer makes it before the lock file.
+    fs::create_dir_all(&drop_dir)
+        .with_context(|| format!("create drop directory {}", drop_dir.display()))?;
+
     // `Runtime::new` writes to the drop directory. The producer must hold
     // the lock first. The `_lock` binding keeps the lock alive for the rest
     // of this function.
-    let drop_dir = drop_directory(&config.id3_file)?;
     let _lock = ProducerLock::acquire(&drop_dir)
         .with_context(|| format!("acquire producer lock in {}", drop_dir.display()))?;
 

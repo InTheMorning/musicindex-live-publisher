@@ -315,6 +315,7 @@ fn lifecycle_sigterm_clears_now_playing_and_removes_metadata_before_exit() -> Re
         .arg("--poll-secs")
         .arg("0.05")
         .arg("--no-connector")
+        .env("XDG_RUNTIME_DIR", temp.path().join("run"))
         .spawn()?;
 
     wait_until(Duration::from_secs(5), || metadata_file.exists())?;
@@ -606,6 +607,7 @@ fn lifecycle_sigterm_writes_null_display_before_exit() -> Result<()> {
         .arg("--poll-secs")
         .arg("0.05")
         .arg("--no-connector")
+        .env("XDG_RUNTIME_DIR", temp.path().join("run"))
         .spawn()?;
 
     let shows_track = || {
@@ -805,5 +807,110 @@ fn lifecycle_display_track_with_null_album() -> Result<()> {
     );
     let display = read_display(&display_dir)?;
     assert!(display["track"]["album"].is_null());
+    Ok(())
+}
+
+/// Writes the instance configuration of `name` under `config_home`. It has
+/// one target with the name `name`.
+fn write_instance_config(config_home: &Path, name: &str) -> Result<()> {
+    let dir = config_home.join("musicindex-live-publisher").join(name);
+    fs::create_dir_all(&dir)?;
+    fs::write(
+        dir.join("config.toml"),
+        format!("[[target]]\nname = \"{name}\"\n"),
+    )?;
+    Ok(())
+}
+
+fn instance_command(temp: &TempDir, instance: &str, db: &Path) -> Command {
+    let mut command = Command::new(binary());
+    command
+        .arg("--instance")
+        .arg(instance)
+        .arg("--db-file")
+        .arg(db)
+        .arg("--v4v-root")
+        .arg(temp.path().join("V4Vmusic"))
+        .arg("--poll-secs")
+        .arg("0.05")
+        .arg("--no-connector")
+        .arg("--no-api")
+        .env("XDG_RUNTIME_DIR", temp.path().join("run"))
+        .env("XDG_CONFIG_HOME", temp.path().join("config"))
+        .env("HOME", temp.path().join("home"));
+    command
+}
+
+/// ADR 0021 §One Mixxx Producer At A Time: the second Mixxx producer exits
+/// with status 3 and names the instance that holds the lock.
+#[test]
+fn lifecycle_second_mixxx_producer_exits_with_status_3() -> Result<()> {
+    let temp = TempDir::new()?;
+    fs::create_dir_all(temp.path().join("V4Vmusic"))?;
+    write_instance_config(&temp.path().join("config"), "first")?;
+    write_instance_config(&temp.path().join("config"), "second")?;
+    let db = SyntheticMixxxDb::new()?;
+    let mut fake_mixxx = spawn_fake_mixxx(&temp)?;
+
+    let mut first = instance_command(&temp, "first", db.path()).spawn()?;
+    let lock_file = temp.path().join("run/mixxx-now-playing/mixxx.lock");
+    let waited = wait_until(Duration::from_secs(5), || {
+        fs::read_to_string(&lock_file).is_ok_and(|text| text == "first")
+    });
+
+    let second = instance_command(&temp, "second", db.path()).output();
+
+    let _ = first.kill();
+    let _ = first.wait();
+    let _ = fake_mixxx.kill();
+    let _ = fake_mixxx.wait();
+    waited?;
+    let second = second?;
+
+    assert_eq!(second.status.code(), Some(3));
+    let stderr = String::from_utf8_lossy(&second.stderr);
+    assert!(stderr.contains("ADR 0021"), "stderr is: {stderr}");
+    assert!(stderr.contains("first"), "stderr is: {stderr}");
+    Ok(())
+}
+
+/// The test process holds the Mixxx lock, so no Mixxx is needed.
+#[test]
+fn lifecycle_producer_exits_with_status_3_when_the_test_holds_the_mixxx_lock() -> Result<()> {
+    let temp = TempDir::new()?;
+    fs::create_dir_all(temp.path().join("V4Vmusic"))?;
+    write_instance_config(&temp.path().join("config"), "show")?;
+    let db = SyntheticMixxxDb::new()?;
+    let _held =
+        mixxx_now_playing::lock::MixxxLock::acquire(&temp.path().join("run"), "held-elsewhere")?;
+
+    let output = instance_command(&temp, "show", db.path()).output()?;
+
+    assert_eq!(output.status.code(), Some(3));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("held-elsewhere"), "stderr is: {stderr}");
+    Ok(())
+}
+
+#[test]
+fn lifecycle_watch_mode_without_a_runtime_dir_names_adr_0021() -> Result<()> {
+    let temp = TempDir::new()?;
+    let db = SyntheticMixxxDb::new()?;
+
+    let output = Command::new(binary())
+        .arg("--db-file")
+        .arg(db.path())
+        .arg("--txt-file")
+        .arg(temp.path().join("now-playing.txt"))
+        .arg("--id3-file")
+        .arg(temp.path().join("metadata.txt"))
+        .arg("--no-connector")
+        .env_remove("XDG_RUNTIME_DIR")
+        .output()?;
+
+    assert!(!output.status.success());
+    assert_ne!(output.status.code(), Some(3));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("ADR 0021"), "stderr is: {stderr}");
     Ok(())
 }

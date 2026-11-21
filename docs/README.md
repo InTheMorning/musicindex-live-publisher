@@ -284,9 +284,9 @@ Packets for the Mixxx producer template plan. ADR 0021 governs them. Each
 packet needs the one before it.
 
 - [001 — `--instance` and the Mixxx lock](tasks/producer-template-task-001-instance-and-mixxx-lock.md)
-  — Planned - 2026-11-21
+  — Implemented - 2026-11-21
 - [002 — The template unit and the packages](tasks/producer-template-task-002-template-unit-and-packaging.md)
-  — Planned - 2026-11-21
+  — Implemented - 2026-11-21
 - [003 — The setup helper and the migration](tasks/producer-template-task-003-setup-helper-and-migration.md)
   — Planned - 2026-11-21
 
