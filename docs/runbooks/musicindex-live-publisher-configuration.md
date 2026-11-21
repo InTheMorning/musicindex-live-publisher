@@ -512,7 +512,10 @@ Options:
   See "Show Log" above.
 - `--dry-run`: print live value payloads to stdout instead of publishing.
 - `--verbose`: enable debug logging.
-- `--version`: print the package version and exit.
+- `--version`: print the name, the version, the git revision and the build
+  date, then exit. Example: `musicindex-live-publisher 0.1.0 (809694f, 2026-11-18)`
+  (musicindex ADR 0083 R-VERSION-2). A package built before commit `809694f`
+  prints only the version.
 
 Provision mode:
 
@@ -956,3 +959,20 @@ Create the directory, then run:
 install -d -m 0700 /tmp/musicindex-live-publisher-nowplaying
 musicindex-live-publisher --config /tmp/publisher.toml --dry-run --verbose
 ```
+
+The token file must exist, or the dry run stops. The dry run does not send
+the token.
+
+The dry run sends the dead block when no producer holds the producer lock
+(ADR 0005). It then ignores each drop file. To see the payload of a test drop
+file, hold the lock with `flock` while the dry run runs:
+
+```bash
+touch /tmp/musicindex-live-publisher-nowplaying/.producer.lock
+flock -x /tmp/musicindex-live-publisher-nowplaying/.producer.lock \
+  musicindex-live-publisher --config /tmp/publisher.toml --dry-run --verbose
+```
+
+The dry run prints each display state without `value` (ADR 0012). The relay
+worker adds `value`, and a dry run starts no relay worker. A dry run also
+writes no show log.
