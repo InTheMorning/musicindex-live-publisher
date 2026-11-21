@@ -42,7 +42,7 @@ assets = [
     ["scripts/setup-mixxx-musicindex.sh", "usr/bin/setup-mixxx-musicindex", "755"],
     ["systemd/musicindex-live-publisher.service", "usr/lib/systemd/user/", "644"],
     ["systemd/musicindex-live-publisher@.service", "usr/lib/systemd/user/", "644"],
-    ["systemd/mixxx-now-playing.service", "usr/lib/systemd/user/", "644"],
+    ["systemd/mixxx-now-playing@.service", "usr/lib/systemd/user/", "644"],
     ["packaging/midi/musicindex-v4v-midi.modules-load.conf", "usr/lib/modules-load.d/musicindex-v4v-midi.conf", "644"],
     ["packaging/midi/musicindex-v4v-midi.modprobe.conf", "usr/lib/modprobe.d/musicindex-v4v-midi.conf", "644"],
     ["mixxx/MusicIndex-V4V-Connector.midi.xml", "usr/share/mixxx/controllers/", "644"],

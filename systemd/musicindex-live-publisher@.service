@@ -10,7 +10,7 @@ StartLimitBurst=5
 [Service]
 Type=simple
 ExecStart=/usr/bin/musicindex-live-publisher \
-    --config %h/.config/musicindex-live-publisher/%i/config.toml \
+    --config %E/musicindex-live-publisher/%i/config.toml \
     --watch-dir %t/musicindex-live-publisher/%i/nowplaying \
     --state-dir %S/musicindex-live-publisher/%i
 Restart=on-failure

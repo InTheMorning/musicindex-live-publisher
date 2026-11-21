@@ -1,6 +1,6 @@
 # Producer Template Task 002: The Template Unit And The Packages
 
-Status: Planned 2026-11-21.
+Status: Implemented - 2026-11-21. Criterion 5 is open: `systemd-analyze --user verify` cannot run in the agent sandbox.
 
 Every criterion is mechanical.
 

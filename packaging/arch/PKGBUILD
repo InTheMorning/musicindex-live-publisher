@@ -79,8 +79,8 @@ package() {
     "$pkgdir/usr/lib/systemd/user/musicindex-live-publisher.service"
   install -Dm0644 systemd/musicindex-live-publisher@.service \
     "$pkgdir/usr/lib/systemd/user/musicindex-live-publisher@.service"
-  install -Dm0644 systemd/mixxx-now-playing.service \
-    "$pkgdir/usr/lib/systemd/user/mixxx-now-playing.service"
+  install -Dm0644 systemd/mixxx-now-playing@.service \
+    "$pkgdir/usr/lib/systemd/user/mixxx-now-playing@.service"
 
   # ADR 0006 §Card Setup: these files make the V4V card at the next boot.
   install -Dm0644 packaging/midi/musicindex-v4v-midi.modules-load.conf \
