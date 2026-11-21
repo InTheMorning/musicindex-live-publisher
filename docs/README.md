@@ -84,13 +84,16 @@ the next priority. Confirm that logging works before the show.
   — Accepted. cargo-deb makes the `.deb`. The Docker image holds the
   publisher only. A tag `v*` starts `.github/workflows/release.yml`
 - [ADR 0021: A template unit for the Mixxx producer](adr/0021-mixxx-producer-template-unit.md)
-  — Proposed. `mixxx-now-playing@<instance>.service` reads its instance
+  — Accepted. `mixxx-now-playing@<instance>.service` reads its instance
   configuration. A kernel lock lets one Mixxx producer run at a time. The
   setup helper gets `--instance`, `--target`, `--event-id`, `--json` and
   `--migrate-units`. It changes ADR 0016 §Producer Units
 
 ## Plans
 
+- [Mixxx producer template unit](plans/mixxx-producer-template-unit.md) — the
+  template producer unit, the Mixxx lock, and the setup helper of ADR 0021
+  — Planned - 2026-11-21
 - [Rust now-playing utility plan](plans/rust-now-playing-utility-plan.md) — replace
   `mixxx-now-playing.py` with a Rust binary that emits V4V track metadata only
   while a V4V track is playing
@@ -276,6 +279,16 @@ by itself.
   — Implemented - 2026-10-18
 - [002 — One instance for each event](tasks/instances-task-002-event-ownership-checks.md)
   — Implemented - 2026-10-18
+
+Packets for the Mixxx producer template plan. ADR 0021 governs them. Each
+packet needs the one before it.
+
+- [001 — `--instance` and the Mixxx lock](tasks/producer-template-task-001-instance-and-mixxx-lock.md)
+  — Planned - 2026-11-21
+- [002 — The template unit and the packages](tasks/producer-template-task-002-template-unit-and-packaging.md)
+  — Planned - 2026-11-21
+- [003 — The setup helper and the migration](tasks/producer-template-task-003-setup-helper-and-migration.md)
+  — Planned - 2026-11-21
 
 Packets for the show log plan. ADR 0017 governs them. Each packet needs the
 one before it.

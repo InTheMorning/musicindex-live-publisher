@@ -1,6 +1,6 @@
 # ADR 0021: A Template Unit For The Mixxx Producer
 
-- Status: Proposed
+- Status: Accepted on 2026-11-21 by the operator. The orchestrator session relayed the decision. Open Question 1 stays open.
 - Date: 2026-11-21
 - Changes: ADR 0016 items: §Producer Units, the Mixxx producer, and the rejected alternative "A Template Unit For The
   Mixxx Producer".
