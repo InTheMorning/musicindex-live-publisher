@@ -136,8 +136,10 @@ packet.
   file, with the state format 2 and only the new `Podcast` frame names.
   Readers do not accept the old `MusicIndex` names. It depends on musicindex
   ADR 0086, which owns the frame names and the chapter list. Its section
-  §The Chapter Route Lookup is Proposed: the station producer gets the routes
-  of a chapter song from the route service with the two chapter GUIDs. Do not
+  §The Chapter Route Lookup is Accepted: the station producer gets the routes
+  of a chapter song from the route service with the two chapter GUIDs, then
+  from the file (musicindex ADR 0089 R-TAG-6). With no routes, the chapter
+  pays nobody. `mixxx-now-playing` also asks with the two GUIDs. Do not
   install the new slot text or the new Mixxx reader on a station. The
   operator installs the two in one maintenance window, after HitIt writes the
   new frames in all the files.

@@ -1,7 +1,7 @@
 # ADR 0025: The Station Producer Pays Each Chapter Song Of An Episode File
 
-- Status: Accepted on 2026-11-22 by the operator. The orchestrator session relayed the decision. Open Question 2
-  stays open. §The Chapter Route Lookup and the revision of 2026-11-22 for it are Proposed.
+- Status: Accepted on 2026-11-22 by the operator. The orchestrator session relayed the decision. Open Questions 2
+  and 4 stay open. The operator accepted §The Chapter Route Lookup on 2026-11-22, with the operator choices below.
 - Date: 2026-11-22
 - Changes: ADR 0022 items: §The State File Contract (a format version 2) and §What The Producer Writes (the chapter
   rows).
@@ -10,6 +10,8 @@
 - Depends on: musicindex ADR 0086 (Accepted, musicindex commit 27b4cab), One Feed Parser And One Tag Crate For Songs
   And Episodes. It owns the frame names and the JSON shape of `TXXX:Podcast Chapters`. This record restates the parts
   that it uses, and ADR 0086 wins if the two differ.
+- Depends on: musicindex ADR 0089 R-TAG-6 (Accepted, musicindex commit 28b32f2). It lets the tag writer put the song
+  routes in a remote chapter entry.
 - Bar: crosses repositories. The tag writer in HitIt, the slot text on the station and this producer must agree on the
   frame names and the chapter list. An agent can also make the opposite choice by mistake: pay the episode only, or
   pay a chapter with one GUID.
@@ -21,12 +23,18 @@
   names. The operator tags the collection again with the new names. This choice replaces the first choice, which let
   readers accept the old names.
 - Operator choice, 2026-11-22, relayed by the orchestrator session: the producer gets the routes of a remote chapter
-  song from the route service with the two chapter GUIDs. ADR 0086 R-TAG-4 item 4 does not change, so a remote entry
-  in a file has `value_routes` null.
+  song from the route service with the two chapter GUIDs first. When the service gives no routes, the producer uses
+  `value_routes` of the entry. musicindex ADR 0089 R-TAG-6 gives those routes. This choice replaces the first choice
+  of the same day, which ignored the routes in the file.
+- Operator choice, 2026-11-22, relayed by the orchestrator session: when the service gives no routes and the entry
+  has no routes, the chapter pays nobody for that time, not the episode. This closes the first Open Question 4.
+- Operator choice, 2026-11-22, relayed by the orchestrator session: `mixxx-now-playing` asks the route service with
+  the two GUIDs. Its request with the track GUID alone is a defect against ADR 0024. The task that moves the route
+  client to `now-playing-drop` corrects it. This closes the first Open Question 5.
 - Operator choice, 2026-11-22, relayed by the orchestrator session: a chapter with a `title` that is null or empty
   gets the state title. ADR 0086 R-TAG-4 item 4 permits a null title.
-- Revised 2026-11-22, after acceptance, Proposed: §The Chapter Route Lookup is new. The song group of a remote split
-  gets its routes from that section, not from the file. The other rules do not change.
+- Revised 2026-11-22, after acceptance: §The Chapter Route Lookup is new. The song group of a remote split gets its
+  routes from that section. The other rules do not change. The operator accepted the revision with the choices above.
 - Review, 2026-11-22: an independent review by ChatGPT (`gpt-6-astra`) found 11 points in the first draft. This
   draft corrects points 1 to 10. Point 11 was about an empty new frame and an old frame. Readers do not read the old
   frames, so point 11 does not apply.
@@ -124,7 +132,7 @@ them:
 | `feed_guid` | string or null | The feed GUID of the remote song. |
 | `item_guid` | string or null | The item GUID of the remote song. |
 | `remote_percentage` | number | The part of the payment for the remote song. |
-| `value_routes` | array or null | The local recipients. For a remote split, ADR 0086 gives null, and the producer ignores the field. |
+| `value_routes` | array or null | A local split: the local recipients. A remote split: the song routes from the file, or null (musicindex ADR 0089 R-TAG-6). §The Chapter Route Lookup gives their use. |
 
 - An entry with `end_ms` not above `start_ms` is not valid.
 - A missing `remote_percentage` is 100. A finite value below 0 is 0, and a finite value above 100 is 100, as the
@@ -156,15 +164,16 @@ them:
 This section adds rows to ADR 0022 §What The Producer Writes. The rows of ADR 0022 for not fresh, `live` and `jingle`
 apply first and do not change.
 
-The **episode group** is usable when the state has the two episode GUIDs and routes with a percentage. The **song
-group** of a remote split is usable when the entry has the two GUIDs, a `remote_percentage` above 0, and routes with a
-percentage from §The Chapter Route Lookup.
+The **episode group** is usable when the state has the two episode GUIDs and routes with a percentage. A remote split
+is **identified** when the entry has the two GUIDs and a `remote_percentage` above 0. The **song group** of an
+identified split is usable when the song routes of §The Chapter Route Lookup have a percentage.
 
 | Segment | Identity in the drop file | Routes |
 | --- | --- | --- |
 | No chapter: before the first chapter, after the last chapter, in a gap, or a file with no list | The episode GUIDs | The episode routes |
-| A remote split, the song group usable | The chapter GUIDs | §The Merged Routes |
-| A remote split, the song group not usable | The episode GUIDs | The episode routes |
+| An identified remote split, the song group usable | The chapter GUIDs | §The Merged Routes |
+| An identified remote split, no song routes | The chapter GUIDs | No routes: the publisher sends the dead block |
+| A remote split that is not identified | The episode GUIDs | The episode routes |
 | A local split | The episode GUIDs | §The Local Split |
 
 - At each change of segment, the producer writes a new drop file, the same as at a track change.
@@ -210,42 +219,48 @@ A local split replaces the episode recipients for its time. `remote_percentage` 
 
 ### The Chapter Route Lookup
 
-This section is Proposed. The **route service** is the MusicIndex API. The Mixxx producer uses the same service
-(ADR 0024). This is a project term.
+The **route service** is the MusicIndex API. The Mixxx producer uses the same service (ADR 0024). This is a project
+term.
 
 - **The request.** `GET <endpoint>/v1/feeds/<feed_guid>/tracks/<item_guid>?include=payment_routes`. The routes are
   `data.payment_routes` of the answer. This path finds the track by the two GUIDs, because an item GUID is unique only
-  in its feed (ADR 0024). The stophammer OpenAPI text gives this path as "Get track by feed and GUID". The producer
-  never asks with one GUID, and it never uses the value block of the feed in place of the track.
+  in its feed (ADR 0024). The stophammer OpenAPI text gives this path as "Get track by feed and GUID". The website
+  session examined stophammer commit d4daf10: the answer has the routes only with `include=payment_routes` or
+  `include=value_blocks`, and the answer is 404 for GUIDs that the service does not know. The producer never asks with
+  one GUID, and it never uses the value block of the feed in place of the track.
 - **The endpoint.** The option `--route-service URL` of `liquidsoap-now-playing`. The default is
   `https://api.musicindex.org`, the default of the Mixxx producer. Inference: that host serves the stophammer API. The
   station check 5 of §Verification tests it.
-- **The time of the lookup.** The producer asks for each remote split with the two GUIDs when it first reads a new
-  `seq` with a chapter list. One worker thread sends the requests one at a time, in the order of `start_ms`. So the
-  lookup of a chapter starts at the start of the file, not at the chapter change. Each request has a time limit of
-  5 seconds, the same as the Mixxx producer.
+- **The time of the lookup.** The producer asks for each identified remote split when it first reads a new `seq` with
+  a chapter list. One worker thread sends the requests one at a time, in the order of `start_ms`. So the lookup of a
+  chapter starts at the start of the file, not at the chapter change. Each request has a time limit of 5 seconds, the
+  same as the Mixxx producer.
 - **The cache.** The cache holds one result for each pair of GUIDs of the current file. At a new `seq`, the producer
   keeps the results of the pairs that are also in the new list, and removes the other results. A result is the
-  routes, or "no routes" for an answer 404 or an answer with no routes. A file that plays again later thus gets new
-  routes from the service.
-- **No answer.** A time-out, a network error or an HTTP error other than 404 is not a result. The producer asks
-  again after 30 seconds, while the file plays. Until a result comes, the song group of that chapter is not usable,
-  so the chapter pays the episode (§What The Producer Writes). The producer writes one `warn` line for each pair and
-  each `seq`.
+  routes, or "no routes" for an answer 404 or an answer with an empty route list. A file that plays again later thus
+  gets new routes from the service.
+- **No answer.** A time-out, a network error, an answer that the producer cannot parse, or an HTTP error other than
+  404 is not a result. The producer asks again after 30 seconds, while the file plays. It writes one `warn` line for
+  each pair and each `seq`.
+- **The song routes.** The producer selects the song routes of an identified remote split in this order:
+  1. The routes of the service result, when they have a percentage. The service has the current value block of the
+     song. Routes in a file stay the same after the song feed changes.
+  2. Else `value_routes` of the entry, when they have a percentage. This applies while no result has come, after a
+     404, and after an empty route list.
+  3. Else no song routes. The chapter pays nobody for that time.
+- **An empty route list.** Main-session choice, 2026-11-22, which the operator asked for: an answer with an empty
+  route list is the same as a 404. Reason: the service then gives no recipient to pay. The routes in the file are
+  the only recipients of the song, and they pay the song owner. Without them, the chapter pays nobody.
 - **A late answer.** When a result comes while its chapter plays, the producer writes the drop file again with the
-  chapter GUIDs and the merged routes. The `play_id` of the segment does not change.
-- **The routes in a file.** For a remote split, the service routes apply, and the producer ignores `value_routes` of
-  the entry. Reasons:
-  - ADR 0086 R-TAG-4 item 4 gives null for a remote split. An entry with routes thus does not come from the writer of
-    ADR 0086, and nothing examines those routes.
-  - The service has the current value block of the song. Routes in a file stay the same after the song feed changes.
-  - One source gives one result for one chapter, at each station.
-- The producer sends no request for a jingle, for a `live` state, for a local split or for a file with format 1.
+  new song routes. The `play_id` of the segment does not change.
+- The producer sends no request for a jingle, for a `live` state, for a local split, for a remote split that is not
+  identified or for a file with format 1.
 
 ### The Mixxx Producer
 
 `mixxx-now-playing` reads the frames of §The Frame Names. It does not read the chapter list. It pays an episode file
-as one track with the episode GUIDs and routes. A chapter rule for Mixxx needs its own record.
+as one track with the episode GUIDs and routes. It asks the route service with the two GUIDs, as the operator choice
+of 2026-11-22 says. A chapter rule for Mixxx needs its own record.
 
 ## Invariants
 
@@ -256,6 +271,7 @@ as one track with the episode GUIDs and routes. A chapter rule for Mixxx needs i
 - The total of the splits is 100, within the rounding of item 7, or the list is empty.
 - The producer reads format 1 and format 2, and no other format.
 - The producer asks the route service only with the two GUIDs of a chapter, and only with the path of the pair.
+- An identified remote split with no song routes pays nobody. It never pays the episode in place of the song.
 
 ## Verification
 
@@ -271,7 +287,9 @@ Mechanical, in `liquidsoap-now-playing` with `tempfile` and an injected clock:
 - A remote split with the two GUIDs and an episode with one GUID gives the song routes at 100.
 - A local split with `remote_percentage` 0, 50 and 100 gives the same routes.
 - A chapter with `artist` null and `title` null gives the state artist and the state title.
-- A remote entry with `value_routes` in the file and no service result gives the episode identity and routes.
+- An identified remote split with `value_routes` in the file and no service result gives the chapter GUIDs and the
+  merged routes with the file routes.
+- An identified remote split with `value_routes` null and no service result gives the chapter GUIDs and no routes.
 - A state of format 1 gives one track, as before.
 - A `chapters` text that is not valid JSON gives one track and one error line.
 
@@ -285,10 +303,11 @@ Mechanical, in `now-playing-drop`, for the merge:
 
 Mechanical, for §The Chapter Route Lookup, with a local HTTP server in the test:
 
-- The request path has the two GUIDs. An entry with one GUID sends no request.
-- An answer with routes gives the merged routes. An answer 404 gives the episode routes and no second request.
-- A time-out gives the episode routes, and a second request after 30 seconds of the injected clock.
-- An answer that comes after the chapter start gives a second drop file with the chapter GUIDs and the same
+- The request path has the two GUIDs and `include=payment_routes`. An entry with one GUID sends no request.
+- An answer with routes gives the merged routes with the service routes, also when the entry has file routes.
+- An answer 404 and an answer with an empty route list give the file routes, or no routes, and no second request.
+- A time-out gives the file routes, or no routes, and a second request after 30 seconds of the injected clock.
+- An answer that comes after the chapter start gives a second drop file with the service routes and the same
   `play_id`.
 - At a new `seq`, a result for a pair in the new list stays in the cache. A result for a pair not in the list goes.
 
@@ -296,6 +315,7 @@ Mechanical, in `mixxx-now-playing`:
 
 - The reader reads a file with the frames of §The Frame Names.
 - A file with only the old `MusicIndex` frames gives no GUID and no routes.
+- The route request has the feed GUID and the track GUID in the path of the pair.
 
 Manual, on the test station `heycitizens_test_radio`, with a person:
 
@@ -316,12 +336,8 @@ Manual, on the test station `heycitizens_test_radio`, with a person:
    rule stays correct.
 3. **The size of the chapter list.** Operator choice, 2026-11-22, relayed by the orchestrator session: no limit until
    the station check 1 of §Verification fails.
-4. **A chapter that pays the episode while the service does not answer.** The rule of §The Chapter Route Lookup pays
-   the episode for that time. The alternative is the dead block for that time. Recommendation: keep the episode,
-   because the episode owner is a recipient of the feed, and the dead block pays nobody.
-5. **The Mixxx route request.** Not in the scope of this record. `mixxx-now-playing` asks `/v1/tracks/<track_guid>`
-   with the track GUID alone, and then `/v1/feeds/<feed_guid>`. ADR 0024 says that a track GUID is unique only in its
-   feed. A change of the Mixxx request needs its own task.
+4. **A chapter song that MusicIndex does not know.** The operator said on 2026-11-22 that such a song implies a nested
+   podcast. This record does not give a rule for it. The file routes or no routes apply until a later record.
 
 ## Alternatives Considered
 
@@ -342,11 +358,17 @@ A remote item with only a feed GUID can mean the value block of the feed. ADR 00
 one GUID, and the operator requirement of that record says that the two GUIDs are always present together. So the
 episode recipients get that time.
 
-### The Song Routes In The Chapter List
+### Only The Song Routes In The Chapter List
 
-The tag writer puts the value block of each song in `value_routes` of the entry. The station then needs no network
-request. The operator did not select it on 2026-11-22: ADR 0086 keeps null for a remote split, and the routes in a
-file become old when the song feed changes.
+The producer uses only `value_routes` of the entry and sends no network request. The operator did not select it on
+2026-11-22: the routes in a file become old when the song feed changes. They are the second source of §The Chapter
+Route Lookup.
+
+### Only The Route Service
+
+The first revision of 2026-11-22 ignored the routes in the file, and a chapter with no service result paid the
+episode. The operator replaced it on the same day. A song that the service does not know then pays its owner from the
+file routes, and a chapter never pays the episode in place of the song.
 
 ### Readers Also Accept The Old Frame Names
 
