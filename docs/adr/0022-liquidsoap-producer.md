@@ -16,6 +16,8 @@
   1. No decision was reversed.
 - Revised 2026-11-21, after acceptance: §The Template Unit states how an AzuraCast short name with `_` becomes
   the instance name. HitIt asked the question. No decision was reversed.
+- Changed by: ADR 0025 (Proposed), 2026-11-22. A state format 2 with `elapsed`, `cue_in` and `chapters`, and the
+  chapter rows of §What The Producer Writes. Until ADR 0025 is accepted, this record applies without a change.
 - Revised 2026-11-22, after acceptance: the test of Open Question 1 passed, so the operator rule of §Jingle Mode is
   removed. The orchestrator session ran the test. No decision was reversed.
 

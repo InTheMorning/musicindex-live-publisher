@@ -131,6 +131,10 @@ packet.
     not change.
   - ADR 0024 makes a block payable only with a feed GUID and a track GUID.
     A track GUID is unique only in its feed.
+- ADR 0025 has the status `Proposed`, and no implementation exists. In it,
+  the station producer pays each chapter song of an episode file, with the
+  state format 2 and the new `Podcast` frame names. It waits for the musicindex
+  record of the frame names and the chapter list.
 - This item needs a new ADR before work starts: a track identity source that
   is earlier than the Mixxx history row.
 - Studio client task 001 is not started. The publisher will start and end a
