@@ -6,7 +6,7 @@
   rows).
 - Uses: ADR 0024 §The Assembler Examines The Two GUIDs, without a change. ADR 0011 for the listener delay.
 - Uses: musicindex ADR 0075 R-VALUE-5 and the crate `musicindex-value` for the percentage of each recipient.
-- Depends on: musicindex ADR 0086 (Proposed, musicindex commit a353c91), One Feed Parser And One Tag Crate For Songs
+- Depends on: musicindex ADR 0086 (Proposed, musicindex commit 55a84fe), One Feed Parser And One Tag Crate For Songs
   And Episodes. It owns the frame names and the JSON shape of `TXXX:Podcast Chapters`. This record restates the parts
   that it uses, and ADR 0086 wins if the two differ.
 - Bar: crosses repositories. The tag writer in HitIt, the slot text on the station and this producer must agree on the
@@ -73,10 +73,10 @@ musicindex ADR 0086 R-TAG-2 gives the names. The two producers read only these f
 | Description | `COMM:Podcast Description` |
 | Chapters | `TXXX:Podcast Chapters` |
 
-- The producers do not read the old `MusicIndex` frames. A file with only old frames has no GUID, so it pays nobody
-  (ADR 0024).
-- The slot text reads the keys in lower case, for example `podcast item guid`. The recode exclude list has
-  `podcast value routes` and `podcast chapters`, and no old key.
+- The producers do not read the old `MusicIndex` frames (ADR 0086 R-TAG-2 item 2). A file with only old frames has
+  no GUID, so it pays nobody (ADR 0024). The tag writer removes the old frames when it writes a file (R-TAG-2 item 5).
+- The slot text reads the keys in lower case, for example `podcast item guid` (R-TAG-2 item 3). The recode exclude
+  list has `podcast value routes` and `podcast chapters`, and no old key.
 - The names of the drop file fields and of the state fields do not change. `track_guid` holds the item GUID.
 - `mixxx-now-playing` changes its frame list to these frames. When `musicindex-lib` has the shared tags crate,
   `mixxx-now-playing` uses that crate and removes its own frame list and its reader.
