@@ -57,9 +57,11 @@ impl Producer {
             Ok(bytes) => bytes,
             Err(_) => return self.clear(),
         };
+        // ADR 0022: a state file that stays bad stops the heartbeat, so the
+        // freshness rule removes the drop file after the limit.
         let header: state::StateHeader = match serde_json::from_slice(&bytes) {
             Ok(header) => header,
-            Err(_) => return Ok(()),
+            Err(_) => return self.keep_while_fresh(now),
         };
         if header.format != state::STATE_FORMAT {
             if self.unknown_format.as_deref() != Some(&header.format) {
@@ -71,7 +73,7 @@ impl Producer {
         self.unknown_format = None;
         let parsed: StateFile = match serde_json::from_slice(&bytes) {
             Ok(state) => state,
-            Err(_) => return Ok(()),
+            Err(_) => return self.keep_while_fresh(now),
         };
         // At start, the state is not fresh until `written` changes one time
         // (ADR 0022). A change of `written` is the heartbeat of Liquidsoap.
@@ -83,16 +85,28 @@ impl Producer {
             }
             Some(_) => {}
         }
-        let fresh = self
-            .written_changed_at
-            .is_some_and(|changed| now.saturating_duration_since(changed) < FRESHNESS);
-        if !fresh || parsed.live {
+        if !self.is_fresh(now) || parsed.live {
             return self.clear();
         }
         self.ensure_lock()?;
         let content = render_state(&parsed, &self.target, &mut self.bad_routes_seq);
         self.output
             .set(Presence::Present(serde_json::to_string_pretty(&content)?))
+    }
+
+    fn is_fresh(&self, now: Instant) -> bool {
+        self.written_changed_at
+            .is_some_and(|changed| now.saturating_duration_since(changed) < FRESHNESS)
+    }
+
+    /// Keeps the drop file of a state that the producer cannot parse while
+    /// the last heartbeat is fresh, and removes it after that.
+    fn keep_while_fresh(&mut self, now: Instant) -> Result<()> {
+        if self.is_fresh(now) {
+            Ok(())
+        } else {
+            self.clear()
+        }
     }
 
     /// Removes the drop file and releases the producer lock.
@@ -251,6 +265,32 @@ mod tests {
         assert_eq!(output["value_routes_source"], "liquidsoap-state");
         assert_eq!(output["play_id"], "ls-12500-4");
         assert!(producer.lock.is_some());
+        Ok(())
+    }
+
+    #[test]
+    fn a_state_that_stays_bad_clears_after_the_freshness_limit() -> Result<()> {
+        // ADR 0022 §What The Producer Writes: a file that stays bad stops the
+        // heartbeat, and the row "not fresh" then applies.
+        let bad_texts: [&[u8]; 2] = [b"{", br#"{"format":"musicindex-liquidsoap-state/1"}"#];
+        for bad in bad_texts {
+            let temp = TempDir::new()?;
+            let state_path = temp.path().join("state.json");
+            fs::write(&state_path, state(0.0, false, ""))?;
+            let mut producer = Producer::new(&state_path, settings(&temp.path().join("drop")));
+            let now = Instant::now();
+            producer.poll(now)?;
+            fs::write(&state_path, state(1.0, false, ""))?;
+            producer.poll(now + Duration::from_millis(500))?;
+            assert!(producer.drop_path.exists());
+
+            fs::write(&state_path, bad)?;
+            producer.poll(now + Duration::from_secs(3))?;
+            assert!(producer.drop_path.exists(), "fresh: {bad:?}");
+            producer.poll(now + Duration::from_secs(6))?;
+            assert!(!producer.drop_path.exists(), "stale: {bad:?}");
+            assert!(producer.lock.is_none());
+        }
         Ok(())
     }
 
