@@ -1,6 +1,7 @@
 # ADR 0026: The Station Producer Writes The Display State With The ICY Line Of The File
 
-- Status: Proposed
+- Status: Accepted on 2026-11-22, accepted by the operator as at commit ba8cf78. The orchestrator session relayed the
+  decision. The four Open Questions stay open.
 - Date: 2026-11-22
 - Changes: ADR 0025 §The State File Format 2, by one optional field `song`. ADR 0022 §The State File Contract, the
   rule "A field change needs a new format version" (ADR 0022 line 77): an optional field does not need a new version.
