@@ -6,7 +6,7 @@
   rows).
 - Uses: ADR 0024 §The Assembler Examines The Two GUIDs, without a change. ADR 0011 for the listener delay.
 - Uses: musicindex ADR 0075 R-VALUE-5 and the crate `musicindex-value` for the percentage of each recipient.
-- Depends on: musicindex ADR 0086 (Proposed, musicindex commit 50037a2), One Feed Parser And One Tag Crate For Songs
+- Depends on: musicindex ADR 0086 (Proposed, musicindex commit a353c91), One Feed Parser And One Tag Crate For Songs
   And Episodes. It owns the frame names and the JSON shape of `TXXX:Podcast Chapters`. This record restates the parts
   that it uses, and ADR 0086 wins if the two differ.
 - Bar: crosses repositories. The tag writer in HitIt, the slot text on the station and this producer must agree on the
@@ -69,11 +69,11 @@ musicindex ADR 0086 gives the names. The two producers read the new name and the
 | Description | `COMM:Podcast Description` | `COMM:MusicIndex Description` |
 | Chapters | `TXXX:Podcast Chapters` | none |
 
-- A new frame with a value that is not empty wins. Otherwise the old frame applies.
+- A new frame with a value that is not empty wins. Otherwise the old frame applies (ADR 0086 R-TAG-2 item 3).
 - Reason: Liquidsoap gives `""` for a key that is not there and for a key with an empty value. The slot text thus
   cannot tell the two apart. The Mixxx reader uses the same rule, so that the two producers give the same result for one
-  file. A file with a cleared new frame and an old frame thus keeps the old value. Open Question 4 asks the tag writer
-  to remove the old frames.
+  file. The tag writer removes the old frame when it writes the new frame (ADR 0086 R-TAG-2 item 6), so a file from
+  that writer has no such conflict.
 - The slot text reads the keys in lower case, for example `podcast item guid`. It adds `podcast value routes` and
   `podcast chapters` to the recode exclude list, and keeps `musicindex value routes` there.
 - The names of the drop file fields and of the state fields do not change. `track_guid` holds the item GUID.
@@ -109,6 +109,7 @@ them:
 | `start_ms` | integer | The start of the chapter in the file. |
 | `end_ms` | integer | The end of the chapter in the file. |
 | `title` | string | The drop file `title` of the chapter. |
+| `artist` | string or null | The drop file `artist` of the chapter. |
 | `feed_guid` | string or null | The feed GUID of the remote song. |
 | `item_guid` | string or null | The item GUID of the remote song. |
 | `remote_percentage` | number | The part of the payment for the remote song. |
@@ -158,8 +159,9 @@ group** of a remote split is usable when the entry has the two GUIDs, routes wit
 - At each change of segment, the producer writes a new drop file, the same as at a track change.
 - The publisher applies ADR 0024 to each drop file. The producer applies it also: routes only with a feed GUID and an
   item GUID in the identity of the drop file, and episode routes only when the episode group is usable.
-- `title` is the chapter title for a chapter, and the state title for a part with no chapter. `artist`, `album` and
-  `image` come from the state. The chapter list has no artist. Open Question 1 records this.
+- `title` is the chapter title for a chapter, and the state title for a part with no chapter. `artist` is the chapter
+  artist when it is a string that is not empty, and the state artist otherwise. `album` and `image` come from the
+  state.
 - `play_id` is `ls-<track_started in ms>-<seq>` for a file with no valid chapter, as in ADR 0022. For a file with
   chapters, it is `ls-<track_started in ms>-<seq>-<segment start in ms>`. Each segment thus gets its own line in the
   show log (ADR 0017).
@@ -222,6 +224,7 @@ Mechanical, in `liquidsoap-now-playing` with `tempfile` and an injected clock:
   routes.
 - A remote split with the two GUIDs and an episode with one GUID gives the song routes at 100.
 - A local split with `remote_percentage` 0, 50 and 100 gives the same routes.
+- A chapter with `artist` null gives the state artist.
 - A state of format 1 gives one track, as before.
 - A `chapters` text that is not valid JSON gives one track and one error line.
 
@@ -248,16 +251,12 @@ Manual, on the test station `heycitizens_test_radio`, with a person:
 
 ## Open Questions
 
-1. **The artist of a chapter.** The JSON shape of musicindex ADR 0086 at commit 50037a2 has no `artist`. The drop
-   file then shows the artist of the episode with the song title. The orchestrator session asked for an `artist`
-   field, `null` when unknown. When ADR 0086 adds it, the producer uses it.
+1. **The artist of a chapter.** Closed on 2026-11-22. ADR 0086 at commit a353c91 adds `artist` to the chapter list.
 2. **A seek in the file.** Inference: AzuraCast does not seek a file on air. If `elapsed` follows a seek, the position
    rule stays correct.
 3. **The size of the chapter list.** Operator choice, 2026-11-22, relayed by the orchestrator session: no limit until
    the station check 1 of §Verification fails.
-4. **The old frames.** Must the tag writer remove the old `MusicIndex` frames when it writes the new frames? Without
-   that, a cleared new frame keeps the old value (§The Frame Names). The orchestrator session asked ADR 0086 for this
-   rule.
+4. **The old frames.** Closed on 2026-11-22. ADR 0086 R-TAG-2 item 6 makes the writer remove the old frame.
 
 ## Alternatives Considered
 
