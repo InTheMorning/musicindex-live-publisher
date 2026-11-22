@@ -6,10 +6,9 @@
   rows).
 - Uses: ADR 0024 §The Assembler Examines The Two GUIDs, without a change. ADR 0011 for the listener delay.
 - Uses: musicindex ADR 0075 R-VALUE-5 and the crate `musicindex-value` for the percentage of each recipient.
-- Depends on: the musicindex ADR that answers the research request
-  `musicindex-research/research_notes/music-feeds/shared-feed-and-tag-request.md` (commit 20bf300). That record is
-  pending and has no number yet. It owns the frame names and the JSON shape of `TXXX:Podcast Chapters`. This record
-  restates the parts that it uses, and that record wins if the two differ.
+- Depends on: musicindex ADR 0086 (Proposed, musicindex commit 50037a2), One Feed Parser And One Tag Crate For Songs
+  And Episodes. It owns the frame names and the JSON shape of `TXXX:Podcast Chapters`. This record restates the parts
+  that it uses, and ADR 0086 wins if the two differ.
 - Bar: crosses repositories. The tag writer in HitIt, the slot text on the station and this producer must agree on the
   frame names and the chapter list. An agent can also make the opposite choice by mistake: pay the episode only, or
   pay a chapter with one GUID.
@@ -58,7 +57,7 @@ Terms:
 
 ### The Frame Names
 
-The pending musicindex record gives the names. The two producers read the new name and the old name of each frame:
+musicindex ADR 0086 gives the names. The two producers read the new name and the old name of each frame:
 
 | Field | New frame | Old frame |
 | --- | --- | --- |
@@ -102,7 +101,7 @@ fields:
 
 ### The Chapter List
 
-The producer parses `chapters` as a JSON array. Each entry has these fields, as the pending musicindex record gives
+The producer parses `chapters` as a JSON array. Each entry has these fields, as musicindex ADR 0086 gives
 them:
 
 | Field | Type | Use in the producer |
@@ -249,14 +248,16 @@ Manual, on the test station `heycitizens_test_radio`, with a person:
 
 ## Open Questions
 
-1. **The artist of a chapter.** The JSON shape of the pending record has no `artist`. The drop file then shows the
-   artist of the episode with the song title. If the musicindex record adds `artist`, the producer uses it.
+1. **The artist of a chapter.** The JSON shape of musicindex ADR 0086 at commit 50037a2 has no `artist`. The drop
+   file then shows the artist of the episode with the song title. The orchestrator session asked for an `artist`
+   field, `null` when unknown. When ADR 0086 adds it, the producer uses it.
 2. **A seek in the file.** Inference: AzuraCast does not seek a file on air. If `elapsed` follows a seek, the position
    rule stays correct.
-3. **The size of the chapter list.** The research request asks if the JSON needs a size limit. The producer has no
-   limit for `state.json`.
+3. **The size of the chapter list.** Operator choice, 2026-11-22, relayed by the orchestrator session: no limit until
+   the station check 1 of §Verification fails.
 4. **The old frames.** Must the tag writer remove the old `MusicIndex` frames when it writes the new frames? Without
-   that, a cleared new frame keeps the old value (§The Frame Names).
+   that, a cleared new frame keeps the old value (§The Frame Names). The orchestrator session asked ADR 0086 for this
+   rule.
 
 ## Alternatives Considered
 
@@ -288,7 +289,6 @@ so the two producers would give different results for one file.
   change.
 - An episode file with no chapter list operates as before, with the episode GUIDs.
 - The producer gets a dependency on `musicindex-value`.
-- When the musicindex record gets its number, the line "Depends on" names it.
 
 ## References
 
