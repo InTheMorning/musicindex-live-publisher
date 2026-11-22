@@ -4,7 +4,10 @@ pub mod instance;
 pub mod lock;
 pub mod merge;
 pub mod payment_route;
+pub mod route_service;
 pub mod sink;
+#[cfg(any(test, feature = "test-server"))]
+pub mod test_server;
 pub use instance::InstanceSettings;
 pub use lock::{LOCK_FILE_NAME, LOCK_WAIT_LIMIT, ProducerLock, open_lock_file, wait_for_lock};
 pub use payment_route::PaymentRoute;

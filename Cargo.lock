@@ -1006,6 +1006,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "musicindex-value",
+ "reqwest",
  "serde",
  "serde_json",
  "tempfile",

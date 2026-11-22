@@ -22,3 +22,4 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 [dev-dependencies]
 musicindex-live-publisher = { path = ".." }
 tempfile = "3"
+now-playing-drop = { path = "../now-playing-drop", features = ["test-server"] }

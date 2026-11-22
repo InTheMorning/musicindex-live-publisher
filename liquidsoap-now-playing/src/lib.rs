@@ -1,6 +1,7 @@
 //! Read Liquidsoap state and publish producer drop files.
 
 pub mod chapters;
+pub mod lookup;
 pub mod state;
 
 use std::collections::HashMap;
@@ -9,10 +10,12 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
+use lookup::RouteLookups;
 use now_playing_drop::merge::{has_percentage, local_split_routes, merged_routes};
 use now_playing_drop::sink::{OutputFile, Presence};
 use now_playing_drop::{
     InstanceSettings, LOCK_WAIT_LIMIT, PaymentRoute, ProducerLock, Version3DropFile,
+    route_service::RouteServiceClient,
 };
 
 use state::StateFile;
@@ -37,7 +40,7 @@ pub struct Producer {
     unknown_format: Option<String>,
     bad_routes_seq: Option<i64>,
     bad_chapters_seq: Option<i64>,
-    song_routes: SongRoutes,
+    lookups: RouteLookups,
 }
 
 impl Producer {
@@ -55,8 +58,14 @@ impl Producer {
             unknown_format: None,
             bad_routes_seq: None,
             bad_chapters_seq: None,
-            song_routes: SongRoutes::new(),
+            lookups: RouteLookups::new(None),
         }
+    }
+
+    /// Adds the route service client for chapter lookups.
+    pub fn with_route_service(mut self, client: RouteServiceClient) -> Self {
+        self.lookups = RouteLookups::new(Some(client));
+        self
     }
 
     /// Reads state and applies its output state at monotonic time `now`.
@@ -101,12 +110,33 @@ impl Producer {
             return self.clear();
         }
         self.ensure_lock()?;
+        let chapters = if parsed.format == state::STATE_FORMAT_2 {
+            chapters::parse_chapters(&parsed, &mut self.bad_chapters_seq)
+        } else {
+            Vec::new()
+        };
+        let pairs = if parsed.jingle || parsed.format != state::STATE_FORMAT_2 {
+            Vec::new()
+        } else {
+            chapters
+                .iter()
+                .filter_map(identified_pair)
+                .map(|(feed, item)| (feed.to_owned(), item.to_owned()))
+                .fold(Vec::new(), |mut pairs, pair| {
+                    if !pairs.contains(&pair) {
+                        pairs.push(pair);
+                    }
+                    pairs
+                })
+        };
+        self.lookups.drain(now);
+        self.lookups.update(parsed.seq, &pairs, now);
         let content = render_state(
             &parsed,
+            &chapters,
             &self.target,
-            &self.song_routes,
+            self.lookups.results(),
             &mut self.bad_routes_seq,
-            &mut self.bad_chapters_seq,
         )?;
         self.output
             .set(Presence::Present(serde_json::to_string_pretty(&content)?))
@@ -159,10 +189,10 @@ impl Producer {
 /// track gives one error line for each fault.
 fn render_state(
     state: &StateFile,
+    chapters: &[chapters::Chapter],
     target: &str,
     song_routes: &SongRoutes,
     bad_routes_seq: &mut Option<i64>,
-    bad_chapters_seq: &mut Option<i64>,
 ) -> Result<serde_json::Value> {
     let play_ms = (state.track_started * 1000.0) as i64;
     // A jingle has no identity and no routes (ADR 0022 §Jingle Mode).
@@ -202,12 +232,7 @@ fn render_state(
     let episode_usable = guid_pair && has_percentage(&episode_routes);
     let usable_episode: &[PaymentRoute] = if episode_usable { &episode_routes } else { &[] };
 
-    let chapters = if state.format == state::STATE_FORMAT_2 {
-        chapters::parse_chapters(state, bad_chapters_seq)
-    } else {
-        Vec::new()
-    };
-    let segment = position_ms(state).and_then(|position| chapters::segment_at(&chapters, position));
+    let segment = position_ms(state).and_then(|position| chapters::segment_at(chapters, position));
     let chapter = segment.and_then(|segment| segment.chapter);
 
     let mut feed_guid = episode_feed;
@@ -305,6 +330,8 @@ mod tests {
     use std::time::Instant;
 
     use anyhow::Result;
+    use now_playing_drop::route_service::RouteServiceClient;
+    use now_playing_drop::test_server::{Reply, TestServer};
     use tempfile::TempDir;
 
     use super::*;
@@ -604,7 +631,7 @@ mod tests {
         let temp = TempDir::new()?;
         let path = temp.path().join("state.json");
         let mut producer = Producer::new(&path, settings(&temp.path().join("drop")));
-        producer.song_routes = songs;
+        producer.lookups.insert_for_test(songs);
         let mut fields = serde_json::json!({
             "format": state::STATE_FORMAT_2,
             "chapters": chapters.to_string(),
@@ -647,6 +674,66 @@ mod tests {
                     .collect()
             })
             .unwrap_or_default()
+    }
+
+    fn chapter_patch(chapters: &serde_json::Value, seq: i64) -> serde_json::Value {
+        serde_json::json!({
+            "format": state::STATE_FORMAT_2,
+            "seq": seq,
+            "chapters": chapters.to_string(),
+            "elapsed": 1.0,
+            "cue_in": 0.0,
+        })
+    }
+
+    fn start_service_producer(
+        temp: &TempDir,
+        server: &TestServer,
+        patch: &serde_json::Value,
+        now: Instant,
+        timeout: Duration,
+    ) -> Result<(Producer, PathBuf)> {
+        let path = temp.path().join("state.json");
+        fs::write(&path, patched(0.0, patch)?)?;
+        let client = RouteServiceClient::new(server.base_url(), timeout)?;
+        let mut producer =
+            Producer::new(&path, settings(&temp.path().join("drop"))).with_route_service(client);
+        producer.poll(now)?;
+        fs::write(&path, patched(1.0, patch)?)?;
+        producer.poll(now + Duration::from_millis(500))?;
+        Ok((producer, path))
+    }
+
+    fn wait_for_requests(server: &TestServer, count: usize) -> bool {
+        let started = Instant::now();
+        while started.elapsed() < Duration::from_secs(5) {
+            if server.requests().len() >= count {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        false
+    }
+
+    fn poll_for_routes(
+        producer: &mut Producer,
+        now: Instant,
+        expected_address: &str,
+    ) -> Result<serde_json::Value> {
+        let started = Instant::now();
+        while started.elapsed() < Duration::from_secs(5) {
+            producer.poll(now)?;
+            let output: serde_json::Value =
+                serde_json::from_slice(&fs::read(&producer.drop_path)?)?;
+            if addresses(&output)
+                .iter()
+                .any(|item| item.starts_with(expected_address))
+            {
+                return Ok(output);
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        anyhow::bail!("timed out waiting for producer routes")
     }
 
     #[test]
@@ -918,6 +1005,259 @@ mod tests {
         for field in ["feed_guid", "track_guid", "image", "album", "play_id"] {
             assert!(out[0][field].is_null(), "{field}");
         }
+        Ok(())
+    }
+
+    fn route_body(address: &str) -> String {
+        serde_json::json!({"data":{"payment_routes":[{"address":address,"split":100}]}}).to_string()
+    }
+
+    #[test]
+    fn producer_requests_identified_chapters_in_start_order() -> Result<()> {
+        let server = TestServer::start(|_| Reply::Answer {
+            status: 200,
+            body: route_body("service"),
+        })?;
+        let temp = TempDir::new()?;
+        let chapters = serde_json::json!([
+            remote(0, 10_000, "feed-b", "item-b".into()),
+            remote(10_000, 20_000, "feed-a", "item-a".into()),
+            remote(20_000, 30_000, "feed-c", serde_json::Value::Null),
+        ]);
+        let now = Instant::now();
+        let (mut producer, _) = start_service_producer(
+            &temp,
+            &server,
+            &chapter_patch(&chapters, 4),
+            now,
+            Duration::from_secs(1),
+        )?;
+        assert!(wait_for_requests(&server, 2));
+        assert_eq!(
+            server.requests(),
+            [
+                "/v1/feeds/feed-b/tracks/item-b?include=payment_routes",
+                "/v1/feeds/feed-a/tracks/item-a?include=payment_routes",
+            ]
+        );
+        producer.shutdown()?;
+        Ok(())
+    }
+
+    #[test]
+    fn producer_uses_service_routes_over_file_routes() -> Result<()> {
+        let server = TestServer::start(|_| Reply::Answer {
+            status: 200,
+            body: route_body("service"),
+        })?;
+        let temp = TempDir::new()?;
+        let mut entry = remote(0, 10_000, "feed", "item".into());
+        entry["value_routes"] = serde_json::json!([{"address":"file","split":100}]);
+        let chapters = serde_json::json!([entry]);
+        let now = Instant::now();
+        let (mut producer, _) = start_service_producer(
+            &temp,
+            &server,
+            &chapter_patch(&chapters, 4),
+            now,
+            Duration::from_secs(1),
+        )?;
+        assert!(wait_for_requests(&server, 1));
+        let output = poll_for_routes(&mut producer, now + Duration::from_secs(1), "service")?;
+        assert!(
+            addresses(&output)
+                .iter()
+                .all(|item| !item.starts_with("file="))
+        );
+        producer.shutdown()?;
+        Ok(())
+    }
+
+    #[test]
+    fn producer_applies_a_late_service_answer_without_changing_play_id() -> Result<()> {
+        let server = TestServer::start(|_| {
+            std::thread::sleep(Duration::from_millis(150));
+            Reply::Answer {
+                status: 200,
+                body: route_body("service"),
+            }
+        })?;
+        let temp = TempDir::new()?;
+        let mut entry = remote(0, 10_000, "feed", "item".into());
+        entry["value_routes"] = serde_json::json!([{"address":"file","split":100}]);
+        let chapters = serde_json::json!([entry]);
+        let now = Instant::now();
+        let (mut producer, _) = start_service_producer(
+            &temp,
+            &server,
+            &chapter_patch(&chapters, 4),
+            now,
+            Duration::from_secs(1),
+        )?;
+        assert!(wait_for_requests(&server, 1));
+        let before = poll_for_routes(&mut producer, now + Duration::from_secs(1), "file")?;
+        let after = poll_for_routes(&mut producer, now + Duration::from_secs(2), "service")?;
+        assert_eq!(before["play_id"], after["play_id"]);
+        producer.shutdown()?;
+        Ok(())
+    }
+
+    #[test]
+    fn producer_caches_no_routes_for_404_and_empty_results() -> Result<()> {
+        for (status, body) in [(404, "{}"), (200, r#"{"data":{"payment_routes":[]}}"#)] {
+            let server = TestServer::start(move |_| Reply::Answer {
+                status,
+                body: body.to_owned(),
+            })?;
+            let temp = TempDir::new()?;
+            let mut entry = remote(0, 10_000, "feed", "item".into());
+            entry["value_routes"] = serde_json::json!([{"address":"file","split":100}]);
+            let chapters = serde_json::json!([entry]);
+            let now = Instant::now();
+            let (mut producer, path) = start_service_producer(
+                &temp,
+                &server,
+                &chapter_patch(&chapters, 4),
+                now,
+                Duration::from_secs(1),
+            )?;
+            assert!(wait_for_requests(&server, 1));
+            for step in 1..=20 {
+                let elapsed = Duration::from_millis(600 * step);
+                fs::write(
+                    &path,
+                    patched(1.0 + step as f64, &chapter_patch(&chapters, 4))?,
+                )?;
+                producer.poll(now + elapsed)?;
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            assert_eq!(server.requests().len(), 1);
+            let output: serde_json::Value =
+                serde_json::from_slice(&fs::read(&producer.drop_path)?)?;
+            assert!(
+                addresses(&output)
+                    .iter()
+                    .any(|item| item.starts_with("file="))
+            );
+            producer.shutdown()?;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn producer_retries_hang_after_thirty_seconds_and_keeps_play_id() -> Result<()> {
+        let server = TestServer::start(|_| Reply::Hang(Duration::from_secs(2)))?;
+        let temp = TempDir::new()?;
+        let mut entry = remote(0, 10_000, "feed", "item".into());
+        entry["value_routes"] = serde_json::json!([{"address":"file","split":100}]);
+        let chapters = serde_json::json!([entry]);
+        let now = Instant::now();
+        let (mut producer, path) = start_service_producer(
+            &temp,
+            &server,
+            &chapter_patch(&chapters, 4),
+            now,
+            Duration::from_millis(100),
+        )?;
+        assert!(wait_for_requests(&server, 1));
+        let before = poll_for_routes(&mut producer, now + Duration::from_secs(1), "file")?;
+        let play_id = before["play_id"].clone();
+
+        let failed_at = Instant::now();
+        while failed_at.elapsed() < Duration::from_millis(300) {
+            producer.poll(now + Duration::from_secs(1))?;
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        fs::write(&path, patched(2.0, &chapter_patch(&chapters, 4))?)?;
+        producer.poll(now + Duration::from_secs(29))?;
+        producer.poll(now + Duration::from_secs(30))?;
+        assert_eq!(server.requests().len(), 1);
+
+        producer.poll(now + Duration::from_secs(31))?;
+        assert!(wait_for_requests(&server, 2));
+        let after = poll_for_routes(&mut producer, now + Duration::from_secs(32), "file")?;
+        assert_eq!(after["play_id"], play_id);
+        assert_eq!(server.requests().len(), 2);
+        producer.shutdown()?;
+        Ok(())
+    }
+
+    #[test]
+    fn producer_retains_current_pair_results_and_reloads_evicted_pairs() -> Result<()> {
+        let server = TestServer::start(|_| Reply::Answer {
+            status: 200,
+            body: route_body("service"),
+        })?;
+        let temp = TempDir::new()?;
+        let path = temp.path().join("state.json");
+        let now = Instant::now();
+        let chapters = serde_json::json!([
+            remote(0, 10_000, "feed-a", "item-a".into()),
+            remote(10_000, 20_000, "feed-b", "item-b".into()),
+        ]);
+        fs::write(&path, patched(0.0, &chapter_patch(&chapters, 1))?)?;
+        let client = RouteServiceClient::new(server.base_url(), Duration::from_secs(1))?;
+        let mut producer =
+            Producer::new(&path, settings(&temp.path().join("drop"))).with_route_service(client);
+        producer.poll(now)?;
+        fs::write(&path, patched(1.0, &chapter_patch(&chapters, 1))?)?;
+        producer.poll(now + Duration::from_millis(500))?;
+        assert!(wait_for_requests(&server, 2));
+        let settled = Instant::now();
+        while producer.lookups.results().len() < 2 && settled.elapsed() < Duration::from_secs(5) {
+            producer.poll(now + Duration::from_secs(1))?;
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert_eq!(producer.lookups.results().len(), 2);
+
+        let only_a = serde_json::json!([remote(0, 10_000, "feed-a", "item-a".into())]);
+        fs::write(&path, patched(2.0, &chapter_patch(&only_a, 2))?)?;
+        producer.poll(now + Duration::from_secs(2))?;
+        assert_eq!(producer.lookups.results().len(), 1);
+        assert_eq!(server.requests().len(), 2);
+
+        let only_b = serde_json::json!([remote(0, 10_000, "feed-b", "item-b".into())]);
+        fs::write(&path, patched(3.0, &chapter_patch(&only_b, 3))?)?;
+        producer.poll(now + Duration::from_secs(3))?;
+        assert!(wait_for_requests(&server, 3));
+        assert_eq!(server.requests().len(), 3);
+        producer.shutdown()?;
+        Ok(())
+    }
+
+    #[test]
+    fn producer_skips_route_requests_for_jingles_format_one_and_local_splits() -> Result<()> {
+        let server = TestServer::start(|_| Reply::Answer {
+            status: 200,
+            body: route_body("unexpected"),
+        })?;
+        let chapters = serde_json::json!([remote(0, 10_000, "feed", "item".into())]);
+        let now = Instant::now();
+        for patch in [
+            {
+                let mut value = chapter_patch(&chapters, 4);
+                value["jingle"] = true.into();
+                value
+            },
+            {
+                let mut value = chapter_patch(&chapters, 4);
+                value["format"] = state::STATE_FORMAT.into();
+                value
+            },
+            {
+                let local = serde_json::json!([{
+                    "start_ms":0,"end_ms":10000,"remote_percentage":90,
+                    "value_routes":[{"address":"local","split":100}]
+                }]);
+                chapter_patch(&local, 4)
+            },
+        ] {
+            let temp = TempDir::new()?;
+            let (mut producer, _) =
+                start_service_producer(&temp, &server, &patch, now, Duration::from_secs(1))?;
+            producer.shutdown()?;
+        }
+        assert!(server.requests().is_empty());
         Ok(())
     }
 }

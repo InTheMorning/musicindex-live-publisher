@@ -1,24 +1,24 @@
 mod common;
 
 use std::fs;
-use std::io::{ErrorKind, Read, Write};
-use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard};
-use std::thread::{self, JoinHandle};
+use std::sync::{Mutex, MutexGuard};
+use std::thread;
 use std::time::{Duration, Instant};
 
 use anyhow::{Result, anyhow};
 use mixxx_now_playing::musicindex::{
-    MusicIndexClient, ResolvedRouteResult, RouteRequest, RouteRequestStatus, RouteResolution,
-    ValueRouteResolver, ValueRoutesSource, apply_resolution_to_tags, result_matches_current,
+    ResolvedRouteResult, RouteRequest, RouteRequestStatus, RouteResolution, ValueRouteResolver,
+    ValueRoutesSource, apply_resolution_to_tags, resolve_value_routes, result_matches_current,
 };
 use mixxx_now_playing::render::{TrackDisplay, render_metadata_text_with_routes};
 use mixxx_now_playing::tags::{TagText, TrackTags};
 use now_playing_drop::PaymentRoute;
+use now_playing_drop::route_service::RouteServiceClient;
 use now_playing_drop::sink::{OutputFile, Presence};
+use now_playing_drop::test_server::{Reply, TestServer};
 use tempfile::TempDir;
 
 use common::SyntheticMixxxDb;
@@ -86,6 +86,23 @@ fn api_body(name: &str) -> String {
     .to_string()
 }
 
+fn test_server(responses: Vec<(&str, Reply)>) -> Result<TestServer> {
+    let responses: Vec<_> = responses
+        .into_iter()
+        .map(|(path, reply)| (path.to_owned(), reply))
+        .collect();
+    TestServer::start(move |target| {
+        responses
+            .iter()
+            .find(|(path, _)| path == target)
+            .map(|(_, reply)| reply.clone())
+            .unwrap_or_else(|| Reply::Answer {
+                status: 404,
+                body: "{}".to_owned(),
+            })
+    })
+}
+
 fn api_body_without_routes() -> String {
     serde_json::json!({ "data": {} }).to_string()
 }
@@ -97,14 +114,17 @@ fn api_body_with_empty_routes() -> String {
 #[test]
 fn musicindex_api_track_routes_are_authoritative() -> Result<()> {
     let _network = network_test_lock();
-    let server = StubServer::new(vec![(
-        "/v1/tracks/track-guid-fixture?include=payment_routes",
-        StubResponse::ok(api_body("API Alice")),
+    let server = test_server(vec![(
+        "/v1/feeds/feed-guid-fixture/tracks/track-guid-fixture?include=payment_routes",
+        Reply::Answer {
+            status: 200,
+            body: api_body("API Alice"),
+        },
     )])?;
-    let client = MusicIndexClient::new(server.base_url(), Duration::from_secs(1))?;
+    let client = RouteServiceClient::new(server.base_url(), Duration::from_secs(1))?;
     let tags = tagged_track();
 
-    let resolution = client.resolve_value_routes(&RouteRequest::from_tags(&tags), false);
+    let resolution = resolve_value_routes(&client, &RouteRequest::from_tags(&tags), false);
 
     assert_eq!(resolution.source, ValueRoutesSource::MusicIndexApi);
     let routes_json = resolution
@@ -129,42 +149,30 @@ fn musicindex_api_track_routes_are_authoritative() -> Result<()> {
     assert!(rendered.contains("API Alice"));
     assert_eq!(
         server.requests(),
-        vec!["/v1/tracks/track-guid-fixture?include=payment_routes"]
+        vec!["/v1/feeds/feed-guid-fixture/tracks/track-guid-fixture?include=payment_routes"]
     );
     Ok(())
 }
 
 #[test]
-fn musicindex_track_404_falls_back_to_feed_lookup() -> Result<()> {
+fn musicindex_track_404_falls_back_to_embedded_routes() -> Result<()> {
     let _network = network_test_lock();
-    let server = StubServer::new(vec![
-        (
-            "/v1/tracks/track-guid-fixture?include=payment_routes",
-            StubResponse::not_found(),
-        ),
-        (
-            "/v1/feeds/feed-guid-fixture?include=payment_routes",
-            StubResponse::ok(api_body("Feed API Alice")),
-        ),
-    ])?;
-    let client = MusicIndexClient::new(server.base_url(), Duration::from_secs(1))?;
+    let server = test_server(vec![(
+        "/v1/feeds/feed-guid-fixture/tracks/track-guid-fixture?include=payment_routes",
+        Reply::Answer {
+            status: 404,
+            body: "{}".to_owned(),
+        },
+    )])?;
+    let client = RouteServiceClient::new(server.base_url(), Duration::from_secs(1))?;
 
-    let resolution = client.resolve_value_routes(&RouteRequest::from_tags(&tagged_track()), false);
+    let resolution =
+        resolve_value_routes(&client, &RouteRequest::from_tags(&tagged_track()), false);
 
-    assert_eq!(resolution.source, ValueRoutesSource::MusicIndexApi);
-    assert!(
-        resolution
-            .routes_json
-            .as_deref()
-            .expect("feed routes should be present")
-            .contains("Feed API Alice")
-    );
+    assert_eq!(resolution.source, ValueRoutesSource::EmbeddedId3);
     assert_eq!(
         server.requests(),
-        vec![
-            "/v1/tracks/track-guid-fixture?include=payment_routes",
-            "/v1/feeds/feed-guid-fixture?include=payment_routes"
-        ]
+        vec!["/v1/feeds/feed-guid-fixture/tracks/track-guid-fixture?include=payment_routes"]
     );
     Ok(())
 }
@@ -173,11 +181,11 @@ fn musicindex_track_404_falls_back_to_feed_lookup() -> Result<()> {
 fn musicindex_unreachable_api_falls_back_to_embedded_without_waiting_for_timeout() -> Result<()> {
     let _network = network_test_lock();
     let base_url = unused_local_base_url()?;
-    let client = MusicIndexClient::new(base_url.clone(), Duration::from_secs(5))?;
+    let client = RouteServiceClient::new(base_url.clone(), Duration::from_secs(5))?;
     let request = RouteRequest::from_tags(&tagged_track());
 
     let started = Instant::now();
-    let resolution = client.resolve_value_routes(&request, false);
+    let resolution = resolve_value_routes(&client, &request, false);
     let elapsed = started.elapsed();
 
     assert_eq!(resolution.source, ValueRoutesSource::EmbeddedId3);
@@ -206,13 +214,16 @@ fn musicindex_unreachable_api_falls_back_to_embedded_without_waiting_for_timeout
 fn musicindex_no_embedded_frame_and_no_api_routes_omits_value_routes_line() -> Result<()> {
     let _network = network_test_lock();
     let tags = no_embedded_routes_track();
-    let server = StubServer::new(vec![(
-        "/v1/tracks/track-guid-fixture?include=payment_routes",
-        StubResponse::server_error(),
+    let server = test_server(vec![(
+        "/v1/feeds/feed-guid-fixture/tracks/track-guid-fixture?include=payment_routes",
+        Reply::Answer {
+            status: 500,
+            body: "server error".to_owned(),
+        },
     )])?;
-    let client = MusicIndexClient::new(server.base_url(), Duration::from_secs(1))?;
+    let client = RouteServiceClient::new(server.base_url(), Duration::from_secs(1))?;
 
-    let resolution = client.resolve_value_routes(&RouteRequest::from_tags(&tags), false);
+    let resolution = resolve_value_routes(&client, &RouteRequest::from_tags(&tags), false);
     let updated = apply_resolution_to_tags(&tags, &resolution);
     let rendered = render_metadata_text_with_routes(
         TrackDisplay {
@@ -236,13 +247,13 @@ fn musicindex_empty_or_missing_api_routes_are_not_rendered_as_authoritative() ->
     let _network = network_test_lock();
     for body in [api_body_without_routes(), api_body_with_empty_routes()] {
         let tags = no_embedded_routes_track();
-        let server = StubServer::new(vec![(
-            "/v1/tracks/track-guid-fixture?include=payment_routes",
-            StubResponse::ok(body),
+        let server = test_server(vec![(
+            "/v1/feeds/feed-guid-fixture/tracks/track-guid-fixture?include=payment_routes",
+            Reply::Answer { status: 200, body },
         )])?;
-        let client = MusicIndexClient::new(server.base_url(), Duration::from_secs(1))?;
+        let client = RouteServiceClient::new(server.base_url(), Duration::from_secs(1))?;
 
-        let resolution = client.resolve_value_routes(&RouteRequest::from_tags(&tags), false);
+        let resolution = resolve_value_routes(&client, &RouteRequest::from_tags(&tags), false);
         let updated = apply_resolution_to_tags(&tags, &resolution);
         let rendered = render_metadata_text_with_routes(
             TrackDisplay {
@@ -265,9 +276,12 @@ fn musicindex_empty_or_missing_api_routes_are_not_rendered_as_authoritative() ->
 #[test]
 fn musicindex_once_mode_waits_for_api_routes_before_exit() -> Result<()> {
     let _network = network_test_lock();
-    let server = StubServer::new(vec![(
-        "/v1/tracks/track-guid-fixture?include=payment_routes",
-        StubResponse::ok(api_body("Once API Alice")),
+    let server = test_server(vec![(
+        "/v1/feeds/feed-guid-fixture/tracks/track-guid-fixture?include=payment_routes",
+        Reply::Answer {
+            status: 200,
+            body: api_body("Once API Alice"),
+        },
     )])?;
     let temp = TempDir::new()?;
     let v4v_root = temp.path().join("V4Vmusic");
@@ -317,9 +331,12 @@ fn musicindex_once_mode_waits_for_api_routes_before_exit() -> Result<()> {
 #[test]
 fn musicindex_repeat_track_uses_cache_without_second_api_request() -> Result<()> {
     let _network = network_test_lock();
-    let server = StubServer::new(vec![(
-        "/v1/tracks/track-guid-fixture?include=payment_routes",
-        StubResponse::ok(api_body("Cached API Alice")),
+    let server = test_server(vec![(
+        "/v1/feeds/feed-guid-fixture/tracks/track-guid-fixture?include=payment_routes",
+        Reply::Answer {
+            status: 200,
+            body: api_body("Cached API Alice"),
+        },
     )])?;
     let mut resolver =
         ValueRouteResolver::new(true, server.base_url(), Duration::from_secs(1), false)?;
@@ -339,7 +356,7 @@ fn musicindex_repeat_track_uses_cache_without_second_api_request() -> Result<()>
     assert_eq!(second.resolution.routes_json, first.resolution.routes_json);
     assert_eq!(
         server.requests(),
-        vec!["/v1/tracks/track-guid-fixture?include=payment_routes"]
+        vec!["/v1/feeds/feed-guid-fixture/tracks/track-guid-fixture?include=payment_routes"]
     );
     Ok(())
 }
@@ -406,163 +423,4 @@ fn unused_local_base_url() -> Result<String> {
     let addr = listener.local_addr()?;
     drop(listener);
     Ok(format!("http://{addr}"))
-}
-
-#[derive(Debug, Clone)]
-struct StubResponse {
-    status: u16,
-    body: String,
-}
-
-impl StubResponse {
-    fn ok(body: String) -> Self {
-        Self { status: 200, body }
-    }
-
-    fn not_found() -> Self {
-        Self {
-            status: 404,
-            body: "{}".to_string(),
-        }
-    }
-
-    fn server_error() -> Self {
-        Self {
-            status: 500,
-            body: "server error".to_string(),
-        }
-    }
-}
-
-#[derive(Debug)]
-struct StubServer {
-    addr: SocketAddr,
-    requests: Arc<Mutex<Vec<String>>>,
-    shutdown: Arc<AtomicBool>,
-    handle: Option<JoinHandle<()>>,
-}
-
-impl StubServer {
-    fn new(routes: Vec<(&str, StubResponse)>) -> Result<Self> {
-        let listener = TcpListener::bind("127.0.0.1:0")?;
-        listener.set_nonblocking(true)?;
-        let addr = listener.local_addr()?;
-        let routes = Arc::new(
-            routes
-                .into_iter()
-                .map(|(path, response)| (path.to_string(), response))
-                .collect::<Vec<_>>(),
-        );
-        let requests = Arc::new(Mutex::new(Vec::new()));
-        let shutdown = Arc::new(AtomicBool::new(false));
-
-        let thread_routes = Arc::clone(&routes);
-        let thread_requests = Arc::clone(&requests);
-        let thread_shutdown = Arc::clone(&shutdown);
-        let handle = thread::spawn(move || {
-            while !thread_shutdown.load(Ordering::Relaxed) {
-                match listener.accept() {
-                    Ok((mut stream, _peer)) => {
-                        let target = read_request_target(&mut stream)
-                            .unwrap_or_else(|_| "/__invalid__".to_string());
-                        if let Ok(mut requests) = thread_requests.lock() {
-                            requests.push(target.clone());
-                        }
-                        let response = thread_routes
-                            .iter()
-                            .find(|(path, _response)| path == &target)
-                            .map(|(_path, response)| response.clone())
-                            .unwrap_or_else(StubResponse::not_found);
-                        let _ = write_response(&mut stream, &response);
-                    }
-                    Err(error) if error.kind() == ErrorKind::WouldBlock => {
-                        thread::sleep(Duration::from_millis(5));
-                    }
-                    Err(_) => break,
-                }
-            }
-        });
-
-        Ok(Self {
-            addr,
-            requests,
-            shutdown,
-            handle: Some(handle),
-        })
-    }
-
-    fn base_url(&self) -> String {
-        format!("http://{}", self.addr)
-    }
-
-    fn requests(&self) -> Vec<String> {
-        self.requests
-            .lock()
-            .map(|requests| requests.clone())
-            .unwrap_or_default()
-    }
-}
-
-impl Drop for StubServer {
-    fn drop(&mut self) {
-        self.shutdown.store(true, Ordering::Relaxed);
-        let _ = TcpStream::connect(self.addr);
-        if let Some(handle) = self.handle.take() {
-            let _ = handle.join();
-        }
-    }
-}
-
-fn read_request_target(stream: &mut TcpStream) -> Result<String> {
-    stream.set_read_timeout(Some(Duration::from_millis(100)))?;
-    let mut bytes = Vec::new();
-    let mut buffer = [0_u8; 1024];
-    loop {
-        match stream.read(&mut buffer) {
-            Ok(0) => break,
-            Ok(count) => {
-                bytes.extend_from_slice(&buffer[..count]);
-                if bytes.windows(4).any(|window| window == b"\r\n\r\n") {
-                    break;
-                }
-            }
-            Err(error)
-                if error.kind() == ErrorKind::WouldBlock || error.kind() == ErrorKind::TimedOut =>
-            {
-                break;
-            }
-            Err(error) => return Err(error.into()),
-        }
-    }
-
-    let request = String::from_utf8_lossy(&bytes);
-    let first_line = request
-        .lines()
-        .next()
-        .ok_or_else(|| anyhow!("empty HTTP request"))?;
-    let mut parts = first_line.split_whitespace();
-    let _method = parts.next();
-    parts
-        .next()
-        .map(str::to_string)
-        .ok_or_else(|| anyhow!("HTTP request has no target"))
-}
-
-fn write_response(stream: &mut TcpStream, response: &StubResponse) -> Result<()> {
-    let reason = match response.status {
-        200 => "OK",
-        404 => "Not Found",
-        500 => "Internal Server Error",
-        _ => "OK",
-    };
-    write!(
-        stream,
-        "HTTP/1.1 {} {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-        response.status,
-        reason,
-        response.body.len(),
-        response.body
-    )?;
-    stream.flush()?;
-    Ok(())
 }

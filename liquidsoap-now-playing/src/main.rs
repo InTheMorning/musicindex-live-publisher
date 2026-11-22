@@ -10,11 +10,13 @@ use anyhow::{Context, Result};
 use directories::BaseDirs;
 use liquidsoap_now_playing::Producer;
 use now_playing_drop::InstanceSettings;
+use now_playing_drop::route_service::RouteServiceClient;
 use signal_hook::consts::signal::{SIGINT, SIGTERM};
 use signal_hook::flag;
 use tracing_subscriber::EnvFilter;
 
-const HELP: &str = "usage: liquidsoap-now-playing --instance NAME --state-file PATH";
+const HELP: &str =
+    "usage: liquidsoap-now-playing --instance NAME --state-file PATH [--route-service URL]";
 
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
@@ -37,7 +39,8 @@ fn main() -> Result<()> {
     let dirs = BaseDirs::new().context("find user configuration directory")?;
     let runtime = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from);
     let settings = InstanceSettings::load(&cli.instance, dirs.config_dir(), runtime.as_deref())?;
-    let mut producer = Producer::new(cli.state_file, settings);
+    let client = RouteServiceClient::new(cli.route_service, Duration::from_secs(5))?;
+    let mut producer = Producer::new(cli.state_file, settings).with_route_service(client);
     let terminated = Arc::new(AtomicBool::new(false));
     flag::register(SIGTERM, Arc::clone(&terminated))?;
     flag::register(SIGINT, Arc::clone(&terminated))?;

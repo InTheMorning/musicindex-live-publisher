@@ -4,13 +4,38 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
-use anyhow::{Context, Result, anyhow};
-use now_playing_drop::PaymentRoute;
-use reqwest::StatusCode;
-use reqwest::blocking::Client;
-use serde::Deserialize;
+use anyhow::Result;
+use now_playing_drop::route_service::{RouteLookup, RouteServiceClient};
 
 use crate::tags::TrackTags;
+
+/// Resolves value routes from the route service or embedded track metadata.
+pub fn resolve_value_routes(
+    client: &RouteServiceClient,
+    request: &RouteRequest,
+    verbose: bool,
+) -> RouteResolution {
+    let (Some(feed_guid), Some(track_guid)) =
+        (request.feed_guid.as_deref(), request.track_guid.as_deref())
+    else {
+        return request.embedded_resolution();
+    };
+
+    match client.track_routes(feed_guid, track_guid) {
+        Ok(RouteLookup::Routes(routes)) => serde_json::to_string(&routes)
+            .map(RouteResolution::api)
+            .unwrap_or_else(|_| request.embedded_resolution()),
+        Ok(RouteLookup::NoRoutes) => request.embedded_resolution(),
+        Err(error) => {
+            if verbose {
+                eprintln!(
+                    "warning: MusicIndex track route lookup failed for {track_guid}: {error:#}"
+                );
+            }
+            request.embedded_resolution()
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ValueRoutesSource {
@@ -97,155 +122,11 @@ pub enum RouteRequestStatus {
     Cached(ResolvedRouteResult),
 }
 
-#[derive(Debug, Clone)]
-pub struct MusicIndexClient {
-    base_url: String,
-    client: Client,
-}
-
-impl MusicIndexClient {
-    pub fn new(base_url: impl Into<String>, timeout: Duration) -> Result<Self> {
-        let base_url = base_url.into().trim_end_matches('/').to_string();
-        reqwest::Url::parse(&format!("{base_url}/"))
-            .with_context(|| format!("parse MusicIndex base URL {base_url:?}"))?;
-        let client = Client::builder()
-            .timeout(timeout)
-            .build()
-            .context("build MusicIndex HTTP client")?;
-        Ok(Self { base_url, client })
-    }
-
-    pub fn resolve_value_routes(&self, request: &RouteRequest, verbose: bool) -> RouteResolution {
-        if !request.has_lookup_key() {
-            return request.embedded_resolution();
-        }
-
-        if let Some(track_guid) = request.track_guid.as_deref() {
-            match self.fetch_routes("tracks", track_guid) {
-                Ok(routes) => return routes,
-                Err(LookupError::NotFound) => {}
-                Err(error) => {
-                    if verbose {
-                        eprintln!(
-                            "warning: MusicIndex track route lookup failed for {track_guid}: {error}"
-                        );
-                    }
-                    return request.embedded_resolution();
-                }
-            }
-        }
-
-        if let Some(feed_guid) = request.feed_guid.as_deref() {
-            match self.fetch_routes("feeds", feed_guid) {
-                Ok(routes) => return routes,
-                Err(error) => {
-                    if verbose {
-                        eprintln!(
-                            "warning: MusicIndex feed route lookup failed for {feed_guid}: {error}"
-                        );
-                    }
-                }
-            }
-        }
-
-        request.embedded_resolution()
-    }
-
-    fn fetch_routes(&self, entity_path: &str, guid: &str) -> Result<RouteResolution, LookupError> {
-        let mut url = reqwest::Url::parse(&format!("{}/", self.base_url.trim_end_matches('/')))
-            .map_err(|error| LookupError::Other(anyhow!(error)))?;
-        {
-            let mut segments = url
-                .path_segments_mut()
-                .map_err(|_| LookupError::Other(anyhow!("base URL cannot be a base")))?;
-            segments.push("v1");
-            segments.push(entity_path);
-            segments.push(&sanitize_api_path_segment(guid)?);
-        }
-        url.query_pairs_mut()
-            .append_pair("include", "payment_routes");
-
-        let response = self.client.get(url).send().map_err(LookupError::from)?;
-        let status = response.status();
-        if status == StatusCode::NOT_FOUND {
-            return Err(LookupError::NotFound);
-        }
-        if !status.is_success() {
-            let body = response.text().unwrap_or_default();
-            return Err(LookupError::Other(anyhow!(
-                "GET failed with HTTP {status}: {body}"
-            )));
-        }
-
-        let body = response.text().map_err(LookupError::from)?;
-        let detail = serde_json::from_str::<DetailResponse<EntityWithRoutes>>(&body)
-            .with_context(|| "decode MusicIndex route response")
-            .map_err(LookupError::Other)?;
-        let Some(routes) = detail
-            .data
-            .payment_routes
-            .filter(|routes| !routes.is_empty())
-        else {
-            return Err(LookupError::NoRoutes);
-        };
-        let routes_json = serde_json::to_string(&routes).map_err(LookupError::from)?;
-        Ok(RouteResolution::api(routes_json))
-    }
-}
-
-#[derive(Debug, Deserialize)]
-struct DetailResponse<T> {
-    data: T,
-}
-
-#[derive(Debug, Deserialize, Default)]
-#[serde(default)]
-struct EntityWithRoutes {
-    payment_routes: Option<Vec<PaymentRoute>>,
-}
-
-#[derive(Debug)]
-enum LookupError {
-    NotFound,
-    NoRoutes,
-    Other(anyhow::Error),
-}
-
-impl std::fmt::Display for LookupError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::NotFound => write!(f, "not found"),
-            Self::NoRoutes => write!(f, "no payment routes"),
-            Self::Other(error) => write!(f, "{error:#}"),
-        }
-    }
-}
-
-impl std::error::Error for LookupError {}
-
-impl From<anyhow::Error> for LookupError {
-    fn from(error: anyhow::Error) -> Self {
-        Self::Other(error)
-    }
-}
-
-impl From<reqwest::Error> for LookupError {
-    fn from(error: reqwest::Error) -> Self {
-        Self::Other(error.into())
-    }
-}
-
-impl From<serde_json::Error> for LookupError {
-    fn from(error: serde_json::Error) -> Self {
-        Self::Other(error.into())
-    }
-}
-
 #[derive(Debug)]
 pub struct ValueRouteResolver {
     enabled: bool,
-    client: MusicIndexClient,
-    cache: Arc<Mutex<HashMap<String, RouteResolution>>>,
+    client: RouteServiceClient,
+    cache: Arc<Mutex<HashMap<(String, String), RouteResolution>>>,
     tx: Sender<ResolvedRouteResult>,
     rx: Receiver<ResolvedRouteResult>,
     verbose: bool,
@@ -261,7 +142,7 @@ impl ValueRouteResolver {
         let (tx, rx) = mpsc::channel();
         Ok(Self {
             enabled,
-            client: MusicIndexClient::new(base_url, timeout)?,
+            client: RouteServiceClient::new(base_url, timeout)?,
             cache: Arc::new(Mutex::new(HashMap::new())),
             tx,
             rx,
@@ -279,9 +160,12 @@ impl ValueRouteResolver {
             return RouteRequestStatus::NoLookupKey;
         }
 
-        if let Some(track_guid) = request.track_guid.as_deref()
-            && let Some(resolution) = self.cached(track_guid)
-        {
+        let (Some(feed_guid), Some(track_guid)) =
+            (request.feed_guid.as_deref(), request.track_guid.as_deref())
+        else {
+            return RouteRequestStatus::NoLookupKey;
+        };
+        if let Some(resolution) = self.cached(feed_guid, track_guid) {
             return RouteRequestStatus::Cached(ResolvedRouteResult {
                 hist_id,
                 resolution,
@@ -293,11 +177,9 @@ impl ValueRouteResolver {
         let tx = self.tx.clone();
         let verbose = self.verbose;
         thread::spawn(move || {
-            let resolution = client.resolve_value_routes(&request, verbose);
-            if resolution.source == ValueRoutesSource::MusicIndexApi
-                && let Some(track_guid) = request.track_guid.as_deref()
-            {
-                cache_resolution(&cache, track_guid, &resolution);
+            let resolution = resolve_value_routes(&client, &request, verbose);
+            if resolution.source == ValueRoutesSource::MusicIndexApi {
+                cache_resolution(&cache, &request, &resolution);
             }
             let _ = tx.send(ResolvedRouteResult {
                 hist_id,
@@ -312,11 +194,12 @@ impl ValueRouteResolver {
         self.rx.try_iter().collect()
     }
 
-    fn cached(&self, track_guid: &str) -> Option<RouteResolution> {
-        self.cache
-            .lock()
-            .ok()
-            .and_then(|cache| cache.get(track_guid).cloned())
+    fn cached(&self, feed_guid: &str, track_guid: &str) -> Option<RouteResolution> {
+        self.cache.lock().ok().and_then(|cache| {
+            cache
+                .get(&(feed_guid.to_owned(), track_guid.to_owned()))
+                .cloned()
+        })
     }
 }
 
@@ -339,33 +222,15 @@ pub fn result_matches_current(result: &ResolvedRouteResult, current_hist_id: i64
 }
 
 fn cache_resolution(
-    cache: &Arc<Mutex<HashMap<String, RouteResolution>>>,
-    track_guid: &str,
+    cache: &Arc<Mutex<HashMap<(String, String), RouteResolution>>>,
+    request: &RouteRequest,
     resolution: &RouteResolution,
 ) {
-    if let Ok(mut cache) = cache.lock() {
-        cache.insert(track_guid.to_string(), resolution.clone());
+    if let (Some(feed), Some(track)) = (request.feed_guid.as_deref(), request.track_guid.as_deref())
+        && let Ok(mut cache) = cache.lock()
+    {
+        cache.insert((feed.to_owned(), track.to_owned()), resolution.clone());
     }
-}
-
-fn sanitize_api_path_segment(value: &str) -> std::result::Result<String, LookupError> {
-    let sanitized = value
-        .chars()
-        .map(|ch| {
-            if ch == '\0' || ch == '\\' || ch.is_control() {
-                ' '
-            } else {
-                ch
-            }
-        })
-        .collect::<String>()
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ");
-    if sanitized.is_empty() {
-        return Err(LookupError::Other(anyhow!("API path segment is empty")));
-    }
-    Ok(sanitized)
 }
 
 #[cfg(test)]

@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 use anyhow::{Result, anyhow};
 use now_playing_drop::instance::validate_instance_name;
+use now_playing_drop::route_service::DEFAULT_ROUTE_SERVICE;
 
 /// Command line values for the producer.
 #[derive(Debug, PartialEq, Eq)]
@@ -13,6 +14,8 @@ pub struct Cli {
     pub instance: String,
     /// The Liquidsoap state file path.
     pub state_file: PathBuf,
+    /// The route service URL.
+    pub route_service: String,
 }
 
 /// Parse producer command line arguments.
@@ -25,6 +28,7 @@ where
     let _program = args.next();
     let mut instance = None;
     let mut state_file = None;
+    let mut route_service = DEFAULT_ROUTE_SERVICE.to_owned();
     while let Some(arg) = args.next() {
         match arg.to_str() {
             Some("--instance") => {
@@ -35,6 +39,7 @@ where
             Some("--state-file") => {
                 state_file = Some(PathBuf::from(next_string(&mut args, "--state-file")?))
             }
+            Some("--route-service") => route_service = next_string(&mut args, "--route-service")?,
             Some(flag) if flag.starts_with("--") => return Err(anyhow!("unknown flag {flag}")),
             Some(value) => return Err(anyhow!("unexpected argument {value}")),
             None => return Err(anyhow!("argument is not valid UTF-8")),
@@ -43,6 +48,7 @@ where
     Ok(Cli {
         instance: instance.ok_or_else(|| anyhow!("--instance is required"))?,
         state_file: state_file.ok_or_else(|| anyhow!("--state-file is required"))?,
+        route_service,
     })
 }
 
@@ -73,6 +79,33 @@ mod tests {
         ])?;
         assert_eq!(cli.instance, "test");
         assert_eq!(cli.state_file, PathBuf::from("/tmp/state.json"));
+        assert_eq!(cli.route_service, DEFAULT_ROUTE_SERVICE);
+        Ok(())
+    }
+
+    #[test]
+    fn parses_route_service_and_requires_its_value() -> Result<()> {
+        let cli = parse([
+            "liquidsoap-now-playing",
+            "--instance",
+            "test",
+            "--state-file",
+            "/tmp/state.json",
+            "--route-service",
+            "http://localhost:8000",
+        ])?;
+        assert_eq!(cli.route_service, "http://localhost:8000");
+        assert!(
+            parse([
+                "liquidsoap-now-playing",
+                "--instance",
+                "test",
+                "--state-file",
+                "/tmp/state.json",
+                "--route-service"
+            ])
+            .is_err()
+        );
         Ok(())
     }
 
