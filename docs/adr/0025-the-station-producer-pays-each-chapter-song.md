@@ -1,6 +1,7 @@
 # ADR 0025: The Station Producer Pays Each Chapter Song Of An Episode File
 
-- Status: Proposed
+- Status: Accepted on 2026-11-22 by the operator. The orchestrator session relayed the decision. Open Question 2
+  stays open.
 - Date: 2026-11-22
 - Changes: ADR 0022 items: §The State File Contract (a format version 2) and §What The Producer Writes (the chapter
   rows).

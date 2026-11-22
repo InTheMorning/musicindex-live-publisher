@@ -98,6 +98,10 @@ the next priority. Confirm that logging works before the show.
 - [ADR 0024: A payable block needs the feed GUID and the track GUID](adr/0024-payable-block-needs-both-guids.md)
   — Accepted. The publisher publishes routes only with the two GUIDs. Each
   producer asks a route service with the two GUIDs. It changes ADR 0014
+- [ADR 0025: The station producer pays each chapter song of an episode file](adr/0025-the-station-producer-pays-each-chapter-song.md)
+  — Accepted. The `state.json` format 2 gives the position in the file. Each chapter
+  song gets a drop file with the merged routes. The readers read only the new
+  `Podcast` frame names. It changes ADR 0022
 
 ## Plans
 

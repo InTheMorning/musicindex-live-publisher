@@ -131,11 +131,14 @@ packet.
     not change.
   - ADR 0024 makes a block payable only with a feed GUID and a track GUID.
     A track GUID is unique only in its feed.
-- ADR 0025 has the status `Proposed`, and no implementation exists. In it,
-  the station producer pays each chapter song of an episode file, with the
-  state format 2 and only the new `Podcast` frame names. Readers do not
-  accept the old `MusicIndex` names. It depends on musicindex
-  ADR 0086 (Proposed), which owns the frame names and the chapter list.
+- ADR 0025 has the status `Accepted`, and the implementation is not
+  complete. In it, the station producer pays each chapter song of an episode
+  file, with the state format 2 and only the new `Podcast` frame names.
+  Readers do not accept the old `MusicIndex` names. It depends on musicindex
+  ADR 0086, which owns the frame names and the chapter list. Do not install
+  the new slot text or the new Mixxx reader on a station. The operator
+  installs the two in one maintenance window, after HitIt writes the new
+  frames in all the files.
 - This item needs a new ADR before work starts: a track identity source that
   is earlier than the Mixxx history row.
 - Studio client task 001 is not started. The publisher will start and end a
