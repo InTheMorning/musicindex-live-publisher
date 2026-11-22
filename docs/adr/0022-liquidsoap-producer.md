@@ -1,7 +1,7 @@
 # ADR 0022: A Producer For Liquidsoap And AzuraCast
 
-- Status: Accepted on 2026-11-21 by the operator. The orchestrator session relayed the decision. Open Question 1
-  and Open Question 2 stay open.
+- Status: Accepted on 2026-11-21 by the operator. The orchestrator session relayed the decision. Open Question 2
+  stays open.
 - Date: 2026-11-21
 - Bar: crosses repositories. The Liquidsoap slot text in the research tutorial writes the input of this producer, and
   the station operator installs it on a server. An agent can also make the opposite choice by mistake: read the media
@@ -16,6 +16,8 @@
   1. No decision was reversed.
 - Revised 2026-11-21, after acceptance: §The Template Unit states how an AzuraCast short name with `_` becomes
   the instance name. HitIt asked the question. No decision was reversed.
+- Revised 2026-11-22, after acceptance: the test of Open Question 1 passed, so the operator rule of §Jingle Mode is
+  removed. The orchestrator session ran the test. No decision was reversed.
 
 ## Context
 
@@ -131,8 +133,10 @@ paid.
 - For a jingle, the producer writes the row of §What The Producer Writes for `jingle`. The publisher then sends the dead
   block. The drop file does not name the previous track, so the show log does not record a second play of it.
 
-The `rid` rule is an inference from the code. Nobody tested it on a server. Operator rule until the test of Open
-Question 1 passes: do not use jingle mode on a playlist of a MusicIndex station.
+The orchestrator session tested the `rid` rule on 2026-11-22, with AzuraCast 0.24 and Liquidsoap 2.4.6. A jingle
+with the metadata of the previous track gave `jingle` as `true`, a drop file with no title, artist, track GUID or
+routes, and the dead block on the relay. The next track gave `jingle` as `false`, its own GUID and its two routes. A
+MusicIndex station can use jingle mode.
 
 ## Invariants
 
@@ -150,8 +154,7 @@ test station. A test here cannot start AzuraCast.
 
 ## Open Questions
 
-1. **Jingle mode.** One jingle in jingle mode on a test station must give `jingle` as `true` in `state.json`. The
-   operator must approve that server change. Until it passes, the operator rule of §Jingle Mode applies.
+1. **Jingle mode.** Closed on 2026-11-22. The test passed. §Jingle Mode gives the result.
 2. **The time to the listener.** The relay applies the stream delay (ADR 0011). The delay for the MP3 mount and for
    HLS is not measured.
 

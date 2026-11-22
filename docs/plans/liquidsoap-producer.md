@@ -73,6 +73,8 @@ checks on the test host and reported them:
 - Check 4, station side: passed. At the DJ connection, the relay had the dead block in approximately 2 seconds. At
   the disconnection, the next AutoDJ track came on the relay. The part with a DJ publisher and the read-back of ADR 0023
   is open.
+- The jingle test of ADR 0022 Open Question 1: passed. The jingle gave the dead block, and the next track gave its
+  own GUID and routes.
 - On the same day the host had no free memory, and the kernel stopped the user manager with the two units. Nothing
   started it again. The runbook now has §Restart The User Manager. Future item 2 records the alternative.
 
