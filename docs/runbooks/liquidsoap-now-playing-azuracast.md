@@ -30,6 +30,11 @@ Replace the two names in each command.
   `written` value increases each second.
 - A `.deb` package of this repository. Make it on a different computer (ADR 0019). A small radio host does not have
   the CPU and the memory to make it.
+- `liquidsoap-now-playing` operates on the radio host, as the user account, not in the AzuraCast containers. It sends
+  HTTPS requests to the route service (ADR 0025 §The Chapter Route Lookup), and it uses the OpenSSL library of the
+  host. On Debian and Ubuntu this is `libssl3`. The `.deb` package declares it, so `apt install` installs it. On a
+  host without `apt`, install the OpenSSL library before the first start.
+- The host can open `https://api.musicindex.org`, or the URL of `--route-service`.
 - The `event_id` and the broadcaster token file of the station event. Each event has one owner instance (ADR 0016).
 - Free memory for AzuraCast at its highest use, and approximately 20 MiB for the two units. On 2026-11-22, a test host
   used all its memory and swap. The kernel then stopped the user manager of the account.
