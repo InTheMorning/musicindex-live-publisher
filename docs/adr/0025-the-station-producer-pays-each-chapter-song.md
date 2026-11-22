@@ -15,9 +15,13 @@
 - Operator choice, 2026-11-22: when a station plays an episode file, the producer pays each chapter song, as the
   `valueTimeSplit` elements of the feed do. The orchestrator session relayed the choice
   (`publisher-chapter-pay-request.md`, commit 20bf300).
-- Operator choice, 2026-11-22: the custom frames get neutral names. Readers also accept the old `MusicIndex` names.
+- Operator choice, 2026-11-22: the custom frames get neutral names.
+- Operator choice, 2026-11-22, relayed by the orchestrator session: readers do not accept the old `MusicIndex` frame
+  names. The operator tags the collection again with the new names. This choice replaces the first choice, which let
+  readers accept the old names.
 - Review, 2026-11-22: an independent review by ChatGPT (`gpt-6-astra`) found 11 points in the first draft. This
-  draft corrects points 1 to 10. §The Frame Names gives the reason for the rule of point 11.
+  draft corrects points 1 to 10. Point 11 was about an empty new frame and an old frame. Readers do not read the old
+  frames, so point 11 does not apply.
 
 ## Context
 
@@ -39,7 +43,7 @@
   audio.
 - Liquidsoap does not give `CHAP` frames as metadata. This is an inference of the orchestrator session: no slot text
   reads them, and it knows of no Liquidsoap decoder that gives them. A `TXXX` frame with JSON comes through as
-  metadata, as `musicindex value routes` does.
+  metadata, as the value routes frame does in the slot text of ADR 0022.
 - The relay holds each block for the stream delay of the broadcaster (ADR 0011). ADR 0022 Open Question 2 records that
   nobody measured that delay for the MP3 mount and for HLS.
 
@@ -57,28 +61,25 @@ Terms:
 
 ### The Frame Names
 
-musicindex ADR 0086 gives the names. The two producers read the new name and the old name of each frame:
+musicindex ADR 0086 R-TAG-2 gives the names. The two producers read only these frames:
 
-| Field | New frame | Old frame |
-| --- | --- | --- |
-| Feed GUID | `TXXX:Podcast Feed Guid` | `TXXX:MusicIndex Feed Guid`, `TXXX:MusicIndex Feed GUID` |
-| Item GUID | `TXXX:Podcast Item Guid` | `TXXX:MusicIndex Track Guid` |
-| Value routes | `TXXX:Podcast Value Routes` | `TXXX:MusicIndex Value Routes` |
-| Image | `TXXX:Podcast Image` | `TXXX:MusicIndex Image` |
-| Contributors | `TXXX:Podcast Contributors` | `TXXX:MusicIndex Contributors` |
-| Description | `COMM:Podcast Description` | `COMM:MusicIndex Description` |
-| Chapters | `TXXX:Podcast Chapters` | none |
+| Field | Frame |
+| --- | --- |
+| Feed GUID | `TXXX:Podcast Feed Guid` |
+| Item GUID | `TXXX:Podcast Item Guid` |
+| Value routes | `TXXX:Podcast Value Routes` |
+| Image | `TXXX:Podcast Image` |
+| Contributors | `TXXX:Podcast Contributors` |
+| Description | `COMM:Podcast Description` |
+| Chapters | `TXXX:Podcast Chapters` |
 
-- A new frame with a value that is not empty wins. Otherwise the old frame applies (ADR 0086 R-TAG-2 item 3).
-- Reason: Liquidsoap gives `""` for a key that is not there and for a key with an empty value. The slot text thus
-  cannot tell the two apart. The Mixxx reader uses the same rule, so that the two producers give the same result for one
-  file. The tag writer removes the old frame when it writes the new frame (ADR 0086 R-TAG-2 item 6), so a file from
-  that writer has no such conflict.
-- The slot text reads the keys in lower case, for example `podcast item guid`. It adds `podcast value routes` and
-  `podcast chapters` to the recode exclude list, and keeps `musicindex value routes` there.
+- The producers do not read the old `MusicIndex` frames. A file with only old frames has no GUID, so it pays nobody
+  (ADR 0024).
+- The slot text reads the keys in lower case, for example `podcast item guid`. The recode exclude list has
+  `podcast value routes` and `podcast chapters`, and no old key.
 - The names of the drop file fields and of the state fields do not change. `track_guid` holds the item GUID.
-- `mixxx-now-playing` reads the new and the old names in its frame list now. When `musicindex-lib` has the shared
-  tags crate, `mixxx-now-playing` uses that crate and removes its own frame list and its reader.
+- `mixxx-now-playing` changes its frame list to these frames. When `musicindex-lib` has the shared tags crate,
+  `mixxx-now-playing` uses that crate and removes its own frame list and its reader.
 
 ### The State File Format 2
 
@@ -91,8 +92,10 @@ fields:
 | `cue_in` | number | The cue-in point of the file in seconds, from the metadata key `liq_cue_in`. 0 when the key is empty. |
 | `chapters` | string | The text of `TXXX:Podcast Chapters`, JSON text in a JSON string. Empty when the file has no list. |
 
-- The producer reads format 1 and format 2. Format 1 has no chapters, so the file is one track, as before. A station
-  with the old slot text thus operates until its operator installs the new slot text.
+- The producer reads format 1 and format 2. Format 1 has no chapters, so the file is one track, as before.
+- The format 1 slot text of ADR 0022 reads the old `MusicIndex` keys. On a file with only the new frames, it gives no
+  GUID, and the file pays nobody. The operator thus installs the new slot text when the station files get the new
+  frames.
 - Each other format gives the error of ADR 0022 and no drop file.
 - `liq_cue_in` is the cue-in key of the Liquidsoap request functions (`liquidsoap/src/libs/request.liq`, line 417).
   These items are inferences, and the manual checks of §Verification test them:
@@ -199,7 +202,7 @@ A local split replaces the episode recipients for its time. `remote_percentage` 
 
 ### The Mixxx Producer
 
-`mixxx-now-playing` reads the new frame names. It does not read the chapter list. It pays an episode file as one track
+`mixxx-now-playing` reads the frames of §The Frame Names. It does not read the chapter list. It pays an episode file as one track
 with the episode GUIDs and routes. A chapter rule for Mixxx needs its own record.
 
 ## Invariants
@@ -238,11 +241,13 @@ Mechanical, in `now-playing-drop`, for the merge:
 
 Mechanical, in `mixxx-now-playing`:
 
-- The reader reads a file with only the old names, a file with only the new names, and a file with an old and a new
-  frame with different values.
+- The reader reads a file with the frames of §The Frame Names.
+- A file with only the old `MusicIndex` frames gives no GUID and no routes.
 
 Manual, on the test station `heycitizens_test_radio`, with a person:
 
+0. Before the new slot text and the new producer go on the station, the operator tags the station files again with
+   the frames of §The Frame Names. A file with only old frames pays nobody (ADR 0024).
 1. The new slot text passes the save in AzuraCast. A `TXXX:Podcast Chapters` frame of approximately 4 KiB comes into
    `state.json` without a change.
 2. A tagged episode file plays. The relay shows each chapter song at its time, with the merged routes.
@@ -256,7 +261,6 @@ Manual, on the test station `heycitizens_test_radio`, with a person:
    rule stays correct.
 3. **The size of the chapter list.** Operator choice, 2026-11-22, relayed by the orchestrator session: no limit until
    the station check 1 of §Verification fails.
-4. **The old frames.** Closed on 2026-11-22. ADR 0086 R-TAG-2 item 6 makes the writer remove the old frame.
 
 ## Alternatives Considered
 
@@ -277,16 +281,18 @@ A remote item with only a feed GUID can mean the value block of the feed. ADR 00
 one GUID, and the operator requirement of that record says that the two GUIDs are always present together. So the
 episode recipients get that time.
 
-### The New Frame Wins When It Is Present And Empty
+### Readers Also Accept The Old Frame Names
 
-This rule lets a writer clear a value. The slot text cannot see the difference between an empty frame and no frame,
-so the two producers would give different results for one file.
+The first operator choice let readers read the old `MusicIndex` frames when the new frame was empty. The operator
+replaced that choice on 2026-11-22. Each file gets the new frames, and readers keep one set of names.
 
 ## Consequences
 
 - The slot text, the state format, the producer and the Mixxx frame list change. The publisher and the relay do not
   change.
 - An episode file with no chapter list operates as before, with the episode GUIDs.
+- A file that has only the old `MusicIndex` frames stops payment when the new slot text or the new Mixxx frame list
+  goes into use. The operator tags each such file again before that time.
 - The producer gets a dependency on `musicindex-value`.
 
 ## References

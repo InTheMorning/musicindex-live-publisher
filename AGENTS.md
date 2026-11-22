@@ -133,7 +133,8 @@ packet.
     A track GUID is unique only in its feed.
 - ADR 0025 has the status `Proposed`, and no implementation exists. In it,
   the station producer pays each chapter song of an episode file, with the
-  state format 2 and the new `Podcast` frame names. It depends on musicindex
+  state format 2 and only the new `Podcast` frame names. Readers do not
+  accept the old `MusicIndex` names. It depends on musicindex
   ADR 0086 (Proposed), which owns the frame names and the chapter list.
 - This item needs a new ADR before work starts: a track identity source that
   is earlier than the Mixxx history row.
