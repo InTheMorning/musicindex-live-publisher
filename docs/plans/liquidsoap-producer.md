@@ -1,7 +1,7 @@
 # A Producer For Liquidsoap And A DJ Takeover: Phase Plan
 
-Status: Proposed 2026-11-21. It waits for the acceptance of ADR 0022 and ADR 0023. The task packets come after the
-acceptance. This plan does not make rules. ADR 0022 and ADR 0023 own them.
+Status: Proposed 2026-11-21. It waits for the acceptance of ADR 0022, ADR 0023 and ADR 0024. The task packets come after the
+acceptance. This plan does not make rules. ADR 0022, ADR 0023 and ADR 0024 own them.
 
 ## Goal
 
@@ -40,8 +40,10 @@ acceptance. This plan does not make rules. ADR 0022 and ADR 0023 own them.
 | 2 | `liquidsoap-now-playing`: state file parse, heartbeat, `live`, lock, drop file. | Packet 1 |
 | 3 | The publisher read-back of ADR 0023 §The Publisher Restores Its Block. | ADR 0023 |
 | 4 | `liquidsoap/musicindex-state.liq`, the template unit, the `.deb` assets, `packaging/arch/PKGBUILD` and the runbook. | Packet 2 |
+| 5 | The two GUIDs of ADR 0024 in the publisher and in the Mixxx route request, with the line in `AGENTS.md` §4. | ADR 0024 |
 
-Packet 3 changes only `src/`. It can run at the same time as packet 1 or packet 2 in a different worktree.
+Packet 2 applies ADR 0024 in the new producer. Packet 5 changes `src/livevalue.rs` and
+`mixxx-now-playing/src/musicindex.rs`. Packet 3 changes only `src/`. It can run at the same time as packet 1 or packet 2 in a different worktree.
 
 ## Gate
 
@@ -56,6 +58,7 @@ gate, reads the diff and makes the commit.
   tests use an injected clock.
 - The Mixxx producer tests pass with no change of their assertions after packet 1.
 - `src/relay.rs` has a test for each case of ADR 0023 §Verification.
+- The publisher and the Mixxx producer have a test for each case of ADR 0024 §Verification.
 
 ## Manual Checks
 

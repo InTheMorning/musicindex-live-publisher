@@ -9,6 +9,7 @@
   choice.
 - Operator choice, 2026-11-21: `state.json` holds all keys, so the producer does not read the media files.
 - Operator choice, 2026-11-21: the producer and the publisher operate as one user account with lingering.
+- Revised 2026-11-21, while Proposed: the routes row needs `feed_guid` also (ADR 0024). No decision was reversed.
 - Revised 2026-11-21, while Proposed: the format gets the field `jingle`, and §Jingle Mode replaces the operator rule
   with a producer rule. The orchestrator session sent the evidence. The format is not implemented, so the version stays
   1. No decision was reversed.
@@ -78,9 +79,9 @@ The producer reads the state file each 500 milliseconds. It writes the drop file
 | --- | --- | --- |
 | Not fresh, or missing, or not readable | Not held | No file |
 | Fresh, `live` is `true` | Not held | No file |
-| Fresh, `live` is `false`, `track_guid` and routes present | Held | The routes |
+| Fresh, `live` is `false`, `feed_guid`, `track_guid` and routes present | Held | The routes (ADR 0024) |
 | Fresh, `live` is `false`, `jingle` is `true` | Held | Empty `artist`, `title` and `value_routes`. Each other field is `null`. |
-| Fresh, `live` is `false`, no `track_guid` or no routes | Held | Empty `value_routes` |
+| Fresh, `live` is `false`, no `feed_guid`, no `track_guid` or no routes | Held | Empty `value_routes` |
 
 - The producer removes the drop file before it releases the lock. ADR 0005 §Publisher Behavior then gives the dead block
   one time and no keepalive.

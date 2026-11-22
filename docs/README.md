@@ -95,14 +95,17 @@ the next priority. Confirm that logging works before the show.
 - [ADR 0023: A live DJ takes over the event of a station](adr/0023-dj-takeover.md)
   — Proposed. Each publisher sends its payable block again over a foreign dead
   block at each keepalive. No relay change
+- [ADR 0024: A payable block needs the feed GUID and the track GUID](adr/0024-payable-block-needs-both-guids.md)
+  — Proposed. The publisher publishes routes only with the two GUIDs. Each
+  producer asks a route service with the two GUIDs. It changes ADR 0014
 
 ## Plans
 
 - [Mixxx producer template unit](plans/mixxx-producer-template-unit.md) — the
   template producer unit, the Mixxx lock, and the setup helper of ADR 0021
   — Implemented - 2026-11-21. The manual checks are open.
-- [Liquidsoap producer plan](plans/liquidsoap-producer.md) — Proposed. Four
-  packets for ADR 0022 and ADR 0023. The packets come after the acceptance
+- [Liquidsoap producer plan](plans/liquidsoap-producer.md) — Proposed. Five
+  packets for ADR 0022, ADR 0023 and ADR 0024. The packets come after the acceptance
 - [Rust now-playing utility plan](plans/rust-now-playing-utility-plan.md) — replace
   `mixxx-now-playing.py` with a Rust binary that emits V4V track metadata only
   while a V4V track is playing

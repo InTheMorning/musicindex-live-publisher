@@ -3,6 +3,9 @@
 Status: Proposed
 Date: 2026-10-05
 
+- Revised: 2026-11-21. §The MusicIndex Frame gets `feedGuid` and `itemGuid` in `track`, together or not at all
+  (ADR 0024). The operator asked for the two GUIDs together. No decision was reversed.
+
 - Revised: 2026-10-06, after the research report on live metadata paths.
 
 §Two
@@ -189,7 +192,9 @@ the app fallback.
   "track": {
     "artist": "Artist",
     "title": "Title",
-    "artwork": { "sha256": "<64 lowercase hex characters>", "mime": "image/jpeg" }
+    "artwork": { "sha256": "<64 lowercase hex characters>", "mime": "image/jpeg" },
+    "feedGuid": "<feed GUID>",
+    "itemGuid": "<track GUID>"
   },
   "value": { "eventGuid": "<eventGuid>", "blockGuid": "<blockGuid>" }
 }
@@ -198,6 +203,9 @@ the app fallback.
 - `track` has the shape of the display track of ADR 0008 §The Producer
   Output, with the same three `artwork` forms. The frame identifies an image.
   It never holds image data.
+- `feedGuid` and `itemGuid` are the GUIDs of the track. They are the two strings, or they are the two `null`. A
+  frame never has one GUID without the other (ADR 0024). The tagger copies them from the payload that `value` names.
+  A writer that reads the file tags, for example Liquidsoap, copies them from the tags.
 - `track` is `null` when the ICY title is empty. The tagger writes that frame
   also, so a pause clears the display at the time that the listener hears it.
 - `value` names the live value payload of the track. It is `null` for a track
