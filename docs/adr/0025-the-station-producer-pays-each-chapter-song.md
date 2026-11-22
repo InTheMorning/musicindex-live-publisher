@@ -5,6 +5,8 @@
 - Date: 2026-11-22
 - Changes: ADR 0022 items: §The State File Contract (a format version 2) and §What The Producer Writes (the chapter
   rows).
+- Changes: ADR 0022 §The Template Unit, the rule "The producer uses no network". The producer sends HTTPS requests to
+  the route service (§The Chapter Route Lookup), so the unit permits `AF_INET` and `AF_INET6`.
 - Uses: ADR 0024 §The Assembler Examines The Two GUIDs, without a change. ADR 0011 for the listener delay.
 - Uses: musicindex ADR 0075 R-VALUE-5 and the crate `musicindex-value` for the percentage of each recipient.
 - Depends on: musicindex ADR 0086 (Accepted, musicindex commit 27b4cab), One Feed Parser And One Tag Crate For Songs

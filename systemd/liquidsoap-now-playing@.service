@@ -24,11 +24,12 @@ PrivateTmp=true
 RuntimeDirectory=musicindex-live-publisher/%i/nowplaying musicindex-live-publisher/%i/display
 RuntimeDirectoryMode=0700
 RuntimeDirectoryPreserve=yes
-# The producer uses no network and no device (ADR 0022).
+# The producer uses no device (ADR 0022). It sends HTTPS requests to the
+# route service (ADR 0025 §The Chapter Route Lookup).
 PrivateDevices=true
 ProtectKernelTunables=true
 ProtectKernelModules=true
-RestrictAddressFamilies=AF_UNIX
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 RestrictNamespaces=true
 RestrictSUIDSGID=true
 LockPersonality=true
