@@ -1,5 +1,6 @@
 //! Shared drop-file and producer-lock code.
 
+pub mod display;
 pub mod instance;
 pub mod lock;
 pub mod merge;

@@ -529,13 +529,17 @@ impl<'a> Runtime<'a> {
                 // The show log of ADR 0017 joins the two by this value. The
                 // publisher still pairs no `value` with a non-payable track,
                 // because its dead block has no `play_id`.
-                let play_id = self.state.current.as_ref().map(|current| current.hist_id);
+                let play_id = self
+                    .state
+                    .current
+                    .as_ref()
+                    .map(|current| current.hist_id.to_string());
                 let track = ShownTrack {
                     artist: &artist,
                     title: &title,
                     artwork: self.row_artwork.as_ref(),
                     song_line: &song_line,
-                    play_id,
+                    play_id: play_id.as_deref(),
                     album: album.as_deref(),
                 };
                 write_display(display, Some(track));

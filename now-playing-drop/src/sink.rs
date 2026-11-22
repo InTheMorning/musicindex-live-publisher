@@ -37,7 +37,7 @@ impl OutputFile {
     pub fn set(&mut self, presence: Presence) -> Result<()> {
         match presence {
             Presence::Present(content) if self.last.as_deref() != Some(&content) => {
-                self.write_atomic(&content)?;
+                write_atomic(&self.path, content.as_bytes())?;
                 self.last = Some(content);
                 Ok(())
             }
@@ -49,31 +49,35 @@ impl OutputFile {
             }
         }
     }
+}
 
-    fn write_atomic(&self, content: &str) -> Result<()> {
-        let parent = self.path.parent().unwrap_or_else(|| Path::new("."));
-        let filename = self
-            .path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .ok_or_else(|| {
-                anyhow!(
-                    "output path has no UTF-8 file name: {}",
-                    self.path.display()
-                )
-            })?;
-        let temp_path = parent.join(format!(".{filename}.{}.tmp", std::process::id()));
-        fs::write(&temp_path, content)
-            .with_context(|| format!("write temporary output {}", temp_path.display()))?;
-        fs::rename(&temp_path, &self.path).with_context(|| {
+/// Writes `bytes` to a temporary file in the same directory, then renames it
+/// to `path` (AGENTS.md §6). After a failed rename, the temporary file is removed.
+///
+/// # Errors
+///
+/// Returns an error when the file name is not UTF-8, or when the write or the
+/// rename fails.
+pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| anyhow!("output path has no UTF-8 file name: {}", path.display()))?;
+    let temp_path = parent.join(format!(".{name}.{}.tmp", std::process::id()));
+    fs::write(&temp_path, bytes)
+        .with_context(|| format!("write temporary output {}", temp_path.display()))?;
+    if let Err(error) = fs::rename(&temp_path, path) {
+        let _ = fs::remove_file(&temp_path);
+        return Err(error).with_context(|| {
             format!(
                 "rename temporary output {} to {}",
                 temp_path.display(),
-                self.path.display()
+                path.display()
             )
-        })?;
-        Ok(())
+        });
     }
+    Ok(())
 }
 
 /// Removes `path` and treats a missing file as success.

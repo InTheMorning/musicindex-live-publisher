@@ -162,3 +162,22 @@ fn normalize(path: &Path) -> PathBuf {
 pub fn same_directory(a: &Path, b: &Path) -> bool {
     normalize(a) == normalize(b)
 }
+
+#[cfg(test)]
+mod tests {
+    use anyhow::Result;
+    use tempfile::TempDir;
+
+    use super::*;
+
+    #[test]
+    fn same_directory_compares_resolved_paths() -> Result<()> {
+        let temp = TempDir::new()?;
+        let missing = temp.path().join("missing");
+
+        assert!(same_directory(temp.path(), &temp.path().join(".")));
+        assert!(same_directory(&missing, &missing.join("x").join("..")));
+        assert!(!same_directory(temp.path(), &missing));
+        Ok(())
+    }
+}

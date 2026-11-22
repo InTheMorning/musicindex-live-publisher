@@ -919,7 +919,6 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
- "sha2",
  "signal-hook",
  "tempfile",
  "toml",
@@ -1033,6 +1032,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "sha2",
  "tempfile",
  "toml",
 ]
