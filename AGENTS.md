@@ -143,6 +143,11 @@ packet.
   install the new slot text or the new Mixxx reader on a station. The
   operator installs the two in one maintenance window, after HitIt writes the
   new frames in all the files.
+- ADR 0026 has the status `Proposed`, and no implementation exists. In it,
+  the station producer writes `display.json` with the artist and the title of
+  each segment, and `song_line` is the ICY title of the file. The display
+  writer moves to `now-playing-drop`. Do not write code for it before the
+  operator accepts it.
 - This item needs a new ADR before work starts: a track identity source that
   is earlier than the Mixxx history row.
 - Studio client task 001 is not started. The publisher will start and end a
