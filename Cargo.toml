@@ -24,14 +24,14 @@ musicindex-build-info = { git = "https://github.com/InTheMorning/musicindex-lib"
 tempfile = "3"
 
 # ADR 0019: cargo-deb makes the .deb from these assets. The release workflow
-# builds the two binaries of the workspace in one cargo build, and then runs
+# builds the three binaries of the workspace in one cargo build, and then runs
 # `cargo deb --no-build`. Keep the asset list the same as package() of
 # packaging/arch/PKGBUILD.
 [package.metadata.deb]
 maintainer = "HeyCitizen <4637290+InTheMorning@users.noreply.github.com>"
 copyright = "HeyCitizen"
 license-file = ["LICENSE", "0"]
-extended-description = "Publishes the Mixxx now-playing track as MusicIndex live value updates, with the mixxx-now-playing producer, the user systemd units and the Mixxx MIDI connector mapping."
+extended-description = "Publishes the now-playing track as MusicIndex live value updates, with the mixxx-now-playing and liquidsoap-now-playing producers, the user systemd units, the Mixxx MIDI connector mapping and the Liquidsoap slot text."
 section = "sound"
 priority = "optional"
 depends = "$auto, bash, ca-certificates, systemd"
@@ -39,10 +39,12 @@ recommends = "mixxx"
 assets = [
     ["target/release/musicindex-live-publisher", "usr/bin/", "755"],
     ["target/release/mixxx-now-playing", "usr/bin/", "755"],
+    ["target/release/liquidsoap-now-playing", "usr/bin/", "755"],
     ["scripts/setup-mixxx-musicindex.sh", "usr/bin/setup-mixxx-musicindex", "755"],
     ["systemd/musicindex-live-publisher.service", "usr/lib/systemd/user/", "644"],
     ["systemd/musicindex-live-publisher@.service", "usr/lib/systemd/user/", "644"],
     ["systemd/mixxx-now-playing@.service", "usr/lib/systemd/user/", "644"],
+    ["systemd/liquidsoap-now-playing@.service", "usr/lib/systemd/user/", "644"],
     ["packaging/midi/musicindex-v4v-midi.modules-load.conf", "usr/lib/modules-load.d/musicindex-v4v-midi.conf", "644"],
     ["packaging/midi/musicindex-v4v-midi.modprobe.conf", "usr/lib/modprobe.d/musicindex-v4v-midi.conf", "644"],
     ["mixxx/MusicIndex-V4V-Connector.midi.xml", "usr/share/mixxx/controllers/", "644"],
@@ -52,6 +54,8 @@ assets = [
     ["README.md", "usr/share/doc/musicindex-live-publisher/", "644"],
     ["docs/runbooks/musicindex-live-publisher-deploy.md", "usr/share/doc/musicindex-live-publisher/", "644"],
     ["docs/runbooks/musicindex-live-publisher-configuration.md", "usr/share/doc/musicindex-live-publisher/", "644"],
+    ["docs/runbooks/liquidsoap-now-playing-azuracast.md", "usr/share/doc/musicindex-live-publisher/", "644"],
+    ["liquidsoap/musicindex-state.liq", "usr/share/doc/musicindex-live-publisher/liquidsoap/", "644"],
 ]
 
 [workspace]

@@ -1,0 +1,37 @@
+[Unit]
+Description=Liquidsoap now-playing producer for MusicIndex (%i)
+Documentation=file:///usr/share/doc/musicindex-live-publisher/liquidsoap-now-playing-azuracast.md
+# The publisher instance owns the drop directory, so it must start first.
+Wants=musicindex-live-publisher@%i.service
+After=musicindex-live-publisher@%i.service
+
+[Service]
+Type=simple
+# ADR 0022 §The Template Unit. A station without AzuraCast changes the state
+# file path with a drop-in file.
+ExecStart=/usr/bin/liquidsoap-now-playing --instance %i --state-file /var/lib/musicindex/azuracast/%i/state.json
+# The producer stays in operation when Liquidsoap stops (ADR 0022). It exits
+# only on an error that a restart cannot correct, for example a lock wait
+# longer than the limit.
+Restart=on-failure
+RestartSec=10s
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+# The drop directories of this instance.
+RuntimeDirectory=musicindex-live-publisher/%i/nowplaying musicindex-live-publisher/%i/display
+RuntimeDirectoryMode=0700
+RuntimeDirectoryPreserve=yes
+# The producer uses no network and no device (ADR 0022).
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=default.target

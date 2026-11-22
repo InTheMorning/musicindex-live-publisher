@@ -37,7 +37,7 @@ jobs:
           echo "MUSICINDEX_LIVE_PUBLISHER_GIT_REVISION=$(printf %.7s "$GITHUB_SHA")" >> "$GITHUB_ENV"
           echo "MUSICINDEX_LIVE_PUBLISHER_BUILT_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
 
-      # One workspace build makes the two binaries with the same flags. Then
+      # One workspace build makes the three binaries with the same flags. Then
       # cargo deb only packs the files.
       - name: Build the workspace and the .deb
         run: |
@@ -54,9 +54,12 @@ jobs:
           for path in \
             ./usr/bin/musicindex-live-publisher \
             ./usr/bin/mixxx-now-playing \
+            ./usr/bin/liquidsoap-now-playing \
             ./usr/lib/systemd/user/musicindex-live-publisher.service \
             ./usr/lib/systemd/user/musicindex-live-publisher@.service \
-            ./usr/lib/systemd/user/mixxx-now-playing.service; do
+            ./usr/lib/systemd/user/mixxx-now-playing@.service \
+            ./usr/lib/systemd/user/liquidsoap-now-playing@.service \
+            ./usr/share/doc/musicindex-live-publisher/liquidsoap/musicindex-state.liq; do
             grep -q " ${path}\$" <<< "$contents" || { echo "::error::ADR 0019: the .deb has no ${path}. Add it to [package.metadata.deb] assets in Cargo.toml."; exit 1; }
           done
           dpkg-deb --field "$deb" Recommends | grep -qw mixxx || { echo "::error::ADR 0019: the .deb does not recommend mixxx. Set recommends in [package.metadata.deb]."; exit 1; }
