@@ -14,6 +14,8 @@
 - Revised 2026-11-21, while Proposed: the format gets the field `jingle`, and §Jingle Mode replaces the operator rule
   with a producer rule. The orchestrator session sent the evidence. The format is not implemented, so the version stays
   1. No decision was reversed.
+- Revised 2026-11-21, after acceptance: §The Template Unit states how an AzuraCast short name with `_` becomes
+  the instance name. HitIt asked the question. No decision was reversed.
 
 ## Context
 
@@ -104,7 +106,10 @@ limit.
 
 - The package installs the user unit `liquidsoap-now-playing@.service`. It pairs with
   `musicindex-live-publisher@%i.service`, as ADR 0016 §Producer Units shows.
-- The instance name is the short name of the station. It follows the name rule of ADR 0021 §The Unit Names.
+- The instance name comes from the short name of the station. It follows the name rule of ADR 0021 §The Unit Names,
+  `^[a-z0-9][a-z0-9-]{0,31}$`. An AzuraCast short name can contain `_`, so the instance name changes each `_` to `-`.
+  Example: the short name `heycitizens_test_radio` gives the instance `heycitizens-test-radio`.
+- The state folder and `musicindex_dir` in the `.liq` text use the instance name, not the short name.
 - The unit gives `--instance %i --state-file /var/lib/musicindex/azuracast/%i/state.json`. A station without
   AzuraCast changes the path with a drop-in file.
 - The producer uses no network. The unit sets `RestrictAddressFamilies=AF_UNIX` and `PrivateDevices=true`.
