@@ -143,10 +143,11 @@ packet.
   install the new slot text or the new Mixxx reader on a station. The
   operator installs the two in one maintenance window, after HitIt writes the
   new frames in all the files.
-- ADR 0026 has the status `Accepted`, and the implementation is not
-  complete. In it, the station producer writes `display.json` with the artist
-  and the title of each segment, and `song_line` is the ICY title of the file.
-  The display writer moves to `now-playing-drop`. Its four Open Questions stay
+- ADR 0026 is `Accepted`, and its code is complete (tasks 009 and 010). The
+  station producer writes `display.json` with the artist and the title of each
+  segment, and `song_line` is the ICY title of the file. The one display writer
+  is in `now-playing-drop/src/display.rs`. The station checks 1 to 3 of its
+  §Verification are open, and need a person. Its four Open Questions stay
   open.
 - This item needs a new ADR before work starts: a track identity source that
   is earlier than the Mixxx history row.
