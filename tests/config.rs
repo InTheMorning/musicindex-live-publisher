@@ -554,6 +554,34 @@ fn target_remove_deletes_one_stanza() -> Result<()> {
     Ok(())
 }
 
+#[cfg(unix)]
+#[test]
+fn target_commands_write_config_with_mode_0600() -> Result<()> {
+    // ADR 0021: config.toml has mode 0600. A test host had mode 0644 after
+    // `target add`.
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = TempDir::new()?;
+    let watch_dir = temp.path().join("watch");
+    let token = write_token(temp.path(), "default.token", "secret-token")?;
+    let config_path = write_config(temp.path(), &config_text_without_targets(&watch_dir))?;
+    fs::set_permissions(&config_path, fs::Permissions::from_mode(0o644))?;
+    let mode =
+        |path: &Path| -> Result<u32> { Ok(fs::metadata(path)?.permissions().mode() & 0o777) };
+
+    add_target_to_config(
+        &config_path,
+        &target_edit("default", "event-default", &token),
+        false,
+    )?;
+    assert_eq!(mode(&config_path)?, 0o600, "target add");
+
+    fs::set_permissions(&config_path, fs::Permissions::from_mode(0o644))?;
+    remove_target_from_config(&config_path, "default")?;
+    assert_eq!(mode(&config_path)?, 0o600, "target remove");
+    Ok(())
+}
+
 #[test]
 fn target_remove_missing_target_is_distinct_error() -> Result<()> {
     let temp = TempDir::new()?;

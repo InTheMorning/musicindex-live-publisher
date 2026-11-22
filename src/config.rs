@@ -1082,7 +1082,7 @@ fn write_config_text_atomic(path: &Path, text: &str) -> Result<()> {
         std::process::id()
     );
     let temp_path = parent.join(temp_name);
-    fs::write(&temp_path, text)
+    write_private_file(&temp_path, text)
         .with_context(|| format!("write temporary config file {}", temp_path.display()))?;
     fs::rename(&temp_path, path).with_context(|| {
         format!(
@@ -1091,6 +1091,32 @@ fn write_config_text_atomic(path: &Path, text: &str) -> Result<()> {
             path.display()
         )
     })
+}
+
+/// Writes `text` to `path` with mode 0600.
+///
+/// ADR 0021 §The Setup Helper: the config file has mode 0600. The rename in
+/// `write_config_text_atomic` gives the config file the mode of the temporary
+/// file, so the temporary file must have mode 0600. `set_permissions` also
+/// corrects a temporary file that a stopped run left with a different mode.
+#[cfg(unix)]
+fn write_private_file(path: &Path, text: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(path)?;
+    file.set_permissions(fs::Permissions::from_mode(0o600))?;
+    file.write_all(text.as_bytes())
+}
+
+#[cfg(not(unix))]
+fn write_private_file(path: &Path, text: &str) -> std::io::Result<()> {
+    fs::write(path, text)
 }
 
 fn toml_string(value: &str) -> String {
