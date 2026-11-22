@@ -139,10 +139,12 @@ install -d -m 0700 ~/.local/state/musicindex-live-publisher/INSTANCE
 ```
 
 Use `rm` only when `ls -l` shows `INSTANCE ->`, which is a link. The show log files are
-`showlog-YYYY-MM-DD.jsonl` (ADR 0017). Move them into the new state directory, if you want to keep them:
+`showlog/showlog-YYYY-MM-DD.jsonl` in the state directory (ADR 0017). Through the link, they went into the folder
+`~/.config/musicindex-live-publisher/INSTANCE/showlog`. Move that folder into the new state directory, if you want to
+keep the show log:
 
 ```sh
-mv ~/.config/musicindex-live-publisher/INSTANCE/showlog-*.jsonl ~/.local/state/musicindex-live-publisher/INSTANCE/
+mv ~/.config/musicindex-live-publisher/INSTANCE/showlog ~/.local/state/musicindex-live-publisher/INSTANCE/
 systemctl --user start musicindex-live-publisher@INSTANCE.service
 ```
 
