@@ -118,6 +118,14 @@ packet.
   template unit `mixxx-now-playing@<instance>.service`, and one Mixxx producer
   runs at a time. HitIt uses these units to keep a show stream apart from the
   private stream.
+- ADR 0022 and ADR 0023 have the status `Proposed`. No implementation
+  exists. `docs/plans/liquidsoap-producer.md` lists four packets.
+  - ADR 0022 adds the producer `liquidsoap-now-playing` for an AzuraCast or
+    Liquidsoap station. It reads `state.json`, which the slot text writes,
+    and this repository owns that format.
+  - ADR 0023 lets a live DJ take over the event of a station. Each publisher
+    sends its payable block again over a foreign dead block. The relay does
+    not change.
 - This item needs a new ADR before work starts: a track identity source that
   is earlier than the Mixxx history row.
 - Studio client task 001 is not started. The publisher will start and end a

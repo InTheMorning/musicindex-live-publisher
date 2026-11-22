@@ -88,12 +88,21 @@ the next priority. Confirm that logging works before the show.
   configuration. A kernel lock lets one Mixxx producer run at a time. The
   setup helper gets `--instance`, `--target`, `--event-id`, `--json` and
   `--migrate-units`. It changes ADR 0016 §Producer Units
+- [ADR 0022: A producer for Liquidsoap and AzuraCast](adr/0022-liquidsoap-producer.md)
+  — Proposed. `liquidsoap-now-playing` reads `state.json` from the
+  Liquidsoap slot text and writes the drop file version 3. It releases the
+  producer lock while a live DJ is on air or the heartbeat stops
+- [ADR 0023: A live DJ takes over the event of a station](adr/0023-dj-takeover.md)
+  — Proposed. Each publisher sends its payable block again over a foreign dead
+  block at each keepalive. No relay change
 
 ## Plans
 
 - [Mixxx producer template unit](plans/mixxx-producer-template-unit.md) — the
   template producer unit, the Mixxx lock, and the setup helper of ADR 0021
   — Implemented - 2026-11-21. The manual checks are open.
+- [Liquidsoap producer plan](plans/liquidsoap-producer.md) — Proposed. Four
+  packets for ADR 0022 and ADR 0023. The packets come after the acceptance
 - [Rust now-playing utility plan](plans/rust-now-playing-utility-plan.md) — replace
   `mixxx-now-playing.py` with a Rust binary that emits V4V track metadata only
   while a V4V track is playing
