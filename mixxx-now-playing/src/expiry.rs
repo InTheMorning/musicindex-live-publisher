@@ -2,7 +2,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::Result;
 
-use crate::sink::{OutputFile, Presence};
+use now_playing_drop::sink::{OutputFile, Presence};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Expiry {

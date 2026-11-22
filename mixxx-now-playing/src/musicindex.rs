@@ -5,23 +5,12 @@ use std::thread;
 use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow};
+use now_playing_drop::PaymentRoute;
 use reqwest::StatusCode;
 use reqwest::blocking::Client;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use crate::tags::TrackTags;
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
-#[serde(default)]
-pub struct PaymentRoute {
-    pub recipient_name: Option<String>,
-    pub route_type: Option<String>,
-    pub split: Option<f64>,
-    pub fee: Option<bool>,
-    pub address: Option<String>,
-    pub custom_key: Option<String>,
-    pub custom_value: Option<String>,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ValueRoutesSource {

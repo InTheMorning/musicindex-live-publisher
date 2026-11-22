@@ -1,8 +1,8 @@
 use anyhow::Result;
-use serde::Serialize;
 
-use crate::musicindex::{PaymentRoute, ValueRoutesSource};
+use crate::musicindex::ValueRoutesSource;
 use crate::tags::{TagText, TrackTags};
+use now_playing_drop::{PaymentRoute, Version3DropFile};
 
 #[derive(Debug, Clone, Copy)]
 pub struct TrackDisplay<'a> {
@@ -54,29 +54,13 @@ pub fn render_metadata_json_with_routes(
     target: &str,
     value_routes_source: ValueRoutesSource,
 ) -> Result<String> {
-    #[derive(Serialize)]
-    struct DropFile<'a> {
-        schema: &'static str,
-        target: &'a str,
-        artist: &'a str,
-        title: &'a str,
-        duration_secs: Option<f64>,
-        image: Option<&'a str>,
-        feed_guid: Option<&'a str>,
-        track_guid: Option<&'a str>,
-        album: Option<&'a str>,
-        play_id: Option<String>,
-        value_routes: Vec<PaymentRoute>,
-        value_routes_source: Option<&'static str>,
-    }
-
     let value_routes_json = display.tags.musicindex_value("Value Routes");
     let value_routes = value_routes_json
         .map(serde_json::from_str::<Vec<PaymentRoute>>)
         .transpose()?
         .unwrap_or_default();
 
-    Ok(serde_json::to_string_pretty(&DropFile {
+    Ok(serde_json::to_string_pretty(&Version3DropFile {
         schema: "musicindex.nowplaying/3",
         target,
         artist: display.artist,

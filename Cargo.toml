@@ -55,6 +55,6 @@ assets = [
 ]
 
 [workspace]
-members = ["mixxx-now-playing"]
-default-members = [".", "mixxx-now-playing"]
+members = ["mixxx-now-playing", "now-playing-drop"]
+default-members = [".", "mixxx-now-playing", "now-playing-drop"]
 resolver = "3"

@@ -12,13 +12,13 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Result, anyhow};
 use mixxx_now_playing::musicindex::{
-    MusicIndexClient, PaymentRoute, ResolvedRouteResult, RouteRequest, RouteRequestStatus,
-    RouteResolution, ValueRouteResolver, ValueRoutesSource, apply_resolution_to_tags,
-    result_matches_current,
+    MusicIndexClient, ResolvedRouteResult, RouteRequest, RouteRequestStatus, RouteResolution,
+    ValueRouteResolver, ValueRoutesSource, apply_resolution_to_tags, result_matches_current,
 };
 use mixxx_now_playing::render::{TrackDisplay, render_metadata_text_with_routes};
-use mixxx_now_playing::sink::{OutputFile, Presence};
 use mixxx_now_playing::tags::{TagText, TrackTags};
+use now_playing_drop::PaymentRoute;
+use now_playing_drop::sink::{OutputFile, Presence};
 use tempfile::TempDir;
 
 use common::SyntheticMixxxDb;

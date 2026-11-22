@@ -2,7 +2,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use mixxx_now_playing::expiry::{Expiry, expire_metadata_at};
-use mixxx_now_playing::sink::{OutputFile, Presence};
+use now_playing_drop::sink::{OutputFile, Presence};
 use tempfile::TempDir;
 
 #[test]

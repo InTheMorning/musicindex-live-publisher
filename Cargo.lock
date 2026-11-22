@@ -887,6 +887,7 @@ dependencies = [
  "image",
  "lofty",
  "musicindex-live-publisher",
+ "now-playing-drop",
  "reqwest",
  "rusqlite",
  "serde",
@@ -977,6 +978,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "42b8cfee0e339a0337359f3c88165702ac6e600dc01c0cc9579a92d62b08477a"
 dependencies = [
  "bitflags",
+]
+
+[[package]]
+name = "now-playing-drop"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "toml",
 ]
 
 [[package]]

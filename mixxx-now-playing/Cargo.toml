@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+now-playing-drop = { path = "../now-playing-drop" }
 anyhow = "1"
 directories = "6"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }

@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Result, anyhow};
 use mixxx_now_playing::render::render_now_playing_line;
-use mixxx_now_playing::sink::{OutputFile, Presence};
+use now_playing_drop::sink::{OutputFile, Presence};
 use tempfile::TempDir;
 
 use common::SyntheticMixxxDb;

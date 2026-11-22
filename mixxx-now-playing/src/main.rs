@@ -12,7 +12,7 @@ use mixxx_now_playing::display::{
 };
 use mixxx_now_playing::expiry::Expiry;
 use mixxx_now_playing::history::{HistoryWatcher, TrackRow};
-use mixxx_now_playing::lock::{MixxxLock, MixxxLockHeld, ProducerLock};
+use mixxx_now_playing::lock::{MixxxLock, MixxxLockHeld};
 use mixxx_now_playing::musicindex::{
     ResolvedRouteResult, RouteRequestStatus, ValueRouteResolver, ValueRoutesSource,
     apply_resolution_to_tags, result_matches_current,
@@ -21,7 +21,11 @@ use mixxx_now_playing::render::{
     TrackDisplay, render_metadata_json_with_routes, render_metadata_text_with_routes,
     render_now_playing_line,
 };
-use mixxx_now_playing::sink::{OutputFile, Presence, ensure_empty_file, remove_file_if_exists};
+use now_playing_drop::{
+    ProducerLock,
+    sink::{OutputFile, Presence, ensure_empty_file, remove_file_if_exists},
+};
+
 use mixxx_now_playing::tags::{read_tags, read_tags_with_picture};
 use signal_hook::consts::signal::{SIGINT, SIGTERM};
 use signal_hook::iterator::Signals;

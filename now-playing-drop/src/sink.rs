@@ -4,12 +4,16 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow};
 
+/// Describes whether an output file has content.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Presence {
+    /// Write this content when it differs from the current content.
     Present(String),
+    /// Remove the output file if it exists.
     Absent,
 }
 
+/// Writes content to one file and skips unchanged writes.
 #[derive(Debug)]
 pub struct OutputFile {
     path: PathBuf,
@@ -17,6 +21,7 @@ pub struct OutputFile {
 }
 
 impl OutputFile {
+    /// Creates an output sink for `path`.
     pub fn new(path: impl Into<PathBuf>) -> Self {
         Self {
             path: path.into(),
@@ -24,6 +29,11 @@ impl OutputFile {
         }
     }
 
+    /// Applies the requested file presence.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a write, rename, or removal fails.
     pub fn set(&mut self, presence: Presence) -> Result<()> {
         match presence {
             Presence::Present(content) if self.last.as_deref() != Some(&content) => {
@@ -66,6 +76,11 @@ impl OutputFile {
     }
 }
 
+/// Removes `path` and treats a missing file as success.
+///
+/// # Errors
+///
+/// Returns an error when the file cannot be removed.
 pub fn remove_file_if_exists(path: &Path) -> Result<()> {
     match fs::remove_file(path) {
         Ok(()) => Ok(()),
