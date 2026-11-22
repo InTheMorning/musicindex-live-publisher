@@ -119,9 +119,9 @@ packet.
   runs at a time. HitIt uses these units to keep a show stream apart from the
   private stream.
 - ADR 0022, ADR 0023 and ADR 0024 have the status `Accepted`. The five
-  packets of `docs/plans/liquidsoap-producer.md` are committed. The last
-  review and the manual checks 1-4 of that plan are open. Nothing is
-  deployed.
+  packets of `docs/plans/liquidsoap-producer.md` are committed. Manual
+  checks 1-3 passed on the test host. Check 4, the jingle test and the last
+  review are open.
   - ADR 0022 adds the producer `liquidsoap-now-playing` for an AzuraCast or
     Liquidsoap station. It reads `state.json`, which the slot text writes,
     and this repository owns that format.

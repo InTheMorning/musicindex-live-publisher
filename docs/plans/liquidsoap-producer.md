@@ -63,6 +63,15 @@ gate, reads the diff and makes the commit.
 
 These checks need a test station and the operator. Report each one as open until the operator does it.
 
+Results on 2026-11-22 (UTC), bundle `bdda4bf`, instance `heycitizens-test-radio`. The orchestrator session ran the
+checks on the test host and reported them:
+
+- Check 1: passed. `state.json` holds routes of 671 bytes, not cut.
+- Check 2: passed. Liquidsoap needed approximately 60 seconds after the reboot. The relay had the dead block in that
+  time.
+- Check 3: passed. The dead block came 5.1 seconds after the stop.
+- Check 4: open. It needs a DJ connection by the operator.
+
 1. The reference slot text passes the save in AzuraCast and writes `state.json` in the bind mount.
 2. The runbook steps install the two units for one account with lingering. The two units start after a reboot.
 3. A stop of Liquidsoap gives the dead block on the relay in approximately 6 seconds.
