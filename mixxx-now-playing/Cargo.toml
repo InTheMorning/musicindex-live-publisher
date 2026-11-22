@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 now-playing-drop = { path = "../now-playing-drop" }
+musicindex-tags = { git = "https://github.com/InTheMorning/musicindex-lib", rev = "3b7129a9e57477a1dc9ce51884aa1a96e5311b59" }
 anyhow = "1"
 directories = "6"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }

@@ -59,7 +59,7 @@ fn read_picture(path: &Path) -> Result<Option<Vec<u8>>> {
 }
 
 /// Copies `musicindex-tagged.mp3` and writes `value` into its
-/// `TXXX:MusicIndex Image` frame. `Tag::insert` drops a new `TXXX` frame that
+/// `TXXX:Podcast Image` frame. `Tag::insert` drops a new `TXXX` frame that
 /// has no key for the tag type, so the helper uses `insert_unchecked`.
 fn mp3_with_image_tag(temp: &TempDir, value: &str) -> Result<PathBuf> {
     let path = temp.path().join("tagged-with-image.mp3");
@@ -67,7 +67,7 @@ fn mp3_with_image_tag(temp: &TempDir, value: &str) -> Result<PathBuf> {
     let mut tagged = lofty::read_from_path(&path)?;
     let tag = tagged.primary_tag_mut().context("primary tag")?;
     tag.insert_unchecked(TagItem::new(
-        ItemKey::Unknown("MusicIndex Image".to_owned()),
+        ItemKey::Unknown("Podcast Image".to_owned()),
         ItemValue::Text(value.to_owned()),
     ));
     tagged.save_to_path(&path, WriteOptions::default())?;

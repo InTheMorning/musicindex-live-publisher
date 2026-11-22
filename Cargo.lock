@@ -642,6 +642,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "id3"
+version = "1.17.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "978b6fd2b9abc73c8b8db74f2d011dfa04f0f3497b2f7789852dbae51fe5f9ae"
+dependencies = [
+ "bitflags",
+ "byteorder",
+ "flate2",
+]
+
+[[package]]
 name = "idna"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -902,6 +913,7 @@ dependencies = [
  "image",
  "lofty",
  "musicindex-live-publisher",
+ "musicindex-tags",
  "now-playing-drop",
  "reqwest",
  "rusqlite",
@@ -949,6 +961,18 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
+]
+
+[[package]]
+name = "musicindex-tags"
+version = "0.1.0"
+source = "git+https://github.com/InTheMorning/musicindex-lib?rev=3b7129a9e57477a1dc9ce51884aa1a96e5311b59#3b7129a9e57477a1dc9ce51884aa1a96e5311b59"
+dependencies = [
+ "anyhow",
+ "id3",
+ "lofty",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

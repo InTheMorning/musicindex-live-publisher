@@ -13,12 +13,12 @@ fn fixture(name: &str) -> PathBuf {
         .join(name)
 }
 
-/// Copies the mp3 fixture into `dir` and writes a `TXXX:MusicIndex Image`
+/// Copies the mp3 fixture into `dir` and writes a `TXXX:Podcast Image`
 /// frame with `value` onto the copy, returning the copy's path.
 ///
 /// `insert_unchecked` is required here, not `insert_text`: the checked
 /// `Tag::insert` rejects an `ItemKey::Unknown` that has no mapping for the
-/// target `TagType`, so it silently drops a brand new MusicIndex frame.
+/// target `TagType`, so it silently drops a brand new Podcast frame.
 fn fixture_with_image_tag(dir: &Path, value: &str) -> Result<PathBuf> {
     let copy = dir.join("musicindex-tagged-with-image.mp3");
     std::fs::copy(fixture("musicindex-tagged.mp3"), &copy).context("copy mp3 fixture")?;
@@ -29,7 +29,7 @@ fn fixture_with_image_tag(dir: &Path, value: &str) -> Result<PathBuf> {
         .primary_tag_mut()
         .context("mp3 fixture copy must carry a primary tag")?;
     tag.insert_unchecked(TagItem::new(
-        ItemKey::Unknown("MusicIndex Image".to_string()),
+        ItemKey::Unknown("Podcast Image".to_string()),
         ItemValue::Text(value.to_string()),
     ));
     tagged_file
@@ -119,7 +119,7 @@ fn tags_transcript_fields_are_excluded() -> Result<()> {
     let rendered_debug = format!("{tags:?}");
 
     assert!(!rendered_debug.contains("transcript should not render"));
-    assert!(!rendered_debug.contains("MusicIndex Transcript"));
+    assert!(!rendered_debug.contains("Podcast Transcript"));
 
     Ok(())
 }

@@ -653,7 +653,7 @@ fn lifecycle_display_v4v_track_with_image_tag_gives_the_url() -> Result<()> {
         .primary_tag_mut()
         .ok_or_else(|| anyhow!("the MP3 fixture has a primary tag"))?
         .insert_unchecked(TagItem::new(
-            ItemKey::Unknown("MusicIndex Image".to_owned()),
+            ItemKey::Unknown("Podcast Image".to_owned()),
             ItemValue::Text("https://example.test/cover.gif".to_owned()),
         ));
     tagged.save_to_path(&track, WriteOptions::default())?;
