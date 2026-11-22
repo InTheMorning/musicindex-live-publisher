@@ -2,6 +2,7 @@
 
 pub mod instance;
 pub mod lock;
+pub mod merge;
 pub mod payment_route;
 pub mod sink;
 pub use instance::InstanceSettings;

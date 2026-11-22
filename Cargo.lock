@@ -952,6 +952,11 @@ dependencies = [
 ]
 
 [[package]]
+name = "musicindex-value"
+version = "0.1.0"
+source = "git+https://github.com/InTheMorning/musicindex-lib?rev=e6d11118d33069c26c01368f7de71524988039c6#e6d11118d33069c26c01368f7de71524988039c6"
+
+[[package]]
 name = "native-tls"
 version = "0.2.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1000,6 +1005,7 @@ name = "now-playing-drop"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "musicindex-value",
  "serde",
  "serde_json",
  "tempfile",

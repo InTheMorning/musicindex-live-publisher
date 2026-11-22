@@ -11,6 +11,11 @@ The station side comes first. The tutorial in `musicindex-research`,
 `liquidsoap/musicindex-state.liq` in this repository. The package installs it as
 `/usr/share/doc/musicindex-live-publisher/liquidsoap/musicindex-state.liq`.
 
+This slot text writes the format `musicindex-liquidsoap-state/2` (ADR 0025). It reads only the `Podcast` frames of
+musicindex ADR 0086, for example `TXXX:Podcast Item Guid`. It does not read the old `MusicIndex` frames. A file with
+only old frames pays nobody. Install this slot text only after HitIt wrote the new frames in all the files of the
+station. The operator installs it in the same maintenance window as the Mixxx reader with the new frames.
+
 The steps use two names:
 
 - `INSTANCE` is the instance name of ADR 0022 §The Template Unit. It is the AzuraCast short name with each `_` changed
@@ -247,11 +252,13 @@ destination `no-v4v-track@example.invalid` before you stop the publisher. To rem
 ## Failure Modes
 
 - **The producer writes no drop file.** `written` in `state.json` does not change, or `live` is `true`. Read
-  `state.json`. A value of `format` that is not `musicindex-liquidsoap-state/1` gives an `error` line in the log.
+  `state.json`. A value of `format` that is not `musicindex-liquidsoap-state/1` or `musicindex-liquidsoap-state/2`
+  gives an `error` line in the log.
 - **The producer stops with an ADR 0016 error.** A different producer holds `.producer.lock` in the drop directory.
   Stop the other producer, or give each producer its own instance.
 - **A track with routes pays nobody.** The track has no feed GUID or no track GUID (ADR 0024). The publisher log has a
-  warning that names the missing field.
+  warning that names the missing field. A file with only the old `MusicIndex` frames has no GUID for this slot text.
+  Tag the file again with HitIt.
 - **The two units stopped together, and the relay has no value.** The system journal shows `user@UID.service` with
   `Failed with result 'signal'`. Read `journalctl -u user@UID.service` as root. Without the step of §Restart The User
   Manager, start it as root with `systemctl start user@UID.service`. Then find what used the memory.

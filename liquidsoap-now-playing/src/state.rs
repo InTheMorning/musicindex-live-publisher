@@ -4,6 +4,8 @@ use serde::Deserialize;
 
 /// The supported Liquidsoap state format.
 pub const STATE_FORMAT: &str = "musicindex-liquidsoap-state/1";
+/// The format marker for the Liquidsoap state file with chapter data.
+pub const STATE_FORMAT_2: &str = "musicindex-liquidsoap-state/2";
 
 /// The format marker read before the full state record.
 #[derive(Debug, Deserialize)]
@@ -36,4 +38,10 @@ pub struct StateFile {
     pub image: Option<String>,
     #[serde(default)]
     pub value_routes: Option<String>,
+    #[serde(default)]
+    pub elapsed: Option<f64>,
+    #[serde(default)]
+    pub cue_in: Option<f64>,
+    #[serde(default)]
+    pub chapters: Option<String>,
 }
