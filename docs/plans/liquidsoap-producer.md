@@ -1,7 +1,6 @@
 # A Producer For Liquidsoap And A DJ Takeover: Phase Plan
 
-Status: Proposed 2026-11-21. It waits for the acceptance of ADR 0022, ADR 0023 and ADR 0024. The task packets come after the
-acceptance. This plan does not make rules. ADR 0022, ADR 0023 and ADR 0024 own them.
+Status: Ready 2026-11-21. The operator accepted ADR 0022, ADR 0023 and ADR 0024 on 2026-11-21. This plan does not make rules. ADR 0022, ADR 0023 and ADR 0024 own them.
 
 ## Goal
 

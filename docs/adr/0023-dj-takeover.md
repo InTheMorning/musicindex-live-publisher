@@ -1,6 +1,6 @@
 # ADR 0023: A Live DJ Takes Over The Event Of A Station
 
-- Status: Proposed
+- Status: Accepted on 2026-11-21 by the operator. The orchestrator session relayed the decision.
 - Date: 2026-11-21
 - Bar: crosses repositories and hosts. The station publisher and the DJ publisher send to one relay event. An agent can
   make the opposite choice by mistake: a station publisher that does not send the dead block at a takeover, or a relay

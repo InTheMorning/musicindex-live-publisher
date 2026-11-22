@@ -5,8 +5,8 @@ Date: 2026-10-18
 
 - Changes: ADR 0002 items: version 3 of the drop file.
 - Changes: ADR 0005 items: the rejected alternative §A Non-Payable Drop File For Each Non-V4V Track.
-- Changed by: ADR 0024, 2026-11-21, while ADR 0024 is Proposed. A drop file with routes is payable only with a
-  feed GUID and a track GUID. Until ADR 0024 is accepted, the rule of this record stays in force.
+- Changed by: ADR 0024, 2026-11-21. A drop file with routes is payable only with a feed GUID and a track GUID. The
+  code applies this after packet 5 of `docs/plans/liquidsoap-producer.md`.
 
 Implemented 2026-10-18: packets 001 and 002 of `docs/plans/track-reporting.md`
 are done. The named artifact is

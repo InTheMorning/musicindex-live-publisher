@@ -1,6 +1,7 @@
 # ADR 0022: A Producer For Liquidsoap And AzuraCast
 
-- Status: Proposed
+- Status: Accepted on 2026-11-21 by the operator. The orchestrator session relayed the decision. Open Question 1
+  and Open Question 2 stay open.
 - Date: 2026-11-21
 - Bar: crosses repositories. The Liquidsoap slot text in the research tutorial writes the input of this producer, and
   the station operator installs it on a server. An agent can also make the opposite choice by mistake: read the media

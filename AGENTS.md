@@ -118,8 +118,8 @@ packet.
   template unit `mixxx-now-playing@<instance>.service`, and one Mixxx producer
   runs at a time. HitIt uses these units to keep a show stream apart from the
   private stream.
-- ADR 0022, ADR 0023 and ADR 0024 have the status `Proposed`. No
-  implementation exists. `docs/plans/liquidsoap-producer.md` lists five
+- ADR 0022, ADR 0023 and ADR 0024 have the status `Accepted`. No
+  implementation exists yet. `docs/plans/liquidsoap-producer.md` lists five
   packets.
   - ADR 0022 adds the producer `liquidsoap-now-playing` for an AzuraCast or
     Liquidsoap station. It reads `state.json`, which the slot text writes,

@@ -1,6 +1,6 @@
 # ADR 0024: A Payable Block Needs The Feed GUID And The Track GUID
 
-- Status: Proposed
+- Status: Accepted on 2026-11-21 by the operator. The orchestrator session relayed the decision.
 - Date: 2026-11-21
 - Changes: ADR 0014 items: §Each Producer Reports Each Track, the row "Present, with routes".
 - Bar: crosses repositories. HitIt writes the GUID tags, each producer reads them, and this repository assembles the
