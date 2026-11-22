@@ -118,9 +118,10 @@ packet.
   template unit `mixxx-now-playing@<instance>.service`, and one Mixxx producer
   runs at a time. HitIt uses these units to keep a show stream apart from the
   private stream.
-- ADR 0022, ADR 0023 and ADR 0024 have the status `Accepted`. No
-  implementation exists yet. `docs/plans/liquidsoap-producer.md` lists five
-  packets.
+- ADR 0022, ADR 0023 and ADR 0024 have the status `Accepted`. The five
+  packets of `docs/plans/liquidsoap-producer.md` are committed. The last
+  review and the manual checks 1-4 of that plan are open. Nothing is
+  deployed.
   - ADR 0022 adds the producer `liquidsoap-now-playing` for an AzuraCast or
     Liquidsoap station. It reads `state.json`, which the slot text writes,
     and this repository owns that format.
@@ -249,8 +250,10 @@ This service routes money. These rules are not style preferences.
   than fail in silence. The unit sets `StartLimitBurst=5`, so systemd stops the
   restart loop and marks the unit `failed`.
 - A retryable relay failure uses backoff. A permanent failure does not retry.
-- The producer exits cleanly when the player is not running. The unit restarts
-  it.
+- The Mixxx producer exits cleanly when Mixxx is not running. The unit
+  restarts it.
+- The Liquidsoap producer stays in operation when Liquidsoap stops. It
+  removes the drop file and releases the lock (ADR 0022).
 
 ### 8. Test Strategy
 
