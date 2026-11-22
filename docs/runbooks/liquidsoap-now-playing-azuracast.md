@@ -26,6 +26,9 @@ Replace the two names in each command.
 - A `.deb` package of this repository. Make it on a different computer (ADR 0019). A small radio host does not have
   the CPU and the memory to make it.
 - The `event_id` and the broadcaster token file of the station event. Each event has one owner instance (ADR 0016).
+- Free memory for AzuraCast at its highest use. On 2026-11-22, a test host had 1.9 GiB of memory and 512 MiB of swap.
+  All of it was in use, and the kernel stopped the user manager of the account. The cause is an inference: the save of
+  a DJ account in AzuraCast starts a second Liquidsoap for a check. §Restart The User Manager gives the recovery.
 
 ## Make The Account
 
@@ -48,6 +51,33 @@ install -m 0644 musicindex-live-publisher@.service liquidsoap-now-playing@.servi
 
 Do not make a folder in the home folder of the account as root. A folder that root owns, for example `~/.config`,
 stops `systemctl --user enable`.
+
+## Restart The User Manager
+
+The user manager is the service `user@UID.service`, where `UID` is the user ID of the account. If the kernel stops it
+because the host has no free memory, systemd also stops the two units. Lingering does not start the user manager again,
+and the publisher stops its keepalive. The relay then removes the value at the end of the lease. This failure pays
+nobody incorrectly, but MusicIndex stays off until a person starts the user manager.
+
+Do these steps as root. Replace `UID` with the output of `id -u musicindex`.
+
+```sh
+install -d -m 0755 /etc/systemd/system/user@UID.service.d
+printf '[Service]\nRestart=on-failure\nRestartSec=10s\n' > /etc/systemd/system/user@UID.service.d/restart.conf
+systemctl daemon-reload
+systemctl show -p Restart user@UID.service
+```
+
+The last command must show `Restart=on-failure`. After a restart, the user manager starts the two enabled units.
+
+Do the test of this step on a test host only. The test stops MusicIndex for approximately 10 seconds:
+
+```sh
+systemctl kill --kill-whom=main --signal=SIGKILL user@UID.service
+systemctl is-active user@UID.service
+```
+
+Run the second command 15 seconds after the first. It must show `active`. Then do the steps of §Examine The Result.
 
 ## Make Sure That The User Manager Operates
 
@@ -208,5 +238,8 @@ destination `no-v4v-track@example.invalid` before you stop the publisher. To rem
   Stop the other producer, or give each producer its own instance.
 - **A track with routes pays nobody.** The track has no feed GUID or no track GUID (ADR 0024). The publisher log has a
   warning that names the missing field.
+- **The two units stopped together, and the relay has no value.** The system journal shows `user@UID.service` with
+  `Failed with result 'signal'`. Read `journalctl -u user@UID.service` as root. Without the step of §Restart The User
+  Manager, start it as root with `systemctl start user@UID.service`. Then find what used the memory.
 - **The publisher log names a second sender on the event.** A different publisher sends a payable block on the same
   event (ADR 0023). Stop one of the two.

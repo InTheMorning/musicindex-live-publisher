@@ -120,8 +120,8 @@ packet.
   private stream.
 - ADR 0022, ADR 0023 and ADR 0024 have the status `Accepted`. The five
   packets of `docs/plans/liquidsoap-producer.md` are committed. Manual
-  checks 1-3 passed on the test host. Check 4, the jingle test and the last
-  review are open.
+  checks 1-3 and the station side of check 4 passed on the test host. The
+  check with a DJ publisher, the jingle test and the last review are open.
   - ADR 0022 adds the producer `liquidsoap-now-playing` for an AzuraCast or
     Liquidsoap station. It reads `state.json`, which the slot text writes,
     and this repository owns that format.

@@ -70,7 +70,11 @@ checks on the test host and reported them:
 - Check 2: passed. Liquidsoap needed approximately 60 seconds after the reboot. The relay had the dead block in that
   time.
 - Check 3: passed. The dead block came 5.1 seconds after the stop.
-- Check 4: open. It needs a DJ connection by the operator.
+- Check 4, station side: passed. At the DJ connection, the relay had the dead block in approximately 2 seconds. At
+  the disconnection, the next AutoDJ track came on the relay. The part with a DJ publisher and the read-back of ADR 0023
+  is open.
+- On the same day the host had no free memory, and the kernel stopped the user manager with the two units. Nothing
+  started it again. The runbook now has §Restart The User Manager. Future item 2 records the alternative.
 
 1. The reference slot text passes the save in AzuraCast and writes `state.json` in the bind mount.
 2. The runbook steps install the two units for one account with lingering. The two units start after a reboot.
@@ -86,3 +90,7 @@ These items are not packets of this plan. Each one needs its own task, and a dec
    (Proposed, HitIt commit `3e61236`) can then make sure that the station producer released its lock before "Go on air"
    of a DJ set. Until the command exists, the HitIt confirmation text is the only guard for the first risk in
    ADR 0023 §Risks. The command is a new public interface between repositories, so it needs a decision record.
+2. **System units on a station host.** Open for the operator. ADR 0022 uses user units of one account with lingering.
+   On a station host, a system unit does not need the user manager, so a failure of the user manager cannot stop it.
+   This change replaces ADR 0022 §The Template Unit and the paths of the runbook, so it needs a decision record. Until
+   then, the runbook gives a restart drop-in for `user@UID.service`.
