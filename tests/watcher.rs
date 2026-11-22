@@ -159,6 +159,46 @@ fn watcher_empty_value_routes_publishes_dead_block() -> Result<()> {
 }
 
 #[test]
+fn watcher_routes_without_both_nonempty_guids_publish_dead_block() -> Result<()> {
+    for (field, value) in [
+        ("feed_guid", Value::Null),
+        ("track_guid", Value::Null),
+        ("feed_guid", json!("")),
+        ("track_guid", json!("")),
+    ] {
+        let temp = TempDir::new()?;
+        let path = temp.path().join("default.json");
+        let mut watcher = DropWatcher::new(target(), Duration::from_millis(0));
+        let mut dropfile: Value = serde_json::from_str(&dropfile("Track with incomplete GUIDs"))?;
+        dropfile[field] = value;
+
+        write(&path, dropfile.to_string())?;
+        let payload = one_payload(watcher.process_event(upsert(&path), Instant::now())?)?;
+
+        assert_eq!(payload["title"], "No V4V track playing", "field: {field}");
+        assert_eq!(
+            payload["value"]["destinations"][0]["address"], "no-v4v-track@example.invalid",
+            "field: {field}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn watcher_routes_with_both_guids_publish_routes() -> Result<()> {
+    let temp = TempDir::new()?;
+    let path = temp.path().join("default.json");
+    let mut watcher = DropWatcher::new(target(), Duration::from_millis(0));
+
+    write(&path, dropfile("Track with both GUIDs"))?;
+    let payload = one_payload(watcher.process_event(upsert(&path), Instant::now())?)?;
+
+    assert_eq!(payload["title"], "Track with both GUIDs");
+    assert_eq!(payload["value"]["destinations"][0]["address"], "03alice");
+    Ok(())
+}
+
+#[test]
 fn watcher_malformed_file_is_skipped_without_dead_block() -> Result<()> {
     let temp = TempDir::new()?;
     let path = temp.path().join("nowplaying.json");

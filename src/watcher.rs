@@ -8,6 +8,7 @@ use std::time::{Duration, Instant, SystemTime};
 use anyhow::{Context, Result};
 use uuid::Uuid;
 
+use crate::livevalue::has_payable_routes;
 use crate::{
     DropFile, LiveValuePayload, LogFacts, ProducerState, dead_payload, parse, payload_from_dropfile,
 };
@@ -239,10 +240,27 @@ impl DropWatcher {
             // Next track at a path the producer reuses: mint a fresh block.
             _ => fresh_guid(),
         };
-        // ADR 0005: an empty value_routes list is not a payable block. The
-        // dead block replaces it entirely; it keeps neither the drop file's
-        // title nor its GUIDs.
-        let mut payload = if dropfile.value_routes.is_empty() {
+        // ADR 0024: routes need both GUIDs. ADR 0005: otherwise publish dead.
+        let payable = has_payable_routes(&dropfile);
+        if !dropfile.value_routes.is_empty() && !payable {
+            let missing_field = [
+                ("feed_guid", dropfile.feed_guid.as_deref()),
+                ("track_guid", dropfile.track_guid.as_deref()),
+            ]
+            .into_iter()
+            .find_map(|(field, value)| {
+                value
+                    .is_none_or(|guid| guid.trim().is_empty())
+                    .then_some(field)
+            })
+            .unwrap_or("feed_guid");
+            tracing::warn!(
+                target = %target.name,
+                field = missing_field,
+                "drop file has routes but cannot pay without both GUIDs"
+            );
+        }
+        let mut payload = if !payable {
             dead_payload(&target.event_guid, &block_guid)
         } else {
             payload_from_dropfile(&dropfile, &target.event_guid, &block_guid)

@@ -219,6 +219,8 @@ This service routes money. These rules are not style preferences.
 - Each track gets a fresh `blockGuid`.
 - Never derive a split from a title, a file name, or a fuzzy match. Use the
   supplied metadata only.
+- A block pays its routes only when its drop file has a feed GUID and a
+  track GUID (ADR 0024). A track GUID is unique only in its feed.
 - The assembled payload must never hold exactly the keys `event_id` and
   `metadata`. That key set makes the relay read it as the wrapped form, and
   listener apps then receive no splits. A unit test asserts this.

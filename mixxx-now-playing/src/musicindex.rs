@@ -66,7 +66,13 @@ impl RouteRequest {
     }
 
     fn has_lookup_key(&self) -> bool {
-        self.track_guid.is_some() || self.feed_guid.is_some()
+        self.track_guid
+            .as_deref()
+            .is_some_and(|guid| !guid.trim().is_empty())
+            && self
+                .feed_guid
+                .as_deref()
+                .is_some_and(|guid| !guid.trim().is_empty())
     }
 
     fn embedded_resolution(&self) -> RouteResolution {
@@ -384,6 +390,24 @@ mod tests {
         assert_eq!(request.track_guid.as_deref(), Some("track-guid"));
         assert_eq!(request.feed_guid.as_deref(), Some("feed-guid"));
         assert_eq!(request.embedded_routes_json.as_deref(), Some("[]"));
+    }
+
+    #[test]
+    fn musicindex_does_not_request_routes_with_one_guid() -> Result<()> {
+        let tags = TrackTags {
+            musicindex: vec![
+                TagText::new("Track Guid", "track-guid"),
+                TagText::new("Value Routes", "[]"),
+            ],
+            tags: Vec::new(),
+            duration: None,
+        };
+        let mut resolver =
+            ValueRouteResolver::new(true, "http://127.0.0.1:1", Duration::from_secs(1), false)?;
+
+        assert_eq!(resolver.request(1, &tags), RouteRequestStatus::NoLookupKey);
+        assert!(resolver.drain().is_empty());
+        Ok(())
     }
 
     #[test]

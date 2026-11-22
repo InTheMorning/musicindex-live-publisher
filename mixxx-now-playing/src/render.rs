@@ -54,7 +54,17 @@ pub fn render_metadata_json_with_routes(
     target: &str,
     value_routes_source: ValueRoutesSource,
 ) -> Result<String> {
-    let value_routes_json = display.tags.musicindex_value("Value Routes");
+    // ADR 0024 §Each Producer Examines The Two GUIDs: the drop file holds
+    // routes only when the track has a feed GUID and a track GUID.
+    let has_guid = |key| {
+        display
+            .tags
+            .musicindex_value(key)
+            .is_some_and(|guid| !guid.trim().is_empty())
+    };
+    let value_routes_json = (has_guid("Feed Guid") && has_guid("Track Guid"))
+        .then(|| display.tags.musicindex_value("Value Routes"))
+        .flatten();
     let value_routes = value_routes_json
         .map(serde_json::from_str::<Vec<PaymentRoute>>)
         .transpose()?
@@ -267,6 +277,37 @@ mod tests {
         assert_eq!(value["value_routes"], serde_json::json!([]));
         assert_eq!(value["value_routes_source"], serde_json::Value::Null);
         assert_eq!(value["schema"], "musicindex.nowplaying/3");
+        Ok(())
+    }
+
+    #[test]
+    fn render_metadata_json_drops_embedded_routes_with_one_guid() -> Result<()> {
+        // ADR 0024: a track GUID alone can find the routes of a different track.
+        for guid_key in ["Feed Guid", "Track Guid"] {
+            let tags = TrackTags {
+                musicindex: vec![
+                    TagText::new(guid_key, "one-guid"),
+                    TagText::new(
+                        "Value Routes",
+                        r#"[{"recipient_name":"Alice","route_type":"node","split":90}]"#,
+                    ),
+                ],
+                tags: Vec::new(),
+                duration: None,
+            };
+
+            let rendered = render_metadata_json(TrackDisplay {
+                artist: "Artist",
+                title: "Title",
+                album: None,
+                play_id: None,
+                tags: &tags,
+            })?;
+            let value: serde_json::Value = serde_json::from_str(&rendered)?;
+
+            assert_eq!(value["value_routes"], serde_json::json!([]), "{guid_key}");
+            assert_eq!(value["value_routes_source"], serde_json::Value::Null);
+        }
         Ok(())
     }
 

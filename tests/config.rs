@@ -176,8 +176,8 @@ fn dropfile(target: &str, title: &str) -> String {
         "title": title,
         "duration_secs": 187.326,
         "image": null,
-        "feed_guid": null,
-        "track_guid": null,
+        "feed_guid": "feed-guid",
+        "track_guid": "track-guid",
         "album": null,
         "play_id": null,
         "value_routes": [{

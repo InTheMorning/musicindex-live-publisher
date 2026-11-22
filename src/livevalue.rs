@@ -167,7 +167,7 @@ impl LogFacts {
         Self {
             observed_at,
             kind: ShowLogEntryKind::Track,
-            payable: Some(!dropfile.value_routes.is_empty()),
+            payable: Some(has_payable_routes(dropfile)),
             artist: Some(dropfile.artist.clone()),
             title: Some(dropfile.title.clone()),
             album: dropfile.album.clone(),
@@ -252,6 +252,19 @@ pub fn payload_from_dropfile(
         play_id: dropfile.play_id.clone(),
         log: None,
     }
+}
+
+/// Returns whether a drop file can pay its value routes.
+pub(crate) fn has_payable_routes(dropfile: &DropFile) -> bool {
+    !dropfile.value_routes.is_empty()
+        && dropfile
+            .feed_guid
+            .as_deref()
+            .is_some_and(|guid| !guid.trim().is_empty())
+        && dropfile
+            .track_guid
+            .as_deref()
+            .is_some_and(|guid| !guid.trim().is_empty())
 }
 
 /// Fixed title for the dead block.
