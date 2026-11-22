@@ -26,9 +26,17 @@ Replace the two names in each command.
 - A `.deb` package of this repository. Make it on a different computer (ADR 0019). A small radio host does not have
   the CPU and the memory to make it.
 - The `event_id` and the broadcaster token file of the station event. Each event has one owner instance (ADR 0016).
-- Free memory for AzuraCast at its highest use. On 2026-11-22, a test host had 1.9 GiB of memory and 512 MiB of swap.
-  All of it was in use, and the kernel stopped the user manager of the account. The cause is an inference: the save of
-  a DJ account in AzuraCast starts a second Liquidsoap for a check. §Restart The User Manager gives the recovery.
+- Free memory for AzuraCast at its highest use, and approximately 20 MiB for the two units. On 2026-11-22, a test host
+  used all its memory and swap. The kernel then stopped the user manager of the account.
+  The cause was 300 `docker-proxy` processes with 960 MiB: AzuraCast publishes 150 ports, and the default Docker
+  userland proxy starts two processes for each port. Count them as root:
+
+  ```sh
+  ps -C docker-proxy --no-headers | wc -l
+  ```
+
+  If the count is large, set `"userland-proxy": false` in `/etc/docker/daemon.json` and restart Docker. The tutorial
+  gives this step. §Restart The User Manager gives the recovery after a stop.
 
 ## Make The Account
 
