@@ -5,11 +5,10 @@ edition = "2024"
 
 [dependencies]
 now-playing-drop = { path = "../now-playing-drop" }
-musicindex-tags = { git = "https://github.com/InTheMorning/musicindex-lib", rev = "3b7129a9e57477a1dc9ce51884aa1a96e5311b59" }
+musicindex-tags = { git = "https://github.com/InTheMorning/musicindex-lib", rev = "fad5343849a7aad4eba2c0ba3232b8d851cacdfa" }
 anyhow = "1"
 directories = "6"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
-lofty = "0.22"
 reqwest = { version = "0.13", default-features = false, features = ["blocking", "charset", "http2", "json", "native-tls", "system-proxy"] }
 rusqlite = { version = "0.38", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
@@ -21,5 +20,6 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [dev-dependencies]
 musicindex-live-publisher = { path = ".." }
+lofty = "0.22"
 tempfile = "3"
 now-playing-drop = { path = "../now-playing-drop", features = ["test-server"] }
