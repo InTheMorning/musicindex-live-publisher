@@ -34,8 +34,12 @@ enum Route {
     Other,
 }
 
-fn route_of(path: &str) -> Route {
-    if path.ends_with("/metadata") {
+/// Gives the route of one request. The publisher also reads the metadata
+/// route with `GET` before each keepalive (ADR 0023). That read gets the
+/// `404` of `Route::Other`, so it does not take a scripted publish reply,
+/// and the publisher then sends the keepalive.
+fn route_of(method: &str, path: &str) -> Route {
+    if path.ends_with("/metadata") && method != "GET" {
         Route::Metadata
     } else if path.ends_with("/keepalive") {
         Route::Keepalive
@@ -268,7 +272,7 @@ fn serve(
     let mut body = vec![0_u8; content_length];
     reader.read_exact(&mut body)?;
 
-    let route = route_of(&path);
+    let route = route_of(&method, &path);
     let index = {
         let mut requests = requests.lock().map_err(|_| anyhow!("poisoned"))?;
         requests.push(Recorded {
