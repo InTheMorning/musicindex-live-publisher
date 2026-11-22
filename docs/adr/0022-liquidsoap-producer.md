@@ -9,6 +9,9 @@
   choice.
 - Operator choice, 2026-11-21: `state.json` holds all keys, so the producer does not read the media files.
 - Operator choice, 2026-11-21: the producer and the publisher operate as one user account with lingering.
+- Revised 2026-11-21, while Proposed: the format gets the field `jingle`, and §Jingle Mode replaces the operator rule
+  with a producer rule. The orchestrator session sent the evidence. The format is not implemented, so the version stays
+  1. No decision was reversed.
 
 ## Context
 
@@ -54,6 +57,7 @@ the owner.
 | `seq` | integer | Changes at each track. Starts at 0 at each start of Liquidsoap. |
 | `written` | number | The heartbeat. |
 | `live` | boolean | `true` while a live DJ is on air. |
+| `jingle` | boolean | `true` while a jingle plays in AzuraCast jingle mode. See §Jingle Mode. |
 | `track_started` | number | With `seq`, it makes `play_id`. |
 | `title`, `artist`, `album` | string | The drop file fields of the same name. |
 | `track_guid`, `feed_guid`, `image` | string | The drop file fields of the same name. |
@@ -75,6 +79,7 @@ The producer reads the state file each 500 milliseconds. It writes the drop file
 | Not fresh, or missing, or not readable | Not held | No file |
 | Fresh, `live` is `true` | Not held | No file |
 | Fresh, `live` is `false`, `track_guid` and routes present | Held | The routes |
+| Fresh, `live` is `false`, `jingle` is `true` | Held | Empty `artist`, `title` and `value_routes`. Each other field is `null`. |
 | Fresh, `live` is `false`, no `track_guid` or no routes | Held | Empty `value_routes` |
 
 - The producer removes the drop file before it releases the lock. ADR 0005 §Publisher Behavior then gives the dead block
@@ -110,9 +115,17 @@ limit.
 AzuraCast jingle mode gives a jingle the metadata of the previous track. `handle_jingle_mode` in `azuracast.liq` maps
 the metadata with `update=false`, so the marker `jingle_mode` is not in the metadata at the Pre-Broadcast slot
 (`musicindex-research`, `sources/broadcast-audio/streaming/azuracast/util/docker/stations/liquidsoap/azuracast.liq`,
-lines 681-690). The producer thus reports the previous track for the time of the jingle, and its artist is paid.
+lines 681-690). Without a rule, the producer reports the previous track for the time of the jingle, and its artist is
+paid.
 
-Operator rule until a decision closes Open Question 1: do not use jingle mode on a playlist of a MusicIndex station.
+- The previous metadata includes its `rid`. Liquidsoap gives each new request a new `rid`.
+- The slot text sets `jingle` to `true` when `rid` is not empty and is equal to the `rid` of the last track change.
+  A live DJ track has an empty `rid`, so it never sets `jingle`.
+- For a jingle, the producer writes the row of §What The Producer Writes for `jingle`. The publisher then sends the dead
+  block. The drop file does not name the previous track, so the show log does not record a second play of it.
+
+The `rid` rule is an inference from the code. Nobody tested it on a server. Operator rule until the test of Open
+Question 1 passes: do not use jingle mode on a playlist of a MusicIndex station.
 
 ## Invariants
 
@@ -122,7 +135,7 @@ Operator rule until a decision closes Open Question 1: do not use jingle mode on
 
 ## Verification
 
-Mechanical. The producer crate has unit tests with `tempfile` and an injected clock. The tests cover each row of
+Mechanical. The producer crate has unit tests with `tempfile` and an injected clock. A jingle is one of the rows. The tests cover each row of
 §What The Producer Writes, the second parse of `value_routes`, an unknown format and a stale heartbeat.
 
 Manual. The reference slot text passes `liquidsoap --check` on a test station, and the steps of the runbook pass on a
@@ -130,8 +143,8 @@ test station. A test here cannot start AzuraCast.
 
 ## Open Questions
 
-1. **Jingle mode.** A marker for a jingle needs a hook before `handle_jingle_mode`. The research session can examine
-   one. Until then, §Jingle Mode applies.
+1. **Jingle mode.** One jingle in jingle mode on a test station must give `jingle` as `true` in `state.json`. The
+   operator must approve that server change. Until it passes, the operator rule of §Jingle Mode applies.
 2. **The time to the listener.** The relay applies the stream delay (ADR 0011). The delay for the MP3 mount and for
    HLS is not measured.
 
