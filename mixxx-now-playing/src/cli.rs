@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use anyhow::{Result, anyhow};
+use now_playing_drop::instance::validate_instance_name;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum OutputFormat {
@@ -65,27 +66,6 @@ impl Default for Cli {
             display_dir: None,
             instance: None,
         }
-    }
-}
-
-/// Checks an instance name against `^[a-z0-9][a-z0-9-]{0,31}$` (ADR 0021
-/// §The Unit Names).
-///
-/// # Errors
-///
-/// Returns an error that names ADR 0021 when the name does not match.
-pub(crate) fn validate_instance_name(name: &str) -> Result<()> {
-    let mut chars = name.chars();
-    let first_ok = chars
-        .next()
-        .is_some_and(|c| c.is_ascii_lowercase() || c.is_ascii_digit());
-    let rest_ok = chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
-    if first_ok && rest_ok && name.len() <= 32 {
-        Ok(())
-    } else {
-        Err(anyhow!(
-            "ADR 0021 §The Unit Names: instance name {name:?} must match ^[a-z0-9][a-z0-9-]{{0,31}}$"
-        ))
     }
 }
 

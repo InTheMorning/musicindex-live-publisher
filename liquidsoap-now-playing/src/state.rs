@@ -1,0 +1,39 @@
+//! Parse the versioned Liquidsoap state file.
+
+use serde::Deserialize;
+
+/// The supported Liquidsoap state format.
+pub const STATE_FORMAT: &str = "musicindex-liquidsoap-state/1";
+
+/// The format marker read before the full state record.
+#[derive(Debug, Deserialize)]
+pub struct StateHeader {
+    /// The state format identifier.
+    pub format: String,
+}
+
+/// The fields in the Liquidsoap state file.
+#[derive(Debug, Clone, Deserialize)]
+pub struct StateFile {
+    pub format: String,
+    pub seq: i64,
+    pub written: f64,
+    pub live: bool,
+    #[serde(default)]
+    pub jingle: bool,
+    pub track_started: f64,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub artist: String,
+    #[serde(default)]
+    pub album: Option<String>,
+    #[serde(default)]
+    pub track_guid: Option<String>,
+    #[serde(default)]
+    pub feed_guid: Option<String>,
+    #[serde(default)]
+    pub image: Option<String>,
+    #[serde(default)]
+    pub value_routes: Option<String>,
+}

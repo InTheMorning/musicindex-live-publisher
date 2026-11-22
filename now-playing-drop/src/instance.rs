@@ -97,6 +97,27 @@ impl InstanceSettings {
     }
 }
 
+/// Checks an instance name against `^[a-z0-9][a-z0-9-]{0,31}$` (ADR 0021
+/// §The Unit Names).
+///
+/// # Errors
+///
+/// Returns an error that names ADR 0021 when the name does not match.
+pub fn validate_instance_name(name: &str) -> Result<()> {
+    let mut chars = name.chars();
+    let first_ok = chars
+        .next()
+        .is_some_and(|c| c.is_ascii_lowercase() || c.is_ascii_digit());
+    let rest_ok = chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
+    if first_ok && rest_ok && name.len() <= 32 {
+        Ok(())
+    } else {
+        Err(anyhow!(
+            "ADR 0021 §The Unit Names: instance name {name:?} must match ^[a-z0-9][a-z0-9-]{{0,31}}$"
+        ))
+    }
+}
+
 /// Applies the target name rule of the publisher (`src/config.rs`): the name
 /// is not empty and has no control character. The producer also refuses a
 /// path separator and a dot name, because the name is part of a file name.
