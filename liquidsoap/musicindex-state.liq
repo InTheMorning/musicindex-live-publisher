@@ -1,6 +1,6 @@
 # MusicIndex producer support: the reference slot text of publisher ADR 0022.
 # It writes state.json in the format musicindex-liquidsoap-state/2 (ADR 0025).
-# liquidsoap-now-playing reads that file. A field change needs a new format version.
+# liquidsoap-now-playing reads that file. A new required field needs a new format version. An optional field does not (ADR 0026).
 # Put this text in the AzuraCast Pre-Broadcast slot, after azuracast.handle_jingle_mode.
 # Replace INSTANCE on the musicindex_dir line with the instance name of ADR 0022 §The Template Unit.
 settings.request.metadata_decoders.recode.exclude := list.append(settings.request.metadata_decoders.recode.exclude(), ["podcast value routes", "podcast chapters"])
@@ -58,6 +58,7 @@ def musicindex_write() =
     cue_in = float_of_string(default=0., m["liq_cue_in"]),
     title = m["title"],
     artist = m["artist"],
+    song = m["song"],
     album = m["album"],
     track_guid = m["podcast item guid"],
     feed_guid = m["podcast feed guid"],

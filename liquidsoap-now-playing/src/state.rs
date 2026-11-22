@@ -28,6 +28,10 @@ pub struct StateFile {
     pub title: String,
     #[serde(default)]
     pub artist: String,
+    /// The ICY title of the file (ADR 0026 §The State File Format 2 Gets
+    /// `song`). A missing field is the same as an empty field.
+    #[serde(default)]
+    pub song: String,
     #[serde(default)]
     pub album: Option<String>,
     #[serde(default)]

@@ -160,7 +160,19 @@ musicindex-live-publisher target add \
   --token-file ~/.config/musicindex-live-publisher/INSTANCE/tokens/default.token
 ```
 
-Replace `EVENT_ID` with the `event_id` of the station event. Examine the result:
+Replace `EVENT_ID` with the `event_id` of the station event.
+
+Open `~/.config/musicindex-live-publisher/INSTANCE/config.toml`. In the `[[target]]` table with the name `default`,
+add this line:
+
+```toml
+display_dir = "/run/user/UID/musicindex-live-publisher/INSTANCE/display"
+```
+
+The producer writes `display.json` in this folder (ADR 0026). The unit makes the folder. Without this line, the relay
+gets no display state. Replace `UID` as in the step before.
+
+Examine the result:
 
 ```sh
 musicindex-live-publisher config show \

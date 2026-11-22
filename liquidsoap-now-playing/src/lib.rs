@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use lookup::RouteLookups;
+use now_playing_drop::display::{Artwork, DisplayOutput, ShownTrack, image_url};
 use now_playing_drop::merge::{has_percentage, local_split_routes, merged_routes};
 use now_playing_drop::sink::{OutputFile, Presence};
 use now_playing_drop::{
@@ -21,6 +22,9 @@ use now_playing_drop::{
 use state::StateFile;
 
 const FRESHNESS: Duration = Duration::from_secs(5);
+/// The longest song line that the relay accepts, in characters (ADR 0026
+/// §What The Producer Writes In `display.json`).
+const MAX_SONG_LINE_CHARS: usize = 1_024;
 
 /// The route service result of each chapter song, by the pair of feed GUID
 /// and item GUID (ADR 0025 §The Chapter Route Lookup). An empty list is the
@@ -41,12 +45,15 @@ pub struct Producer {
     bad_routes_seq: Option<i64>,
     bad_chapters_seq: Option<i64>,
     lookups: RouteLookups,
+    display: Option<DisplayOutput>,
 }
 
 impl Producer {
     /// Creates a producer for one state file and configured instance.
     pub fn new(state_path: impl Into<PathBuf>, settings: InstanceSettings) -> Self {
         let drop_path = settings.drop_dir.join(format!("{}.json", settings.target));
+        // ADR 0026: the producer writes `display.json` only with `display_dir`.
+        let display = settings.display_dir.map(DisplayOutput::new);
         Self {
             state_path: state_path.into(),
             target: settings.target,
@@ -59,7 +66,26 @@ impl Producer {
             bad_routes_seq: None,
             bad_chapters_seq: None,
             lookups: RouteLookups::new(None),
+            display,
         }
+    }
+
+    /// Writes the display state `null` at start (ADR 0026 §What The Producer
+    /// Writes In `display.json`). Without a display directory, it does
+    /// nothing. A display write error gives a warning and never stops the
+    /// producer.
+    ///
+    /// # Errors
+    ///
+    /// This function does not return an error at this time. The `Result`
+    /// type keeps the signature stable.
+    pub fn start(&mut self) -> Result<()> {
+        if let Some(display) = self.display.as_mut()
+            && let Err(error) = display.start()
+        {
+            warn_display(display, &error);
+        }
+        Ok(())
     }
 
     /// Adds the route service client for chapter lookups.
@@ -139,7 +165,48 @@ impl Producer {
             &mut self.bad_routes_seq,
         )?;
         self.output
-            .set(Presence::Present(serde_json::to_string_pretty(&content)?))
+            .set(Presence::Present(serde_json::to_string_pretty(&content)?))?;
+        // ADR 0026 §Invariants: the display state follows the drop file of
+        // the same read, and uses its artist, title and play_id.
+        self.write_display_track(&parsed, &content);
+        Ok(())
+    }
+
+    /// Writes the display track of one fresh state (ADR 0026 §What The
+    /// Producer Writes In `display.json`). A write error gives a warning.
+    fn write_display_track(&mut self, state: &StateFile, content: &serde_json::Value) {
+        let Some(display) = self.display.as_mut() else {
+            return;
+        };
+        let line = song_line(state).filter(|line| line.chars().count() <= MAX_SONG_LINE_CHARS);
+        let Some(line) = line else {
+            write_display(display, None);
+            return;
+        };
+        let (artist, title, play_id) = if state.jingle {
+            // A jingle has the state artist and title, and no play_id.
+            (state.artist.as_str(), state.title.as_str(), None)
+        } else {
+            (
+                content["artist"].as_str().unwrap_or(""),
+                content["title"].as_str().unwrap_or(""),
+                content["play_id"].as_str(),
+            )
+        };
+        let artwork = nonempty(state.image.as_deref())
+            .and_then(image_url)
+            .map(|url| Artwork::Url(url.to_owned()));
+        write_display(
+            display,
+            Some(ShownTrack {
+                artist,
+                title,
+                artwork: artwork.as_ref(),
+                song_line: &line,
+                play_id,
+                album: nonempty(state.album.as_deref()),
+            }),
+        );
     }
 
     fn is_fresh(&self, now: Instant) -> bool {
@@ -179,7 +246,44 @@ impl Producer {
     fn clear(&mut self) -> Result<()> {
         self.output.set(Presence::Absent)?;
         self.lock = None;
+        // ADR 0026: the display state is `null` when the producer releases
+        // the lock. The writer does not rewrite a file with the same content.
+        if let Some(display) = self.display.as_mut() {
+            write_display(display, None);
+        }
         Ok(())
+    }
+}
+
+/// Writes the display state. A display error gives a warning and never stops
+/// the drop file (ADR 0026 §What The Producer Writes In `display.json`).
+fn write_display(display: &mut DisplayOutput, track: Option<ShownTrack<'_>>) {
+    if let Err(error) = display.write(track) {
+        warn_display(display, &error);
+    }
+}
+
+fn warn_display(output: &DisplayOutput, error: &anyhow::Error) {
+    let dir = output.dir().display();
+    tracing::warn!(
+        dir = %dir,
+        error = %format!("{error:#}"),
+        "display write failed"
+    );
+}
+
+/// The song line of a file (ADR 0026 §The Song Line): `song`, else
+/// `artist - title`, else `artist`, else `title`, else `None`. It uses the
+/// strings of the state with no change.
+fn song_line(state: &StateFile) -> Option<String> {
+    if !state.song.is_empty() {
+        return Some(state.song.clone());
+    }
+    match (state.artist.is_empty(), state.title.is_empty()) {
+        (false, false) => Some(format!("{} - {}", state.artist, state.title)),
+        (false, true) => Some(state.artist.clone()),
+        (true, false) => Some(state.title.clone()),
+        (true, true) => None,
     }
 }
 
@@ -1258,6 +1362,274 @@ mod tests {
             producer.shutdown()?;
         }
         assert!(server.requests().is_empty());
+        Ok(())
+    }
+
+    // The display state tests of ADR 0026 §Verification.
+
+    fn display_settings(temp: &TempDir) -> InstanceSettings {
+        InstanceSettings {
+            display_dir: Some(temp.path().join("display")),
+            ..settings(&temp.path().join("drop"))
+        }
+    }
+
+    fn read_display(temp: &TempDir) -> Result<serde_json::Value> {
+        let path = temp.path().join("display").join("display.json");
+        Ok(serde_json::from_slice(&fs::read(path)?)?)
+    }
+
+    /// Gives the drop file and the display state after each `(elapsed,
+    /// cue_in)` read of one fresh state with the fields of `patch`.
+    fn display_reads(
+        patch: &serde_json::Value,
+        reads: &[(f64, f64)],
+    ) -> Result<Vec<(serde_json::Value, serde_json::Value)>> {
+        let temp = TempDir::new()?;
+        let path = temp.path().join("state.json");
+        let mut producer = Producer::new(&path, display_settings(&temp));
+        producer.start()?;
+        let mut fields = patch.clone();
+        let now = Instant::now();
+        fs::write(&path, patched(0.0, &fields)?)?;
+        producer.poll(now)?;
+        let mut outputs = Vec::new();
+        for (step, (elapsed, cue_in)) in reads.iter().enumerate() {
+            fields["elapsed"] = (*elapsed).into();
+            fields["cue_in"] = (*cue_in).into();
+            let written = f64::from(u32::try_from(step)?) + 1.0;
+            fs::write(&path, patched(written, &fields)?)?;
+            producer.poll(now + Duration::from_millis(100 * (u64::try_from(step)? + 1)))?;
+            outputs.push((
+                serde_json::from_slice(&fs::read(&producer.drop_path)?)?,
+                read_display(&temp)?,
+            ));
+        }
+        producer.shutdown()?;
+        Ok(outputs)
+    }
+
+    fn three_chapters() -> serde_json::Value {
+        serde_json::json!([
+            remote(0, 10_000, "f1", "i1".into()),
+            remote(10_000, 20_000, "f2", "i2".into()),
+            remote(25_000, 30_000, "f3", "i3".into()),
+        ])
+    }
+
+    const CHAPTER_READS: [(f64, f64); 5] = [
+        (5.0, 0.0),
+        (15.0, 0.0),
+        (22.0, 0.0),
+        (27.0, 0.0),
+        (31.0, 0.0),
+    ];
+
+    fn chapter_state(extra: serde_json::Value) -> serde_json::Value {
+        let mut fields = serde_json::json!({
+            "format": state::STATE_FORMAT_2,
+            "chapters": three_chapters().to_string(),
+            "value_routes": EPISODE_ROUTES,
+        });
+        if let (Some(target), Some(extra)) = (fields.as_object_mut(), extra.as_object()) {
+            for (key, value) in extra {
+                target.insert(key.clone(), value.clone());
+            }
+        }
+        fields
+    }
+
+    fn assert_track_of_drop(drop: &serde_json::Value, shown: &serde_json::Value, line: &str) {
+        let track = &shown["track"];
+        assert_eq!(shown["schema"], "musicindex.display/3");
+        assert_eq!(track["artist"], drop["artist"]);
+        assert_eq!(track["title"], drop["title"]);
+        assert_eq!(track["play_id"], drop["play_id"]);
+        assert_eq!(track["song_line"], line);
+    }
+
+    #[test]
+    fn display_chapter_segments_use_the_drop_file_and_the_file_song_line() -> Result<()> {
+        let out = display_reads(&chapter_state(serde_json::json!({})), &CHAPTER_READS)?;
+        let mut play_ids = Vec::new();
+        for (drop, shown) in &out {
+            assert_track_of_drop(drop, shown, "Artist - Title");
+            play_ids.push(shown["track"]["play_id"].clone());
+        }
+        assert_eq!(out[0].1["track"]["artist"], "Artist 0");
+        assert_eq!(out[0].1["track"]["title"], "Song 0");
+        assert_eq!(out[2].1["track"]["title"], "Title");
+        assert_eq!(play_ids.len(), 5);
+        assert_eq!(play_ids[1], "ls-12500-4-10000");
+        Ok(())
+    }
+
+    #[test]
+    fn display_song_field_is_the_song_line_for_each_segment() -> Result<()> {
+        let patch = chapter_state(serde_json::json!({"song": "ICY Title"}));
+        for (drop, shown) in display_reads(&patch, &CHAPTER_READS)? {
+            assert_track_of_drop(&drop, &shown, "ICY Title");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn display_song_line_falls_back_to_artist_then_title_then_null() -> Result<()> {
+        let only_artist = serde_json::json!({"title": ""});
+        let out = display_reads(&only_artist, &[(1.0, 0.0)])?;
+        assert_eq!(out[0].1["track"]["song_line"], "Artist");
+        let only_title = serde_json::json!({"artist": ""});
+        let out = display_reads(&only_title, &[(1.0, 0.0)])?;
+        assert_eq!(out[0].1["track"]["song_line"], "Title");
+        let neither = serde_json::json!({"artist": "", "title": ""});
+        let out = display_reads(&neither, &[(1.0, 0.0)])?;
+        assert_eq!(out[0].1["track"], serde_json::Value::Null);
+        Ok(())
+    }
+
+    #[test]
+    fn display_song_file_without_chapters_gives_one_state() -> Result<()> {
+        let out = display_reads(&serde_json::json!({}), &[(1.0, 0.0), (2.0, 0.0)])?;
+        for (drop, shown) in &out {
+            assert_track_of_drop(drop, shown, "Artist - Title");
+        }
+        assert_eq!(out[0].1, out[1].1);
+        assert_eq!(out[0].1["track"]["play_id"], "ls-12500-4");
+        assert_eq!(out[0].1["track"]["album"], "Album");
+        Ok(())
+    }
+
+    #[test]
+    fn display_jingle_has_the_state_names_and_no_play_id() -> Result<()> {
+        let out = display_reads(&serde_json::json!({"jingle": true}), &[(1.0, 0.0)])?;
+        let track = &out[0].1["track"];
+        assert_eq!(track["artist"], "Artist");
+        assert_eq!(track["title"], "Title");
+        assert_eq!(track["song_line"], "Artist - Title");
+        assert!(track["play_id"].is_null());
+        Ok(())
+    }
+
+    #[test]
+    fn display_live_state_gives_null() -> Result<()> {
+        let temp = TempDir::new()?;
+        let path = temp.path().join("state.json");
+        let mut producer = Producer::new(&path, display_settings(&temp));
+        producer.start()?;
+        let now = Instant::now();
+        fs::write(&path, state(0.0, false, ""))?;
+        producer.poll(now)?;
+        fs::write(&path, state(1.0, false, ""))?;
+        producer.poll(now + Duration::from_millis(500))?;
+        assert!(!read_display(&temp)?["track"].is_null());
+        fs::write(&path, state(2.0, true, ""))?;
+        producer.poll(now + Duration::from_secs(1))?;
+        assert_eq!(read_display(&temp)?["track"], serde_json::Value::Null);
+        producer.shutdown()?;
+        Ok(())
+    }
+
+    #[test]
+    fn a_target_without_display_dir_writes_no_display_file() -> Result<()> {
+        let temp = TempDir::new()?;
+        let path = temp.path().join("state.json");
+        let mut producer = Producer::new(&path, settings(&temp.path().join("drop")));
+        producer.start()?;
+        let now = Instant::now();
+        fs::write(&path, state(0.0, false, ""))?;
+        producer.poll(now)?;
+        fs::write(&path, state(1.0, false, ""))?;
+        producer.poll(now + Duration::from_millis(500))?;
+        producer.shutdown()?;
+        assert!(producer.drop_path.parent().is_some_and(Path::exists));
+        assert!(!temp.path().join("display").exists());
+        assert!(!temp.path().join("drop").join("display.json").exists());
+        Ok(())
+    }
+
+    #[test]
+    fn a_format_2_state_without_song_parses_and_gives_artist_title() -> Result<()> {
+        let mut value: serde_json::Value = serde_json::from_str(&state(0.0, false, ""))?;
+        value["format"] = state::STATE_FORMAT_2.into();
+        assert!(value.get("song").is_none());
+        let parsed: StateFile = serde_json::from_value(value)?;
+        assert_eq!(parsed.song, "");
+        assert_eq!(song_line(&parsed).as_deref(), Some("Artist - Title"));
+        let out = display_reads(
+            &serde_json::json!({"format": state::STATE_FORMAT_2}),
+            &[(1.0, 0.0)],
+        )?;
+        assert_eq!(out[0].1["track"]["song_line"], "Artist - Title");
+        Ok(())
+    }
+
+    #[test]
+    fn display_song_line_limit_is_1024_characters() -> Result<()> {
+        let long = "a".repeat(1_025);
+        let out = display_reads(&serde_json::json!({"song": long}), &[(1.0, 0.0)])?;
+        assert_eq!(out[0].1["track"], serde_json::Value::Null);
+        let limit = "é".repeat(1_024);
+        let out = display_reads(&serde_json::json!({"song": limit.clone()}), &[(1.0, 0.0)])?;
+        assert_eq!(out[0].1["track"]["song_line"], limit.as_str());
+        Ok(())
+    }
+
+    #[test]
+    fn display_artwork_is_a_http_url_or_null() -> Result<()> {
+        for image in [
+            "image",
+            "ftp://example.test/a.png",
+            "data:image/png;base64,AA",
+            "",
+        ] {
+            let out = display_reads(&serde_json::json!({"image": image}), &[(1.0, 0.0)])?;
+            assert!(out[0].1["track"]["artwork"].is_null(), "{image}");
+        }
+        let url = "https://example.test/a.png";
+        let out = display_reads(&serde_json::json!({"image": url}), &[(1.0, 0.0)])?;
+        assert_eq!(
+            out[0].1["track"]["artwork"],
+            serde_json::json!({"url": url})
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn display_start_and_shutdown_write_null() -> Result<()> {
+        let temp = TempDir::new()?;
+        let path = temp.path().join("state.json");
+        let mut producer = Producer::new(&path, display_settings(&temp));
+        assert!(!temp.path().join("display").exists());
+        producer.start()?;
+        assert_eq!(read_display(&temp)?["track"], serde_json::Value::Null);
+        let now = Instant::now();
+        fs::write(&path, state(0.0, false, ""))?;
+        producer.poll(now)?;
+        fs::write(&path, state(1.0, false, ""))?;
+        producer.poll(now + Duration::from_millis(500))?;
+        assert!(!read_display(&temp)?["track"].is_null());
+        producer.shutdown()?;
+        assert_eq!(read_display(&temp)?["track"], serde_json::Value::Null);
+        Ok(())
+    }
+
+    #[test]
+    fn display_keeps_the_track_when_a_fresh_state_does_not_parse() -> Result<()> {
+        let temp = TempDir::new()?;
+        let path = temp.path().join("state.json");
+        let mut producer = Producer::new(&path, display_settings(&temp));
+        producer.start()?;
+        let now = Instant::now();
+        fs::write(&path, state(0.0, false, ""))?;
+        producer.poll(now)?;
+        fs::write(&path, state(1.0, false, ""))?;
+        producer.poll(now + Duration::from_millis(500))?;
+        let before = read_display(&temp)?;
+        assert!(!before["track"].is_null());
+        fs::write(&path, b"{")?;
+        producer.poll(now + Duration::from_secs(2))?;
+        assert_eq!(read_display(&temp)?, before);
+        producer.shutdown()?;
         Ok(())
     }
 }

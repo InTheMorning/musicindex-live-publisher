@@ -190,6 +190,7 @@ mod tests {
             track_started: 1.0,
             title: "State title".to_owned(),
             artist: "State artist".to_owned(),
+            song: String::new(),
             album: None,
             track_guid: None,
             feed_guid: None,

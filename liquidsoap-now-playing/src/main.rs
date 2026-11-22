@@ -44,6 +44,7 @@ fn main() -> Result<()> {
     let terminated = Arc::new(AtomicBool::new(false));
     flag::register(SIGTERM, Arc::clone(&terminated))?;
     flag::register(SIGINT, Arc::clone(&terminated))?;
+    producer.start()?;
     while !terminated.load(Ordering::Relaxed) {
         producer.poll(Instant::now())?;
         for _ in 0..50 {
