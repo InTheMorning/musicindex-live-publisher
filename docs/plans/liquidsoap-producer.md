@@ -67,3 +67,13 @@ These checks need a test station and the operator. Report each one as open until
 2. The runbook steps install the two units for one account with lingering. The two units start after a reboot.
 3. A stop of Liquidsoap gives the dead block on the relay in approximately 6 seconds.
 4. The two sequences at the start of a DJ set and the two at the end each end with the correct snapshot.
+
+## Future Items
+
+These items are not packets of this plan. Each one needs its own task, and a decision record when it meets the bar.
+
+1. **A lock state command.** Operator decision of 2026-11-21, relayed by the orchestrator session: a
+   command tells if a producer holds `.producer.lock` of an instance, and gives the result as JSON. HitIt ADR 0112
+   (Proposed, HitIt commit `3e61236`) can then make sure that the station producer released its lock before "Go on air"
+   of a DJ set. Until the command exists, the HitIt confirmation text is the only guard for the first risk in
+   ADR 0023 §Risks. The command is a new public interface between repositories, so it needs a decision record.
