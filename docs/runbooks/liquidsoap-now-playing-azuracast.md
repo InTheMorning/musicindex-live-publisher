@@ -63,21 +63,27 @@ Do these steps as root. Replace `UID` with the output of `id -u musicindex`.
 
 ```sh
 install -d -m 0755 /etc/systemd/system/user@UID.service.d
-printf '[Service]\nRestart=on-failure\nRestartSec=10s\n' > /etc/systemd/system/user@UID.service.d/restart.conf
+printf '[Unit]\nStartLimitIntervalSec=0\n\n[Service]\nRestart=on-failure\nRestartSec=10s\n' \
+  > /etc/systemd/system/user@UID.service.d/restart.conf
 systemctl daemon-reload
-systemctl show -p Restart user@UID.service
+systemctl show -p Restart -p StartLimitIntervalUSec user@UID.service
 ```
 
-The last command must show `Restart=on-failure`. After a restart, the user manager starts the two enabled units.
+The last command must show `Restart=on-failure` and `StartLimitIntervalUSec=0`. After a restart, the user manager
+starts the two enabled units. While the host has no free memory, the kernel can stop the user manager again during the
+start. `StartLimitIntervalSec=0` removes the start limit, so systemd tries again each 10 seconds until the user
+manager operates.
 
-Do the test of this step on a test host only. The test stops MusicIndex for approximately 10 seconds:
+Do the test of this step on a test host only. The test stops MusicIndex for 10 seconds or more:
 
 ```sh
 systemctl kill --kill-whom=main --signal=SIGKILL user@UID.service
 systemctl is-active user@UID.service
 ```
 
-Run the second command 15 seconds after the first. It must show `active`. Then do the steps of §Examine The Result.
+Run the second command 60 seconds after the first. It must show `active`. On a host with almost no free memory, the start
+can use more than one try. On 2026-11-22 the test host used two tries and 32 seconds. If the command shows
+`activating`, run it again after 30 seconds. Then do the steps of §Examine The Result.
 
 ## Make Sure That The User Manager Operates
 
