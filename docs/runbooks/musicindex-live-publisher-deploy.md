@@ -224,6 +224,20 @@ Check, in order:
 4. Stopping the track restores the dead block.
 5. Playing a second track changes `blockGuid` but not `eventGuid`.
 
+## Make The State Directory
+
+Make the state directory of the publisher before the first start:
+
+```bash
+install -d -m 0700 ~/.local/state/musicindex-live-publisher/mixxx
+```
+
+If this directory is missing and `~/.config/musicindex-live-publisher/mixxx`
+exists, systemd 254 or later makes the state directory a symbolic link to the
+configuration directory. The show log then goes into the folder of the token
+file. `docs/runbooks/liquidsoap-now-playing-azuracast.md` §Make The State
+Directory gives the steps to correct an installed link.
+
 ## Start
 
 ```bash

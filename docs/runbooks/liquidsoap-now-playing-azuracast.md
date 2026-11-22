@@ -39,6 +39,16 @@ apt install ./musicindex-live-publisher_VERSION_amd64.deb
 
 Replace `VERSION` with the version in the file name of the package.
 
+On a host without `apt`, install the files of the package as root:
+
+```sh
+install -m 0755 musicindex-live-publisher liquidsoap-now-playing /usr/bin/
+install -m 0644 musicindex-live-publisher@.service liquidsoap-now-playing@.service /usr/lib/systemd/user/
+```
+
+Do not make a folder in the home folder of the account as root. A folder that root owns, for example `~/.config`,
+stops `systemctl --user enable`.
+
 ## Make Sure That The User Manager Operates
 
 From a different computer, log in as the account with SSH:
@@ -74,11 +84,17 @@ The DJ computer needs its own copy of the token file for the DJ publisher (ADR 0
 
 ## Write The Configuration
 
-Write `~/.config/musicindex-live-publisher/INSTANCE/config.toml` (ADR 0016) with the endpoint:
+Write `~/.config/musicindex-live-publisher/INSTANCE/config.toml` (ADR 0016) with the endpoint and the drop
+directory:
 
 ```toml
 endpoint = "https://api.musicindex.org"
+# The unit gives --watch-dir with the same path. The commands of
+# musicindex-live-publisher read this value.
+watch_dir = "/run/user/UID/musicindex-live-publisher/INSTANCE/nowplaying"
 ```
+
+Replace `UID` with the output of `id -u`.
 
 Then add the target. The producer writes the drop file for the target `default`.
 
@@ -100,12 +116,43 @@ musicindex-live-publisher config show \
 
 The output shows the target `default` and the token file path. It does not show the token.
 
+## Make The State Directory
+
+Make the state directory of the publisher before the first start:
+
+```sh
+install -d -m 0700 ~/.local/state/musicindex-live-publisher/INSTANCE
+```
+
+Why: the publisher unit sets `StateDirectory=musicindex-live-publisher/%i`. If that directory is missing and
+`~/.config/musicindex-live-publisher/INSTANCE` exists, systemd 254 or later makes the state directory a symbolic link
+to the configuration directory. The journal then shows "Unit state directory ... missing but matching configuration
+directory ... exists". The show log then goes into the folder of the token file.
+
+If the journal showed this message, stop the publisher, remove the link and make the directory:
+
+```sh
+systemctl --user stop musicindex-live-publisher@INSTANCE.service
+ls -l ~/.local/state/musicindex-live-publisher/
+rm ~/.local/state/musicindex-live-publisher/INSTANCE
+install -d -m 0700 ~/.local/state/musicindex-live-publisher/INSTANCE
+```
+
+Use `rm` only when `ls -l` shows `INSTANCE ->`, which is a link. The show log files are
+`showlog-YYYY-MM-DD.jsonl` (ADR 0017). Move them into the new state directory, if you want to keep them:
+
+```sh
+mv ~/.config/musicindex-live-publisher/INSTANCE/showlog-*.jsonl ~/.local/state/musicindex-live-publisher/INSTANCE/
+systemctl --user start musicindex-live-publisher@INSTANCE.service
+```
+
 ## Start The Units
 
 The package installs `musicindex-live-publisher@.service` and `liquidsoap-now-playing@.service` in
 `/usr/lib/systemd/user/`.
 
 ```sh
+systemctl --user daemon-reload
 systemctl --user enable --now musicindex-live-publisher@INSTANCE.service
 systemctl --user enable --now liquidsoap-now-playing@INSTANCE.service
 ```
