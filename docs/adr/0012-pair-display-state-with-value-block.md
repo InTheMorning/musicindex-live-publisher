@@ -6,6 +6,8 @@ Date: 2026-10-06
 - Changes: ADR 0008 items: version 2 of `display.json`.
 
 - Changed by: ADR 0013, 2026-10-06.
+- Changed by: ADR 0026, accepted 2026-11-22. `song_line` is the ICY `StreamTitle` of the track: the line of `butt`
+  for Mixxx, and the song line of the file for a station.
 
 Version 3 of `display.json` exists. ADR 0013 owns it. It
 adds `album`. The rules of this ADR for `song_line`, `play_id`, `songLine`

@@ -18,6 +18,8 @@
   the instance name. HitIt asked the question. No decision was reversed.
 - Changed by: ADR 0025, accepted 2026-11-22. A state format 2 with `elapsed`, `cue_in` and `chapters`, and the
   chapter rows of §What The Producer Writes. The slot text reads only the new `Podcast` frame names.
+- Changed by: ADR 0026, accepted 2026-11-22. An optional field of the state file does not need a new format version.
+  The producer writes `display.json` adjacent to the drop file.
 - Revised 2026-11-22, after acceptance: the test of Open Question 1 passed, so the operator rule of §Jingle Mode is
   removed. The orchestrator session ran the test. No decision was reversed.
 
