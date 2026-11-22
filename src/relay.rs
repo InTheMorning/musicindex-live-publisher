@@ -16,6 +16,7 @@ use reqwest::blocking::Client;
 use serde::Deserialize;
 use serde_json::Value;
 
+use crate::livevalue::is_dead_block;
 use crate::{
     ArtworkImage, DisplayEntry, DisplayState, LiveValuePayload, Pairing, ProducerState,
     PublishResult, PublisherConfig, PublisherTarget, ShowLog, ShowLogEntry,
@@ -166,6 +167,24 @@ struct PublishResponse {
 struct KeepaliveResponse {
     #[serde(default)]
     keepalive_interval_secs: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct MetadataSnapshot {
+    metadata: SnapshotPayload,
+}
+
+#[derive(Debug, Deserialize)]
+struct SnapshotPayload {
+    #[serde(rename = "blockGuid")]
+    block_guid: String,
+    value: crate::LiveValue,
+}
+
+enum MetadataRead {
+    Snapshot(MetadataSnapshot),
+    NotFound,
+    OtherStatus(StatusCode),
 }
 
 /// Blocking HTTP client for the MusicIndex relay.
@@ -327,6 +346,25 @@ impl RelayClient {
                 reason: format!("relay returned unexpected HTTP {status}"),
             }),
         }
+    }
+
+    fn read_metadata(&self, target: &RelayTarget) -> Result<MetadataRead> {
+        let url = build_url(
+            &target.endpoint,
+            &["v1", "liveitems", &target.event_id, "metadata"],
+        )?;
+        let response = self.client.get(url).send().context("read relay metadata")?;
+        let status = response.status();
+        if status == StatusCode::NOT_FOUND {
+            return Ok(MetadataRead::NotFound);
+        }
+        if status != StatusCode::OK {
+            return Ok(MetadataRead::OtherStatus(status));
+        }
+        response
+            .json::<MetadataSnapshot>()
+            .context("parse relay metadata snapshot")
+            .map(MetadataRead::Snapshot)
     }
 
     /// Publishes one display state (relay ADR 0003).
@@ -770,7 +808,7 @@ impl RelayPublisher {
 /// Shared, read-mostly state one worker's retry helpers need.
 ///
 /// This groups the parameters `run_publish`, `run_keepalive`, and
-/// `republish_after_lease_expiry` all take, so passing them through does not
+/// `republish_last_accepted` all take, so passing them through does not
 /// grow into a long, repeated argument list.
 struct WorkerContext<'a> {
     client: &'a RelayClient,
@@ -1006,6 +1044,53 @@ fn run_keepalive(
 ) -> KeepaliveAttempt {
     let target = ctx.target;
     let mut backoff = ctx.initial_backoff;
+    if *producer_state == ProducerState::Running
+        && let Some(payload) = last_accepted.filter(|payload| !is_dead_block(&payload.value))
+    {
+        match ctx.client.read_metadata(target) {
+            Ok(MetadataRead::Snapshot(snapshot)) => {
+                if is_dead_block(&snapshot.metadata.value)
+                    && snapshot.metadata.block_guid != payload.block_guid
+                {
+                    tracing::warn!(
+                        target = %target.name,
+                        event_id = %target.event_id,
+                        relay_block_guid = %snapshot.metadata.block_guid,
+                        "relay holds a dead block from another sender; restoring the last block"
+                    );
+                    return republish_last_accepted(
+                        ctx,
+                        producer_state,
+                        last_accepted,
+                        "a foreign dead block replaced the last block",
+                    );
+                }
+                if !is_dead_block(&snapshot.metadata.value)
+                    && snapshot.metadata.block_guid != payload.block_guid
+                {
+                    tracing::warn!(
+                        target = %target.name,
+                        event_id = %target.event_id,
+                        relay_block_guid = %snapshot.metadata.block_guid,
+                        "another sender has a payable block on this event"
+                    );
+                }
+            }
+            Ok(MetadataRead::NotFound) => {}
+            Ok(MetadataRead::OtherStatus(status)) => tracing::debug!(
+                target = %target.name,
+                event_id = %target.event_id,
+                %status,
+                "relay metadata read returned an unexpected status"
+            ),
+            Err(error) => tracing::debug!(
+                target = %target.name,
+                event_id = %target.event_id,
+                %error,
+                "relay metadata read failed"
+            ),
+        }
+    }
     loop {
         match ctx.client.keepalive(target) {
             Ok(KeepaliveOutcome::Renewed {
@@ -1021,7 +1106,12 @@ fn run_keepalive(
                 };
             }
             Ok(KeepaliveOutcome::LeaseExpired) => {
-                return republish_after_lease_expiry(ctx, producer_state, last_accepted);
+                return republish_last_accepted(
+                    ctx,
+                    producer_state,
+                    last_accepted,
+                    "the relay lease expired",
+                );
             }
             Ok(KeepaliveOutcome::Fatal { reason }) => {
                 tracing::error!(
@@ -1088,17 +1178,19 @@ fn run_keepalive(
     }
 }
 
-fn republish_after_lease_expiry(
+fn republish_last_accepted(
     ctx: &WorkerContext<'_>,
     producer_state: &mut ProducerState,
     last_accepted: Option<&LiveValuePayload>,
+    reason: &'static str,
 ) -> KeepaliveAttempt {
     let target = ctx.target;
     let Some(payload) = last_accepted.cloned() else {
         tracing::warn!(
             target = %target.name,
             event_id = %target.event_id,
-            "keepalive reported an expired lease with no accepted payload to republish"
+            reason,
+            "no accepted payload to republish"
         );
         return KeepaliveAttempt::Idle;
     };
@@ -1106,15 +1198,17 @@ fn republish_after_lease_expiry(
         target = %target.name,
         event_id = %target.event_id,
         block_guid = %payload.block_guid,
-        "relay lease expired; republishing the last accepted payload"
+        reason,
+        "republishing the last accepted payload"
     );
     match run_publish(ctx, payload, producer_state) {
         PublishAttempt::Accepted {
             payload,
             keepalive_interval,
         } => {
-            // The lease end cleared the display state and the images in the
-            // relay (relay ADR 0003). The send never blocks.
+            // A lease end clears the display state and the images in the
+            // relay (relay ADR 0003). A foreign block can also replace them.
+            // The send never blocks.
             if let Some(display) = ctx.display {
                 let _ignored = display.send(DisplayCommand::Resend {
                     event_id: target.event_id.clone(),

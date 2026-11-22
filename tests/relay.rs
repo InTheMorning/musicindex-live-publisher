@@ -24,6 +24,7 @@ struct StubResponse {
 
 #[derive(Debug, Clone)]
 struct StubRequest {
+    method: String,
     path: String,
     authorization: Option<String>,
     listener_delay_secs: Option<String>,
@@ -107,6 +108,11 @@ fn handle_connection(
         .nth(1)
         .ok_or_else(|| anyhow!("request line missing path"))?
         .to_owned();
+    let method = first_line
+        .split_whitespace()
+        .next()
+        .ok_or_else(|| anyhow!("request line missing method"))?
+        .to_owned();
 
     let mut content_length = 0_usize;
     let mut authorization = None;
@@ -145,6 +151,7 @@ fn handle_connection(
         .lock()
         .map_err(|_| anyhow!("request mutex poisoned"))?
         .push(StubRequest {
+            method,
             path,
             authorization,
             listener_delay_secs,
@@ -210,6 +217,25 @@ fn keepalive_renewed(keepalive_interval_secs: u64) -> StubResponse {
         })
         .to_string(),
     }
+}
+
+fn metadata(payload: Value) -> StubResponse {
+    StubResponse {
+        status: 200,
+        body: json!({
+            "event_id": "event-guid",
+            "seq": 1,
+            "updated_at": "2026-11-21T00:00:00Z",
+            "renewed_at": "2026-11-21T00:00:00Z",
+            "lease_expires_at": "2026-11-21T00:01:30Z",
+            "metadata": payload,
+        })
+        .to_string(),
+    }
+}
+
+fn relay_payload(payload: &LiveValuePayload) -> Result<Value> {
+    Ok(serde_json::to_value(payload)?)
 }
 
 fn target(endpoint: &str) -> RelayTarget {
@@ -556,7 +582,11 @@ fn relay_publish_response_without_interval_sends_no_keepalive() -> Result<()> {
 
 #[test]
 fn relay_publish_response_with_interval_sends_keepalive_with_bearer_and_no_body() -> Result<()> {
-    let server = StubServer::start(vec![accepted_with_interval(1, 1), keepalive_renewed(1)])?;
+    let server = StubServer::start(vec![
+        accepted_with_interval(1, 1),
+        metadata(relay_payload(&payload("With Lease"))?),
+        keepalive_renewed(1),
+    ])?;
     let publisher = RelayPublisher::start_with_backoff(
         &config(&server.endpoint),
         Duration::from_millis(200),
@@ -565,15 +595,18 @@ fn relay_publish_response_with_interval_sends_keepalive_with_bearer_and_no_body(
     publisher.set_producer(ProducerState::Running);
 
     publisher.publish(payload("With Lease"))?;
-    server.wait_for_requests(2)?;
+    server.wait_for_requests(3)?;
 
     let requests = server.requests()?;
-    assert_eq!(requests[1].path, "/v1/liveitems/event-guid/keepalive");
+    assert_eq!(requests[1].path, "/v1/liveitems/event-guid/metadata");
+    assert_eq!(requests[1].method, "GET");
+    assert_eq!(requests[1].authorization, None);
+    assert_eq!(requests[2].path, "/v1/liveitems/event-guid/keepalive");
     assert_eq!(
-        requests[1].authorization.as_deref(),
+        requests[2].authorization.as_deref(),
         Some("Bearer secret-token")
     );
-    assert_eq!(requests[1].body, Value::Null);
+    assert_eq!(requests[2].body, Value::Null);
     Ok(())
 }
 
@@ -583,60 +616,10 @@ fn relay_producer_missing_stops_keepalive_requests() -> Result<()> {
     // the worker sends it.
     let server = StubServer::start(vec![
         accepted_with_interval(1, 1),
+        metadata(relay_payload(&payload("Track"))?),
         keepalive_renewed(1),
+        metadata(relay_payload(&payload("Track"))?),
         keepalive_renewed(1),
-    ])?;
-    let publisher = RelayPublisher::start_with_backoff(
-        &config(&server.endpoint),
-        Duration::from_millis(200),
-        Duration::from_secs(1),
-    )?;
-    publisher.set_producer(ProducerState::Running);
-
-    publisher.publish(payload("Track"))?;
-    server.wait_for_requests(2)?;
-
-    publisher.set_producer_for_target("event-guid", ProducerState::Missing)?;
-
-    server.expect_no_request_within(Duration::from_millis(1500))?;
-    Ok(())
-}
-
-#[test]
-fn relay_set_producer_running_resumes_keepalive_after_missing() -> Result<()> {
-    let server = StubServer::start(vec![
-        accepted_with_interval(1, 1),
-        keepalive_renewed(1),
-        keepalive_renewed(1),
-    ])?;
-    let publisher = RelayPublisher::start_with_backoff(
-        &config(&server.endpoint),
-        Duration::from_millis(200),
-        Duration::from_secs(1),
-    )?;
-    publisher.set_producer(ProducerState::Running);
-
-    publisher.publish(payload("Track"))?;
-    server.wait_for_requests(2)?;
-
-    publisher.set_producer_for_target("event-guid", ProducerState::Missing)?;
-    server.expect_no_request_within(Duration::from_millis(500))?;
-
-    publisher.set_producer(ProducerState::Running);
-    server.wait_for_requests(1)?;
-
-    let requests = server.requests()?;
-    assert_eq!(requests.len(), 3);
-    assert_eq!(requests[2].path, "/v1/liveitems/event-guid/keepalive");
-    Ok(())
-}
-
-#[test]
-fn relay_keepalive_409_republishes_last_payload_with_same_block_guid() -> Result<()> {
-    let server = StubServer::start(vec![
-        accepted_with_interval(1, 1),
-        response(409),
-        accepted_with_interval(2, 1),
     ])?;
     let publisher = RelayPublisher::start_with_backoff(
         &config(&server.endpoint),
@@ -648,18 +631,21 @@ fn relay_keepalive_409_republishes_last_payload_with_same_block_guid() -> Result
     publisher.publish(payload("Track"))?;
     server.wait_for_requests(3)?;
 
-    let requests = server.requests()?;
-    assert_eq!(requests[0].path, "/v1/liveitems/event-guid/metadata");
-    assert_eq!(requests[1].path, "/v1/liveitems/event-guid/keepalive");
-    assert_eq!(requests[2].path, "/v1/liveitems/event-guid/metadata");
-    assert_eq!(requests[2].body["blockGuid"], requests[0].body["blockGuid"]);
-    assert_eq!(requests[2].body["title"], "Track");
+    publisher.set_producer_for_target("event-guid", ProducerState::Missing)?;
+
+    server.expect_no_request_within(Duration::from_millis(1500))?;
     Ok(())
 }
 
 #[test]
-fn relay_keepalive_403_sets_fatal_state() -> Result<()> {
-    let server = StubServer::start(vec![accepted_with_interval(1, 1), response(403)])?;
+fn relay_set_producer_running_resumes_keepalive_after_missing() -> Result<()> {
+    let server = StubServer::start(vec![
+        accepted_with_interval(1, 1),
+        metadata(relay_payload(&payload("Track"))?),
+        keepalive_renewed(1),
+        metadata(relay_payload(&payload("Track"))?),
+        keepalive_renewed(1),
+    ])?;
     let publisher = RelayPublisher::start_with_backoff(
         &config(&server.endpoint),
         Duration::from_millis(200),
@@ -668,7 +654,197 @@ fn relay_keepalive_403_sets_fatal_state() -> Result<()> {
     publisher.set_producer(ProducerState::Running);
 
     publisher.publish(payload("Track"))?;
+    server.wait_for_requests(3)?;
+
+    publisher.set_producer_for_target("event-guid", ProducerState::Missing)?;
+    server.expect_no_request_within(Duration::from_millis(500))?;
+
+    publisher.set_producer(ProducerState::Running);
     server.wait_for_requests(2)?;
+
+    let requests = server.requests()?;
+    assert_eq!(requests.len(), 5);
+    assert_eq!(requests[3].path, "/v1/liveitems/event-guid/metadata");
+    assert_eq!(requests[4].path, "/v1/liveitems/event-guid/keepalive");
+    Ok(())
+}
+
+#[test]
+fn relay_keepalive_409_republishes_last_payload_with_same_block_guid() -> Result<()> {
+    let server = StubServer::start(vec![
+        accepted_with_interval(1, 1),
+        metadata(relay_payload(&payload("Track"))?),
+        response(409),
+        accepted_with_interval(2, 1),
+    ])?;
+    let publisher = RelayPublisher::start_with_backoff(
+        &config(&server.endpoint),
+        Duration::from_millis(200),
+        Duration::from_secs(1),
+    )?;
+    publisher.set_producer(ProducerState::Running);
+
+    publisher.publish(payload("Track"))?;
+    server.wait_for_requests(4)?;
+
+    let requests = server.requests()?;
+    assert_eq!(requests[0].path, "/v1/liveitems/event-guid/metadata");
+    assert_eq!(requests[1].path, "/v1/liveitems/event-guid/metadata");
+    assert_eq!(requests[2].path, "/v1/liveitems/event-guid/keepalive");
+    assert_eq!(requests[3].path, "/v1/liveitems/event-guid/metadata");
+    assert_eq!(requests[3].body["blockGuid"], requests[0].body["blockGuid"]);
+    assert_eq!(requests[3].body["title"], "Track");
+    Ok(())
+}
+
+#[test]
+fn relay_takeover_foreign_dead_block_republishes_last_payload() -> Result<()> {
+    let track = payload("Track");
+    let foreign_dead = dead_payload("event-guid", "foreign-dead-block");
+    let server = StubServer::start(vec![
+        accepted_with_interval(1, 1),
+        metadata(relay_payload(&foreign_dead)?),
+        accepted_with_interval(2, 1),
+    ])?;
+    let publisher = RelayPublisher::start_with_backoff(
+        &config(&server.endpoint),
+        Duration::from_millis(100),
+        Duration::from_secs(1),
+    )?;
+    publisher.set_producer(ProducerState::Running);
+    publisher.publish(track.clone())?;
+    server.wait_for_requests(1)?;
+    thread::sleep(Duration::from_millis(1200));
+    server.wait_for_requests(2)?;
+
+    let requests = server.requests()?;
+    assert_eq!(requests[1].path, "/v1/liveitems/event-guid/metadata");
+    assert_eq!(requests[1].authorization, None);
+    assert_eq!(requests[2].path, "/v1/liveitems/event-guid/metadata");
+    assert_eq!(requests[2].body["blockGuid"], track.block_guid);
+    assert_eq!(requests[2].body["blockGuid"], requests[0].body["blockGuid"]);
+    Ok(())
+}
+
+#[test]
+fn relay_takeover_foreign_payable_block_keeps_alive_without_republishing() -> Result<()> {
+    let foreign = payload("Other Sender");
+    let server = StubServer::start(vec![
+        accepted_with_interval(1, 1),
+        metadata(relay_payload(&foreign)?),
+        keepalive_renewed(1),
+    ])?;
+    let publisher = RelayPublisher::start_with_backoff(
+        &config(&server.endpoint),
+        Duration::from_millis(100),
+        Duration::from_secs(1),
+    )?;
+    publisher.set_producer(ProducerState::Running);
+    publisher.publish(payload("Track"))?;
+    server.wait_for_requests(1)?;
+    thread::sleep(Duration::from_millis(1200));
+    server.wait_for_requests(2)?;
+
+    let requests = server.requests()?;
+    assert_eq!(requests.len(), 3);
+    assert_eq!(requests[1].path, "/v1/liveitems/event-guid/metadata");
+    assert_eq!(requests[2].path, "/v1/liveitems/event-guid/keepalive");
+    assert_eq!(requests[2].body, Value::Null);
+    Ok(())
+}
+
+#[test]
+fn relay_takeover_metadata_not_found_and_failed_read_still_keep_alive() -> Result<()> {
+    for read_response in [
+        response(404),
+        response(500),
+        StubResponse {
+            status: 200,
+            body: "not json".to_owned(),
+        },
+    ] {
+        let server = StubServer::start(vec![
+            accepted_with_interval(1, 1),
+            read_response,
+            keepalive_renewed(1),
+        ])?;
+        let publisher = RelayPublisher::start_with_backoff(
+            &config(&server.endpoint),
+            Duration::from_millis(100),
+            Duration::from_secs(1),
+        )?;
+        publisher.set_producer(ProducerState::Running);
+        publisher.publish(payload("Track"))?;
+        server.wait_for_requests(1)?;
+        thread::sleep(Duration::from_millis(1200));
+        server.wait_for_requests(2)?;
+        let requests = server.requests()?;
+        assert_eq!(requests[1].path, "/v1/liveitems/event-guid/metadata");
+        assert_eq!(requests[2].path, "/v1/liveitems/event-guid/keepalive");
+    }
+    Ok(())
+}
+
+#[test]
+fn relay_dead_last_block_skips_metadata_read() -> Result<()> {
+    let server = StubServer::start(vec![accepted_with_interval(1, 1), keepalive_renewed(1)])?;
+    let publisher = RelayPublisher::start_with_backoff(
+        &config(&server.endpoint),
+        Duration::from_millis(100),
+        Duration::from_secs(1),
+    )?;
+    publisher.set_producer(ProducerState::Running);
+    publisher.publish(dead_payload("event-guid", "dead-block"))?;
+    server.wait_for_requests(1)?;
+    thread::sleep(Duration::from_millis(1200));
+    server.wait_for_requests(1)?;
+
+    let requests = server.requests()?;
+    assert_eq!(requests.len(), 2);
+    assert!(requests.iter().all(|request| {
+        request.path == "/v1/liveitems/event-guid/metadata"
+            || request.path == "/v1/liveitems/event-guid/keepalive"
+    }));
+    assert_eq!(requests[1].path, "/v1/liveitems/event-guid/keepalive");
+    Ok(())
+}
+
+#[test]
+fn relay_missing_producer_sends_no_metadata_read_or_keepalive() -> Result<()> {
+    let server = StubServer::start(vec![accepted_with_interval(1, 1)])?;
+    let publisher = RelayPublisher::start_with_backoff(
+        &config(&server.endpoint),
+        Duration::from_millis(100),
+        Duration::from_secs(1),
+    )?;
+
+    publisher.publish(payload("Track"))?;
+    server.wait_for_requests(1)?;
+    server.expect_no_request_within(Duration::from_millis(1300))?;
+
+    let requests = server.requests()?;
+    assert_eq!(requests.len(), 1);
+    assert_eq!(requests[0].path, "/v1/liveitems/event-guid/metadata");
+    assert_eq!(requests[0].method, "POST");
+    Ok(())
+}
+
+#[test]
+fn relay_keepalive_403_sets_fatal_state() -> Result<()> {
+    let server = StubServer::start(vec![
+        accepted_with_interval(1, 1),
+        metadata(relay_payload(&payload("Track"))?),
+        response(403),
+    ])?;
+    let publisher = RelayPublisher::start_with_backoff(
+        &config(&server.endpoint),
+        Duration::from_millis(200),
+        Duration::from_secs(1),
+    )?;
+    publisher.set_producer(ProducerState::Running);
+
+    publisher.publish(payload("Track"))?;
+    server.wait_for_requests(3)?;
 
     let deadline = Instant::now() + Duration::from_secs(2);
     let mut result = Ok(());
@@ -688,6 +864,7 @@ fn relay_keepalive_403_sets_fatal_state() -> Result<()> {
 fn relay_keepalive_503_retries_then_succeeds() -> Result<()> {
     let server = StubServer::start(vec![
         accepted_with_interval(1, 1),
+        metadata(relay_payload(&payload("Track"))?),
         response(503),
         keepalive_renewed(1),
     ])?;
@@ -699,11 +876,12 @@ fn relay_keepalive_503_retries_then_succeeds() -> Result<()> {
     publisher.set_producer(ProducerState::Running);
 
     publisher.publish(payload("Track"))?;
-    server.wait_for_requests(3)?;
+    server.wait_for_requests(4)?;
 
     let requests = server.requests()?;
-    assert_eq!(requests[1].path, "/v1/liveitems/event-guid/keepalive");
+    assert_eq!(requests[1].path, "/v1/liveitems/event-guid/metadata");
     assert_eq!(requests[2].path, "/v1/liveitems/event-guid/keepalive");
+    assert_eq!(requests[3].path, "/v1/liveitems/event-guid/keepalive");
     publisher.check_health()?;
     Ok(())
 }
@@ -715,6 +893,7 @@ fn relay_producer_missing_stops_a_keepalive_in_retry() -> Result<()> {
     // counted.
     let server = StubServer::start(vec![
         accepted_with_interval(1, 1),
+        metadata(relay_payload(&payload("Track"))?),
         response(503),
         keepalive_renewed(1),
     ])?;
@@ -726,7 +905,7 @@ fn relay_producer_missing_stops_a_keepalive_in_retry() -> Result<()> {
     publisher.set_producer(ProducerState::Running);
 
     publisher.publish(payload("Track"))?;
-    server.wait_for_requests(2)?;
+    server.wait_for_requests(3)?;
 
     // The keepalive got 503 and waits for its retry. The producer goes missing
     // during that wait, so the retry must not go out.

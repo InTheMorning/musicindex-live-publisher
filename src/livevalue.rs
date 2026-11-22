@@ -310,6 +310,15 @@ pub fn dead_payload(event_guid: &str, block_guid: &str) -> LiveValuePayload {
     }
 }
 
+/// Returns whether every destination uses the fixed dead block address.
+pub(crate) fn is_dead_block(value: &LiveValue) -> bool {
+    !value.destinations.is_empty()
+        && value
+            .destinations
+            .iter()
+            .all(|destination| destination.address.as_deref() == Some(DEAD_BLOCK_ADDRESS))
+}
+
 /// Maps a producer payment route to a live value destination.
 pub fn destination_from_payment_route(route: &PaymentRoute) -> LiveValueDestination {
     LiveValueDestination {
@@ -508,6 +517,15 @@ mod tests {
         assert_eq!(value["value"]["destinations"][0]["split"], "100");
         assert!(!value["value"]["destinations"][0]["split"].is_number());
         Ok(())
+    }
+
+    #[test]
+    fn livevalue_dead_block_requires_all_destinations_to_use_dead_address() {
+        let dead = dead_payload("event-guid", "block-guid");
+        assert!(is_dead_block(&dead.value));
+
+        let payable = payload_from_dropfile(&dropfile(), "event-guid", "block-guid");
+        assert!(!is_dead_block(&payable.value));
     }
 
     #[test]
