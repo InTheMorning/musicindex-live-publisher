@@ -260,7 +260,12 @@ journalctl --user -u liquidsoap-now-playing@INSTANCE.service -u musicindex-live-
 
 ## Import Songs And Episodes
 
-Use `station-import` on your computer. Keep it off the radio host (musicindex ADR 0092).
+Run `station-import` on your computer, not on the station host. Do not install it on
+the station host. The station needs only the files that you send with SFTP.
+
+The station bundle has a `station-import` binary for x86-64 Linux. Run it from the
+bundle folder, for example `./station-import`. On a different computer, build it from
+this repository with `cargo build --release -p station-import`.
 
 First, run a dry run. Replace the feed URLs and selectors with your values:
 
