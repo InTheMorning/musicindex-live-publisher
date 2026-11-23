@@ -1,6 +1,6 @@
 # Station Import Task 001: The Binary `station-import`
 
-Status: Done - 2026-11-23, with musicindex-fetch at `7b36f6a`. musicindex ADR 0092 is accepted (musicindex `35d3305`). The crate `musicindex-fetch` is in
+Status: Done - 2026-11-23, with musicindex-fetch at `7b36f6a`. The crate now uses musicindex-lib `5db5c80` and its `value_routes(blocks, routes)`. musicindex ADR 0092 is accepted (musicindex `35d3305`). The crate `musicindex-fetch` is in
 musicindex-lib `7b36f6a`.
 
 All criteria are mechanical, except the one item in §Visual And Manual Criteria. No test reaches the network.

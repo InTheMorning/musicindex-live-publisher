@@ -390,8 +390,10 @@ fn import_episode(
             return item;
         }
     };
-    let routes = musicindex_fetch::value_routes(&track.payment_routes)
-        .or_else(|| musicindex_fetch::value_routes(&values.feed_payment_routes))
+    let routes = musicindex_fetch::value_routes(&track.value_blocks, &track.payment_routes)
+        .or_else(|| {
+            musicindex_fetch::value_routes(&values.feed_value_blocks, &values.feed_payment_routes)
+        })
         .map(|value| value.to_string());
     match write_episode_tags(
         &destination,

@@ -1145,11 +1145,11 @@ dependencies = [
 [[package]]
 name = "musicindex-fetch"
 version = "0.1.0"
-source = "git+https://github.com/InTheMorning/musicindex-lib?rev=7b36f6aeba8f8fac602b0eea337a866268994a84#7b36f6aeba8f8fac602b0eea337a866268994a84"
+source = "git+https://github.com/InTheMorning/musicindex-lib?rev=5db5c807bdd6808b52dd2ca5a1d805651dbe0b5a#5db5c807bdd6808b52dd2ca5a1d805651dbe0b5a"
 dependencies = [
  "chrono",
- "musicindex-tags 0.1.0 (git+https://github.com/InTheMorning/musicindex-lib?rev=7b36f6aeba8f8fac602b0eea337a866268994a84)",
- "musicindex-value 0.1.0 (git+https://github.com/InTheMorning/musicindex-lib?rev=7b36f6aeba8f8fac602b0eea337a866268994a84)",
+ "musicindex-tags 0.1.0 (git+https://github.com/InTheMorning/musicindex-lib?rev=5db5c807bdd6808b52dd2ca5a1d805651dbe0b5a)",
+ "musicindex-value 0.1.0 (git+https://github.com/InTheMorning/musicindex-lib?rev=5db5c807bdd6808b52dd2ca5a1d805651dbe0b5a)",
  "reqwest",
  "serde_json",
  "sha2",
@@ -1178,7 +1178,7 @@ dependencies = [
 [[package]]
 name = "musicindex-tags"
 version = "0.1.0"
-source = "git+https://github.com/InTheMorning/musicindex-lib?rev=7b36f6aeba8f8fac602b0eea337a866268994a84#7b36f6aeba8f8fac602b0eea337a866268994a84"
+source = "git+https://github.com/InTheMorning/musicindex-lib?rev=5db5c807bdd6808b52dd2ca5a1d805651dbe0b5a#5db5c807bdd6808b52dd2ca5a1d805651dbe0b5a"
 dependencies = [
  "anyhow",
  "id3",
@@ -1202,7 +1202,7 @@ dependencies = [
 [[package]]
 name = "musicindex-value"
 version = "0.1.0"
-source = "git+https://github.com/InTheMorning/musicindex-lib?rev=7b36f6aeba8f8fac602b0eea337a866268994a84#7b36f6aeba8f8fac602b0eea337a866268994a84"
+source = "git+https://github.com/InTheMorning/musicindex-lib?rev=5db5c807bdd6808b52dd2ca5a1d805651dbe0b5a#5db5c807bdd6808b52dd2ca5a1d805651dbe0b5a"
 
 [[package]]
 name = "musicindex-value"
@@ -1963,7 +1963,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "musicindex-fetch",
- "musicindex-tags 0.1.0 (git+https://github.com/InTheMorning/musicindex-lib?rev=7b36f6aeba8f8fac602b0eea337a866268994a84)",
+ "musicindex-tags 0.1.0 (git+https://github.com/InTheMorning/musicindex-lib?rev=5db5c807bdd6808b52dd2ca5a1d805651dbe0b5a)",
  "serde",
  "serde_json",
  "tempfile",
@@ -1971,8 +1971,8 @@ dependencies = [
 
 [[package]]
 name = "stophammer-parser"
-version = "0.21.1"
-source = "git+https://github.com/InTheMorning/stophammer-parser?rev=7bd898a36eea2aeabfa17b2a8a2e9f192af5472c#7bd898a36eea2aeabfa17b2a8a2e9f192af5472c"
+version = "0.22.0"
+source = "git+https://github.com/InTheMorning/stophammer-parser?rev=81fc50b5416efe01c4dcd3fbc6db0ef4e3bcb04b#81fc50b5416efe01c4dcd3fbc6db0ef4e3bcb04b"
 dependencies = [
  "chrono",
  "regex",
