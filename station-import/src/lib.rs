@@ -13,6 +13,7 @@ use musicindex_tags::{
     write_song_tags,
 };
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 
 /// Inputs and output folder for one import.
 #[derive(Clone, Debug, Default)]
@@ -244,13 +245,10 @@ fn import_song(
         return item;
     }
     let destination = options.out.join(&path);
-    let download = match download_enclosure(url, &destination, &user_agent()) {
-        Ok(value) => value,
-        Err(error) => {
-            item.error = Some(error.to_string());
-            return item;
-        }
-    };
+    if let Err(error) = download_enclosure(url, &destination, &user_agent()) {
+        item.error = Some(error.to_string());
+        return item;
+    }
     match write_song_tags(
         &destination,
         &SongTags {
@@ -260,11 +258,17 @@ fn import_song(
         &[],
         &NoReferences,
     ) {
-        Ok(tags) => {
-            item.sha256 = Some(download.sha256);
-            item.bytes = Some(download.bytes);
-            item.tags = Some(tag_summary(tags));
-        }
+        Ok(tags) => match finish_file(&destination) {
+            Ok((sha256, bytes)) => {
+                item.sha256 = Some(sha256);
+                item.bytes = Some(bytes);
+                item.tags = Some(tag_summary(tags));
+            }
+            Err(error) => {
+                let _ = fs::remove_file(&destination);
+                item.error = Some(format!("{error:#}"));
+            }
+        },
         Err(error) => {
             let _ = fs::remove_file(&destination);
             item.error = Some(error.to_string());
@@ -388,13 +392,10 @@ fn import_episode(
         return item;
     }
     let destination = options.out.join(&path);
-    let download = match download_enclosure(enclosure, &destination, &user_agent()) {
-        Ok(value) => value,
-        Err(error) => {
-            item.error = Some(error.to_string());
-            return item;
-        }
-    };
+    if let Err(error) = download_enclosure(enclosure, &destination, &user_agent()) {
+        item.error = Some(error.to_string());
+        return item;
+    }
     let routes = musicindex_fetch::value_routes(&track.value_blocks, &track.payment_routes)
         .or_else(|| {
             musicindex_fetch::value_routes(&values.feed_value_blocks, &values.feed_payment_routes)
@@ -411,15 +412,21 @@ fn import_episode(
         &[],
         &NoReferences,
     ) {
-        Ok(tags) => {
-            item.sha256 = Some(download.sha256);
-            item.bytes = Some(download.bytes);
-            item.tags = Some(tag_summary(tags));
-            item.chapters = read_podcast_tags(&destination)
-                .ok()
-                .and_then(|tags| tags.chapters().ok())
-                .map(|chapters| chapters.len());
-        }
+        Ok(tags) => match finish_file(&destination) {
+            Ok((sha256, bytes)) => {
+                item.sha256 = Some(sha256);
+                item.bytes = Some(bytes);
+                item.tags = Some(tag_summary(tags));
+                item.chapters = read_podcast_tags(&destination)
+                    .ok()
+                    .and_then(|tags| tags.chapters().ok())
+                    .map(|chapters| chapters.len());
+            }
+            Err(error) => {
+                let _ = fs::remove_file(&destination);
+                item.error = Some(format!("{error:#}"));
+            }
+        },
         Err(error) => {
             let _ = fs::remove_file(&destination);
             item.error = Some(error.to_string());
@@ -539,6 +546,26 @@ fn tag_summary(value: musicindex_tags::TagWriteResult) -> TagSummary {
         removed_id3v1: value.removed_id3v1,
     }
 }
+/// Gives the file the mode 0644 and returns its SHA-256 hash and size.
+///
+/// Call it after the tag write. The manifest hash is the hash of the file at
+/// `path`, so the operator can examine the copy on the station
+/// (musicindex ADR 0092 R-STATION-4 item 3). The download makes a file with
+/// the mode 0600. The mode 0644 lets the AzuraCast container read a copy that
+/// keeps the mode.
+fn finish_file(path: &Path) -> Result<(String, u64)> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(path, fs::Permissions::from_mode(0o644))
+            .context("set the file mode")?;
+    }
+    let mut file = fs::File::open(path).context("open the tagged file")?;
+    let mut hasher = Sha256::new();
+    let bytes = std::io::copy(&mut file, &mut hasher).context("hash the tagged file")?;
+    Ok((format!("{:x}", hasher.finalize()), bytes))
+}
+
 fn write_manifest(folder: &Path, manifest: &Manifest) -> Result<()> {
     let bytes = serde_json::to_vec_pretty(manifest)?;
     let temp = folder.join(".manifest.json.tmp");

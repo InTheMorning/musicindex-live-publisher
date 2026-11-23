@@ -2032,6 +2032,7 @@ dependencies = [
  "musicindex-tags 0.1.0 (git+https://github.com/InTheMorning/musicindex-lib?rev=babdd863f23723ad8bba439253a29e9758871ea2)",
  "serde",
  "serde_json",
+ "sha2",
  "tempfile",
 ]
 

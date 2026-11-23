@@ -273,6 +273,58 @@ fn run_writes_an_episode_with_its_chapters() {
 }
 
 #[test]
+fn manifest_hash_and_size_are_of_the_tagged_file() {
+    use sha2::{Digest, Sha256};
+    let server = TestServer::start();
+    let folder = tempfile::tempdir().expect("temporary folder");
+    let mut options = options(&folder);
+    options.songs = Some(write_local_feed(
+        &folder,
+        "music.xml",
+        &song_list_feed(&server.base_url),
+    ));
+    options.episode_feed = Some(format!("{}/episode-feed.xml", server.base_url));
+    options.episodes = vec!["episode-guid".into()];
+
+    let result = run(&options, server.config()).expect("run import");
+    assert_eq!(result.error_count(), 0);
+    let served = [
+        format!(
+            "{:x}",
+            Sha256::digest(include_bytes!("fixtures/musicindex-tagged.mp3"))
+        ),
+        format!(
+            "{:x}",
+            Sha256::digest(include_bytes!("fixtures/untagged.flac"))
+        ),
+    ];
+    let manifest = manifest(&folder);
+    let items = manifest["items"].as_array().expect("manifest items");
+    assert_eq!(items.len(), 3);
+    for item in items {
+        let path = options.out.join(item["path"].as_str().expect("item path"));
+        let bytes = std::fs::read(&path).expect("read output file");
+        let sha256 = format!("{:x}", Sha256::digest(&bytes));
+        assert_eq!(item["sha256"], sha256.as_str(), "{}", path.display());
+        assert_eq!(item["bytes"], bytes.len(), "{}", path.display());
+        assert!(
+            !served.contains(&sha256),
+            "the tag write changed {}",
+            path.display()
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&path)
+                .expect("file metadata")
+                .permissions()
+                .mode();
+            assert_eq!(mode & 0o777, 0o644, "{}", path.display());
+        }
+    }
+}
+
+#[test]
 fn episode_selected_by_number() {
     let server = TestServer::start();
     let folder = tempfile::tempdir().expect("temporary folder");

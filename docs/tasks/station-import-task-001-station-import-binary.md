@@ -24,6 +24,7 @@ short section.
 | Tag write and read | reuse | ~/build/musicindex-lib/tags/src/podcast.rs | `write_song_tags`, `write_episode_tags`, `read_podcast_tags`, `NoReferences`. |
 | Station bundle script | extend | scripts/make-station-bundle.sh | It also builds and copies `station-import`. |
 | Station runbook | extend | docs/runbooks/liquidsoap-now-playing-azuracast.md | One new section for the import. |
+| File hash after the tag write | new | station-import/src/lib.rs | Searched ~/build/musicindex-lib/fetch/src/download.rs (the hash is private to the download), src/display.rs and now-playing-drop/src/display.rs (they hash bytes in memory). `finish_file` streams the file into `sha2::Sha256`. |
 | Test HTTP server | new | station-import/tests/ | Searched now-playing-drop/src (the `test-server` feature serves the relay API only), liquidsoap-now-playing/tests and ~/build/musicindex-lib/fetch/tests. The fetch tests have a server that is private to that crate. A small `std::net::TcpListener` server in the test file is sufficient. |
 
 ## Files To Inspect
@@ -169,6 +170,8 @@ rename. The form:
 - `kind` is `song` or `episode`. `selector` is also present for an episode entry, with the argument text.
 - `source_url` is the enclosure URL. `path` is relative to the output folder.
 - In a dry run, `sha256`, `bytes` and `tags` are `null` (R-STATION-4 item 4).
+- `sha256` and `bytes` are the values of the file at `path` after the tag write, not the values of the download.
+  Each audio file has the mode 0644.
 - `chapters` is the number of splits of an episode, else `null`.
 - Each `unresolved_splits` entry is `{ "index": N, "feed_guid": "...", "item_guid": "..." or null, "error": "..." }`.
   The feed GUID and the item GUID come from the split at that index (`SplitTarget::Remote`). The error is the
@@ -224,6 +227,14 @@ that serves fixed paths: the song feeds, the podcast feed, a MusicIndex answer f
 7. `bad_item_guid_is_refused`: an item GUID with `/` or `..` gives an error entry and no file outside the output
    folder.
 8. Unit tests for the argument parser: the usage errors of §The Command Line, and the two selector forms.
+9. `manifest_hash_and_size_are_of_the_tagged_file`: for two songs and one episode, `sha256` and `bytes` of each
+   entry are the values of the file at `path`. The hash is not the hash of the served file. The mode of each
+   file is 0644.
+
+Operator choice (orchestrator, 2026-11-23, ADR 0092 R-STATION-4 item 3): the manifest hash describes the file at
+`path` after the tag write, because the operator examines the copy on the station with it. The manifest has no
+second hash field. The audio files get the mode 0644, so that a copy that keeps the mode is readable in the
+AzuraCast container.
 
 ## Visual And Manual Criteria
 
