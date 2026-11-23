@@ -121,8 +121,13 @@ pub fn run(options: &Options, mut config: ReaderConfig) -> Result<Manifest> {
     if options.episode_feed.is_none() && !options.episodes.is_empty() {
         return Err(anyhow!("--episode requires --episode-feed"));
     }
-    fs::create_dir_all(options.out.join("songs")).context("create songs folder")?;
-    fs::create_dir_all(options.out.join("episodes")).context("create episodes folder")?;
+    // A dry run writes only the manifest (musicindex ADR 0092 R-STATION-4 item 4).
+    if options.dry_run {
+        fs::create_dir_all(&options.out).context("create output folder")?;
+    } else {
+        fs::create_dir_all(options.out.join("songs")).context("create songs folder")?;
+        fs::create_dir_all(options.out.join("episodes")).context("create episodes folder")?;
+    }
     let mut manifest = Manifest {
         format: "station-import-manifest/1",
         dry_run: options.dry_run,

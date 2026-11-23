@@ -200,14 +200,11 @@ fn dry_run_writes_the_manifest_and_no_audio() {
     assert_eq!(manifest["items"][1]["path"], "songs/song-item-2.flac");
     assert_eq!(manifest["items"][0]["sha256"], Value::Null);
     assert_eq!(manifest["items"][1]["sha256"], Value::Null);
-    for directory in ["songs", "episodes"] {
-        assert_eq!(
-            std::fs::read_dir(options.out.join(directory))
-                .expect("output folder")
-                .count(),
-            0
-        );
-    }
+    let entries: Vec<_> = std::fs::read_dir(&options.out)
+        .expect("output folder")
+        .map(|entry| entry.expect("folder entry").file_name())
+        .collect();
+    assert_eq!(entries, ["manifest.json"]);
 }
 
 #[test]
