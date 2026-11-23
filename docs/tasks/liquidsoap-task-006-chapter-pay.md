@@ -181,3 +181,8 @@ Gate:
 20. `cargo build`, `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings` and
     `cargo fmt --all -- --check` pass.
 21. `grep -n "musicindex " liquidsoap/musicindex-state.liq` shows no metadata key with the old prefix.
+
+Operator choice (orchestrator, 2026-11-23, message after the station check of slot commit 6c1e14a): ADR 0025 Context
+and §The Position From `written - track_started` are corrected in place. They now say that the slot callbacks are
+synchronous and that late metadata gives a new `seq`. This is a correction of facts. No rule changes. ADR 0022 §The
+State File Contract gets one sentence about the second `seq` change.

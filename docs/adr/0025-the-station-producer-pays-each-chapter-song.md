@@ -58,8 +58,9 @@
   each second.
 - Liquidsoap gives the method `elapsed` on a source: the time in the current track, in seconds
   (`liquidsoap/src/core/source/lang_source.ml`, lines 549-559 in the research sources). The value `track_started` of
-  format 1 is the time of the `on_track` callback, which operates with `synchronous=false`. It is not a time of the
-  audio.
+  format 1 is the time of the `on_track` callback. It is not a time of the audio. The `on_track` and `on_metadata`
+  callbacks of the slot text are synchronous. When the metadata of a track comes after the track mark, the
+  `on_metadata` callback gives a new `seq` and keeps `track_started` (ADR 0022 §The State File Contract).
 - Liquidsoap does not give `CHAP` frames as metadata. This is an inference of the orchestrator session: no slot text
   reads them, and it knows of no Liquidsoap decoder that gives them. A `TXXX` frame with JSON comes through as
   metadata, as the value routes frame does in the slot text of ADR 0022.
@@ -352,8 +353,8 @@ producer has all the data, so the merge is in the producer, and the drop file st
 
 ### The Position From `written - track_started`
 
-The first draft used this rule. `track_started` is the time of a callback that operates with `synchronous=false`, not
-a time of the audio. The rule also does not include the cue-in point. `elapsed` comes from the source.
+The first draft used this rule. `track_started` is the time of the synchronous `on_track` callback, not a time of the
+audio. Late metadata gives a new `seq` with the same `track_started`. The rule also does not include the cue-in point. `elapsed` comes from the source.
 
 ### The Song Routes For A Chapter With Only The Feed GUID
 

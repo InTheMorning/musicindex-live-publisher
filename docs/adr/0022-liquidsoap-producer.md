@@ -78,6 +78,9 @@ the owner.
 - A different `format` gives an error in the log and no drop file. The producer does not guess a version.
 - A field change needs a new format version. The reference slot text and the producer change in the same commit.
 - `play_id` comes from `track_started` and `seq`. A restart of Liquidsoap thus gives a new `play_id`.
+- When the metadata of a track comes after the track mark, `seq` changes one more time in that track.
+  `track_started` keeps the time of the track mark, and `play_id` stays unique. This second change is correct. Do not
+  remove it: without it the producer keeps the empty metadata of the track mark for the full track.
 - `duration_secs` is `null`. The next track or the heartbeat ends the play.
 
 ### What The Producer Writes
