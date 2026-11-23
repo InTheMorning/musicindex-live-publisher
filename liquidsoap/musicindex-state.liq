@@ -35,15 +35,39 @@ musicindex_dir = "/var/azuracast/musicindex/INSTANCE"
 # One reference holds the sequence number, the start time, the metadata,
 # the rid of the last track and the jingle flag.
 musicindex_state = ref((0, 0., [], "", false))
+# True when the last track mark came with no metadata.
+musicindex_pending = ref(false)
 
-def musicindex_on_track(m) =
+def musicindex_set(started, m) =
   let (seq, _, _, last_rid, _) = musicindex_state()
   rid = m["rid"]
   # Jingle mode gives a jingle the metadata of the last song, with the same rid.
   jingle = rid != "" and rid == last_rid
-  musicindex_state := (seq + 1, time(), m, rid, jingle)
+  # A track with no metadata keeps the rid of the last track for this test.
+  next_rid = if rid == "" then last_rid else rid end
+  musicindex_state := (seq + 1, started, m, next_rid, jingle)
 end
-source.methods(radio).on_track(synchronous=false, musicindex_on_track)
+
+# on_track gets only the metadata in the frame of the track mark, else an empty
+# list (liquidsoap source.ml, execute_on_track). After a jingle the metadata of
+# the next track can come in a later frame. Then the first metadata of the track
+# gives a new seq, with the start time of the track mark.
+# The two handlers are synchronous, so that they operate in the frame order.
+# They only set references. The file write is in musicindex_write.
+def musicindex_on_track(m) =
+  musicindex_pending := list.length(m) == 0
+  musicindex_set(time(), m)
+end
+source.methods(radio).on_track(synchronous=true, musicindex_on_track)
+
+def musicindex_on_metadata(m) =
+  if musicindex_pending() and list.length(m) > 0 then
+    musicindex_pending := false
+    let (_, started, _, _, _) = musicindex_state()
+    musicindex_set(started, m)
+  end
+end
+source.methods(radio).on_metadata(synchronous=true, musicindex_on_metadata)
 
 def musicindex_write() =
   let (seq, started, m, _, jingle) = musicindex_state()
