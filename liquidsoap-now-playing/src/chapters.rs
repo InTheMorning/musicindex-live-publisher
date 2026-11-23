@@ -48,7 +48,13 @@ pub struct Segment<'a> {
 
 /// Parses valid chapter entries and logs at most one error for each sequence.
 pub fn parse_chapters(state: &StateFile, bad_chapters_seq: &mut Option<i64>) -> Vec<Chapter> {
-    let Some(raw) = state.chapters.as_deref() else {
+    // ADR 0025 §The State File Format 2: an empty `chapters` value means that the file
+    // has no chapter list. Liquidsoap gives an empty value for a missing tag.
+    let Some(raw) = state
+        .chapters
+        .as_deref()
+        .filter(|raw| !raw.trim().is_empty())
+    else {
         return Vec::new();
     };
     let parsed = serde_json::from_str::<Value>(raw);
@@ -216,6 +222,15 @@ mod tests {
             segment_at(&chapters, 100).map(|segment| segment.start_ms),
             Some(100)
         );
+    }
+
+    #[test]
+    fn empty_chapters_give_no_chapters_and_no_error() {
+        for text in ["", "  "] {
+            let mut bad = None;
+            assert!(parse_chapters(&state(text), &mut bad).is_empty());
+            assert_eq!(bad, None, "the value {text:?} must not log an error");
+        }
     }
 
     #[test]
