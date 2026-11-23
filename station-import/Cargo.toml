@@ -1,0 +1,19 @@
+[package]
+name = "station-import"
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0-only"
+
+[[bin]]
+name = "station-import"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+musicindex-fetch = { git = "https://github.com/InTheMorning/musicindex-lib", rev = "7b36f6aeba8f8fac602b0eea337a866268994a84" }
+musicindex-tags = { git = "https://github.com/InTheMorning/musicindex-lib", rev = "7b36f6aeba8f8fac602b0eea337a866268994a84" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+tempfile = "3"

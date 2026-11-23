@@ -149,6 +149,11 @@ packet.
   is in `now-playing-drop/src/display.rs`. The station checks 1 to 3 of its
   §Verification are open, and need a person. Its four Open Questions stay
   open.
+- The binary `station-import` (crate `station-import/`, task 001 of the
+  station import) is complete. It makes a folder of song and episode files
+  with their GUID and chapter tags and `manifest.json`, for the AzuraCast SFTP
+  account. musicindex ADR 0092 owns its rules, and musicindex-fetch of
+  musicindex-lib holds its feed read and download. It has no upload code.
 - This item needs a new ADR before work starts: a track identity source that
   is earlier than the Mixxx history row.
 - Studio client task 001 is not started. The publisher will start and end a

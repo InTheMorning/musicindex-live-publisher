@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Make the station bundle for a radio host without apt or with a different
 # OpenSSL version. The bundle holds static musl binaries of
-# musicindex-live-publisher and liquidsoap-now-playing, the two unit templates,
+# musicindex-live-publisher, liquidsoap-now-playing and station-import, the two unit templates,
 # the reference slot text and the AzuraCast runbook.
 #
 # The binaries link OpenSSL statically. Thus they need no libssl and no glibc
@@ -52,12 +52,15 @@ OPENSSL_DIR="$prefix" OPENSSL_STATIC=1 CC_x86_64_unknown_linux_musl=musl-gcc \
     cargo build --release --locked --target x86_64-unknown-linux-musl \
     -p musicindex-live-publisher -p liquidsoap-now-playing \
     --bin musicindex-live-publisher --bin liquidsoap-now-playing
+OPENSSL_DIR="$prefix" OPENSSL_STATIC=1 CC_x86_64_unknown_linux_musl=musl-gcc \
+    cargo build --release --locked --target x86_64-unknown-linux-musl \
+    -p station-import --bin station-import
 
 out="$repo/target/station-bundle-$revision"
 rm -rf "$out"
 mkdir -p "$out"
 release="$repo/target/x86_64-unknown-linux-musl/release"
-install -m 0755 "$release/musicindex-live-publisher" "$release/liquidsoap-now-playing" "$out/"
+install -m 0755 "$release/musicindex-live-publisher" "$release/liquidsoap-now-playing" "$release/station-import" "$out/"
 install -m 0644 systemd/musicindex-live-publisher@.service systemd/liquidsoap-now-playing@.service "$out/"
 install -m 0644 liquidsoap/musicindex-state.liq docs/runbooks/liquidsoap-now-playing-azuracast.md "$out/"
 (cd "$out" && sha256sum -- * > SHA256SUMS)

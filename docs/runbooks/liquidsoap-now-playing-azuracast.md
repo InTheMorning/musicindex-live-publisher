@@ -258,6 +258,26 @@ The log of the two units:
 journalctl --user -u liquidsoap-now-playing@INSTANCE.service -u musicindex-live-publisher@INSTANCE.service -n 50
 ```
 
+## Import Songs And Episodes
+
+Use `station-import` on your computer. Keep it off the radio host (musicindex ADR 0092).
+
+First, run a dry run. Replace the feed URLs and selectors with your values:
+
+```sh
+station-import --out station-import-output --songs https://example.org/music.xml --episode-feed https://example.org/podcast.xml --episode episode-guid-1 --episode 7 --dry-run
+```
+
+Read `manifest.json` first. Examine each item with an `error` value. Examine each entry in `unresolved_splits`.
+
+Then write the files:
+
+```sh
+station-import --out station-import-output --songs https://example.org/music.xml --episode-feed https://example.org/podcast.xml --episode episode-guid-1 --episode 7
+```
+
+Send the `songs/` and `episodes/` folders to the station with its AzuraCast SFTP account. The command does not upload files (musicindex ADR 0092 R-STATION-5).
+
 ## Rollback
 
 ```sh
