@@ -60,7 +60,10 @@ apt install ./musicindex-live-publisher_VERSION_amd64.deb
 
 Replace `VERSION` with the version in the file name of the package.
 
-On a host without `apt`, install the files of the package as root:
+On a host without `apt`, use the station bundle. Make it on a different computer with
+`scripts/make-station-bundle.sh`. The script puts the bundle in `target/station-bundle-REVISION/`. Its binaries are
+static, so the host needs no OpenSSL library. Copy the folder to the host, and examine it with `sha256sum -c SHA256SUMS`.
+Then install the files as root in the bundle folder:
 
 ```sh
 install -m 0755 musicindex-live-publisher liquidsoap-now-playing /usr/bin/
