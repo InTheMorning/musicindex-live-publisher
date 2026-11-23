@@ -7,7 +7,7 @@ use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 use musicindex_fetch::ReaderConfig;
-use musicindex_tags::read_podcast_tags;
+use musicindex_tags::{read_audio_tags, read_podcast_tags};
 use serde_json::Value;
 use station_import::{Options, run};
 
@@ -95,13 +95,13 @@ fn routes(
     untagged_audio: Vec<u8>,
 ) -> HashMap<String, (u16, &'static str, Vec<u8>)> {
     let song_feed = format!(
-        r#"<?xml version="1.0"?><rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0"><channel><title>Songs</title><podcast:guid>song-feed</podcast:guid><item><guid>song-item</guid><title>Song</title><enclosure url="{base_url}/audio/tagged.mp3" type="audio/mpeg" length="1"/></item><item><guid>song-item-2</guid><title>Second Song</title><enclosure url="{base_url}/audio/untagged.flac" type="audio/flac" length="1"/></item></channel></rss>"#
+        r#"<?xml version="1.0"?><rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd" xmlns:podcast="https://podcastindex.org/namespace/1.0"><channel><title>Songs</title><itunes:author>Channel Band</itunes:author><podcast:guid>song-feed</podcast:guid><item><guid>song-item</guid><title>Song</title><itunes:author>Item Band</itunes:author><enclosure url="{base_url}/audio/tagged.mp3" type="audio/mpeg" length="1"/></item><item><guid>song-item-2</guid><title>Second Song</title><enclosure url="{base_url}/audio/untagged.flac" type="audio/flac" length="1"/></item></channel></rss>"#
     );
     let failed_song_feed = format!(
         r#"<?xml version="1.0"?><rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0"><channel><podcast:guid>failed-feed</podcast:guid><item><guid>failed-song</guid><title>Missing Audio</title><enclosure url="{base_url}/audio/missing.mp3" type="audio/mpeg" length="1"/></item></channel></rss>"#
     );
     let episode_feed = format!(
-        r#"<?xml version="1.0"?><rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd" xmlns:podcast="https://podcastindex.org/namespace/1.0"><channel><title>Episodes</title><podcast:guid>podcast-feed</podcast:guid><item><guid>episode-guid</guid><title>Episode 7</title><podcast:episode>7</podcast:episode><enclosure url="{base_url}/audio/tagged.mp3" type="audio/mpeg" length="1"/><podcast:value type="lightning" method="keysend"><podcast:valueTimeSplit startTime="0" duration="60"><podcast:remoteItem feedGuid="song-feed" itemGuid="song-item"/></podcast:valueTimeSplit><podcast:valueTimeSplit startTime="60" duration="60"><podcast:remoteItem feedGuid="missing-song-feed" itemGuid="missing-song"/></podcast:valueTimeSplit></podcast:value></item></channel></rss>"#
+        r#"<?xml version="1.0"?><rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd" xmlns:podcast="https://podcastindex.org/namespace/1.0"><channel><title>Episodes</title><podcast:guid>podcast-feed</podcast:guid><item><guid>episode-guid</guid><title>Episode 7</title><podcast:episode>7</podcast:episode><enclosure url="{base_url}/audio/tagged.mp3" type="audio/mpeg" length="1"/><podcast:value type="lightning" method="keysend"><podcast:valueTimeSplit startTime="0" duration="60"><podcast:remoteItem feedGuid="song-feed" itemGuid="song-item"/></podcast:valueTimeSplit><podcast:valueTimeSplit startTime="60" duration="60"><podcast:remoteItem feedGuid="missing-song-feed" itemGuid="missing-song"/></podcast:valueTimeSplit></podcast:value></item><item><guid>episode-guid-2</guid><title>Episode 8</title><podcast:episode>8</podcast:episode><enclosure url="{base_url}/audio/tagged.mp3" type="audio/mpeg" length="1"/><podcast:value type="lightning" method="keysend"><podcast:valueTimeSplit startTime="0" duration="60"><podcast:remoteItem feedGuid="song-feed" itemGuid="song-item"/></podcast:valueTimeSplit><podcast:valueTimeSplit startTime="60" duration="60"><podcast:remoteItem feedGuid="song-feed" itemGuid="song-item-2"/></podcast:valueTimeSplit></podcast:value></item></channel></rss>"#
     );
     let escape_feed = format!(
         r#"<?xml version="1.0"?><rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0"><channel><podcast:guid>escape-feed</podcast:guid><item><guid>../escape</guid><title>Escape</title><enclosure url="{base_url}/audio/tagged.mp3" type="audio/mpeg" length="1"/></item></channel></rss>"#
@@ -322,6 +322,67 @@ fn manifest_hash_and_size_are_of_the_tagged_file() {
             assert_eq!(mode & 0o777, 0o644, "{}", path.display());
         }
     }
+}
+
+fn import_songs(server: &TestServer, folder: &tempfile::TempDir) -> Options {
+    let mut options = options(folder);
+    options.songs = Some(write_local_feed(
+        folder,
+        "music.xml",
+        &song_list_feed(&server.base_url),
+    ));
+    let result = run(&options, server.config()).expect("run import");
+    assert_eq!(result.error_count(), 0);
+    options
+}
+
+#[test]
+fn file_with_no_title_gets_the_item_title_artist_and_album() {
+    let server = TestServer::start();
+    let folder = tempfile::tempdir().expect("temporary folder");
+    let options = import_songs(&server, &folder);
+
+    // The FLAC fixture has no tag. The song has no item author.
+    let tags = read_audio_tags(&options.out.join("songs/song-item-2.flac")).expect("read tags");
+    assert_eq!(tags.title.as_deref(), Some("Second Song"));
+    assert_eq!(tags.artist.as_deref(), Some("Channel Band"));
+    assert_eq!(tags.album.as_deref(), Some("Songs"));
+}
+
+#[test]
+fn file_with_a_title_keeps_it() {
+    let server = TestServer::start();
+    let folder = tempfile::tempdir().expect("temporary folder");
+    let options = import_songs(&server, &folder);
+
+    // The MP3 fixture has TIT2 and TPE1, and no TALB.
+    let tags = read_audio_tags(&options.out.join("songs/song-item.mp3")).expect("read tags");
+    assert_eq!(tags.title.as_deref(), Some("Fixture Title"));
+    assert_eq!(tags.artist.as_deref(), Some("Fixture Artist"));
+    assert_eq!(tags.album.as_deref(), Some("Songs"));
+}
+
+#[test]
+fn chapter_artist_is_the_item_author_else_the_channel_author() {
+    let server = TestServer::start();
+    let folder = tempfile::tempdir().expect("temporary folder");
+    let mut options = options(&folder);
+    options.episode_feed = Some(format!("{}/episode-feed.xml", server.base_url));
+    options.episodes = vec!["episode-guid-2".into()];
+
+    let result = run(&options, server.config()).expect("run import");
+    assert_eq!(result.error_count(), 0);
+    let chapters = read_podcast_tags(&options.out.join("episodes/episode-guid-2.mp3"))
+        .expect("read episode tags")
+        .chapters()
+        .expect("read chapters");
+    assert_eq!(chapters.len(), 2);
+    // A song with an item author: the chapter artist is that author.
+    assert_eq!(chapters[0].artist.as_deref(), Some("Item Band"));
+    assert_eq!(chapters[0].author.as_deref(), Some("Channel Band"));
+    // A song with no item author: the chapter artist is the channel author.
+    assert_eq!(chapters[1].artist.as_deref(), Some("Channel Band"));
+    assert_eq!(chapters[1].author.as_deref(), Some("Channel Band"));
 }
 
 #[test]

@@ -236,6 +236,24 @@ Operator choice (orchestrator, 2026-11-23, ADR 0092 R-STATION-4 item 3): the man
 second hash field. The audio files get the mode 0644, so that a copy that keeps the mode is readable in the
 AzuraCast container.
 
+10. `file_with_no_title_gets_the_item_title_artist_and_album` and `file_with_a_title_keeps_it`: a downloaded file
+    with no `TIT2`, `TPE1` or `TALB` gets the item title, the artist and the channel title. A value that the file
+    has stays.
+11. `chapter_artist_is_the_item_author_else_the_channel_author`: a chapter song with an item `itunes:author` gets it
+    as the chapter `artist`. A chapter song with no item author gets the channel `itunes:author`. `author` does not
+    change. The unit tests `display_artist_*` in `src/lib.rs` also show that an artist that is not empty stays as
+    it is.
+
+Operator choice (orchestrator, 2026-11-23, title frames; ADR 0092 does not name them): station-import writes a
+title, artist or album frame only when the downloaded file has no value for it. The title is the item title. The
+artist is the item `itunes:author`, else the channel `itunes:author`. The album is the channel title. This applies
+to songs and episodes. The edits go through `write_song_tags` and `write_episode_tags`.
+
+Operator choice (orchestrator, 2026-11-23, chapter artist; musicindex ADR 0093 R-TAG-4 item 4 says that the caller
+gives it): when a chapter song has no artist, station-import sets the chapter `artist` with the same artist rule,
+in the same function `display_artist`. A chapter artist that is not empty stays. `author` stays the channel
+`itunes:author`. The producer and publisher ADR 0025 do not change.
+
 ## Visual And Manual Criteria
 
 - The manual run with the real feed. The main session does it after the gate. The task does not do it.

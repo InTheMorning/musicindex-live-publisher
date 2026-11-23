@@ -9,8 +9,8 @@ use musicindex_fetch::{
     FeedDocument, FeedReader, ReaderConfig, RemoteItemRef, download_enclosure, song_list,
 };
 use musicindex_tags::{
-    EpisodeTags, NoReferences, SongTags, SplitTarget, read_podcast_tags, write_episode_tags,
-    write_song_tags,
+    EpisodeTags, Id3v24Edit, NoReferences, SongTags, SplitTarget, read_audio_tags,
+    read_podcast_tags, write_episode_tags, write_song_tags,
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -249,13 +249,26 @@ fn import_song(
         item.error = Some(error.to_string());
         return item;
     }
+    // The reader keeps the song feed from the resolve, so this read sends no request.
+    let album = reader
+        .read(&resolved.feed_url)
+        .ok()
+        .and_then(|document| document.values.title.clone());
+    let edits = missing_field_edits(
+        &destination,
+        &DisplayFields {
+            title: resolved.title.as_deref(),
+            artist: display_artist(resolved.artist.as_deref(), resolved.author.as_deref()),
+            album: album.as_deref(),
+        },
+    );
     match write_song_tags(
         &destination,
         &SongTags {
             feed_guid: resolved.feed_guid,
             item_guid: resolved.item_guid,
         },
-        &[],
+        &edits,
         &NoReferences,
     ) {
         Ok(tags) => match finish_file(&destination) {
@@ -358,13 +371,19 @@ fn import_episode(
         item.error = Some("duplicate item GUID".into());
         return item;
     }
-    let episode_splits = match reader.episode_splits(track) {
+    let mut episode_splits = match reader.episode_splits(track) {
         Ok(value) => value,
         Err(error) => {
             item.error = Some(error.to_string());
             return item;
         }
     };
+    // musicindex ADR 0093 R-TAG-4 item 4: the caller gives the chapter artist.
+    // station-import gives the same artist as for a song file. `author` stays.
+    for split in &mut episode_splits.splits {
+        split.artist =
+            display_artist(split.artist.as_deref(), split.author.as_deref()).map(str::to_owned);
+    }
     item.chapters = Some(episode_splits.splits.len());
     item.unresolved_splits = episode_splits
         .unresolved
@@ -396,6 +415,14 @@ fn import_episode(
         item.error = Some(error.to_string());
         return item;
     }
+    let edits = missing_field_edits(
+        &destination,
+        &DisplayFields {
+            title: track.title.as_deref(),
+            artist: display_artist(track.author_name.as_deref(), values.author_name.as_deref()),
+            album: values.title.as_deref(),
+        },
+    );
     let routes = musicindex_fetch::value_routes(&track.value_blocks, &track.payment_routes)
         .or_else(|| {
             musicindex_fetch::value_routes(&values.feed_value_blocks, &values.feed_payment_routes)
@@ -409,7 +436,7 @@ fn import_episode(
             value_routes: routes,
             splits: episode_splits.splits,
         },
-        &[],
+        &edits,
         &NoReferences,
     ) {
         Ok(tags) => match finish_file(&destination) {
@@ -546,6 +573,57 @@ fn tag_summary(value: musicindex_tags::TagWriteResult) -> TagSummary {
         removed_id3v1: value.removed_id3v1,
     }
 }
+/// The artist of a song or an episode: the item `itunes:author`, else the
+/// channel `itunes:author` (orchestrator choice of 2026-11-23, task 001). An
+/// empty value counts as no value.
+fn display_artist<'a>(
+    item_author: Option<&'a str>,
+    channel_author: Option<&'a str>,
+) -> Option<&'a str> {
+    let present = |value: &&str| !value.trim().is_empty();
+    item_author
+        .filter(present)
+        .or(channel_author.filter(present))
+}
+
+/// The display values of an item: the title, the artist and the album.
+struct DisplayFields<'a> {
+    title: Option<&'a str>,
+    artist: Option<&'a str>,
+    album: Option<&'a str>,
+}
+
+/// The edits of the title, artist and album frames that the downloaded file
+/// does not have.
+///
+/// The title is the item title. The artist is the value of [`display_artist`].
+/// The album is the channel title. A value that the file has stays
+/// (orchestrator choice of 2026-11-23, task 001). When the tag read fails, the
+/// function gives no edit, so that it replaces no value.
+fn missing_field_edits(path: &Path, fields: &DisplayFields<'_>) -> Vec<Id3v24Edit> {
+    let Ok(tags) = read_audio_tags(path) else {
+        return Vec::new();
+    };
+    [
+        ("TIT2", tags.title, fields.title),
+        ("TPE1", tags.artist, fields.artist),
+        ("TALB", tags.album, fields.album),
+    ]
+    .into_iter()
+    .filter(|(_, present, _)| nonempty(present.as_deref()).is_none())
+    .filter_map(|(frame_label, _, value)| {
+        nonempty(value).map(|value| Id3v24Edit {
+            frame_label: frame_label.to_owned(),
+            value: value.to_owned(),
+        })
+    })
+    .collect()
+}
+
+fn nonempty(value: Option<&str>) -> Option<&str> {
+    value.map(str::trim).filter(|value| !value.is_empty())
+}
+
 /// Gives the file the mode 0644 and returns its SHA-256 hash and size.
 ///
 /// Call it after the tag write. The manifest hash is the hash of the file at
@@ -572,4 +650,29 @@ fn write_manifest(folder: &Path, manifest: &Manifest) -> Result<()> {
     fs::write(&temp, bytes).context("write temporary manifest")?;
     fs::rename(temp, folder.join("manifest.json")).context("replace manifest")?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::display_artist;
+
+    #[test]
+    fn display_artist_is_the_item_author_first() {
+        assert_eq!(display_artist(Some("Item"), Some("Channel")), Some("Item"));
+    }
+
+    #[test]
+    fn display_artist_with_no_item_author_is_the_channel_author() {
+        assert_eq!(display_artist(None, Some("Channel")), Some("Channel"));
+        assert_eq!(display_artist(Some("  "), Some("Channel")), Some("Channel"));
+        assert_eq!(display_artist(None, Some("")), None);
+    }
+
+    #[test]
+    fn display_artist_keeps_a_present_artist_as_it_is() {
+        assert_eq!(
+            display_artist(Some(" Artist "), Some("Channel")),
+            Some(" Artist ")
+        );
+    }
 }
