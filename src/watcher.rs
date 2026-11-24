@@ -57,6 +57,8 @@ pub struct DropWatcher {
 struct BlockIdentity {
     track: TrackIdentity,
     block_guid: String,
+    /// `true` when `last_payload` is a track block, `false` for the dead block.
+    payable: bool,
     last_payload: LiveValuePayload,
 }
 
@@ -244,15 +246,20 @@ impl DropWatcher {
 
         let identity = path_identity(path);
         let track = track_identity(&dropfile);
-        let block_guid = match self.blocks.get(&identity) {
-            // Same track rewritten, or a duplicate filesystem event: keep the
-            // block GUID so retries and route upgrades stay one block.
-            Some(block) if block.track == track => block.block_guid.clone(),
-            // Next track at a path the producer reuses: mint a fresh block.
-            _ => fresh_guid(),
-        };
         // ADR 0024: routes need both GUIDs. ADR 0029: otherwise publish dead.
         let payable = has_payable_routes(&dropfile);
+        let block_guid = match self.blocks.get(&identity) {
+            // Same track rewritten, or a duplicate filesystem event, with the
+            // same kind of block: keep the block GUID, so that retries and
+            // route upgrades stay one block.
+            Some(block) if block.track == track && block.payable == payable => {
+                block.block_guid.clone()
+            }
+            // A next track, or a change between the dead block and a track
+            // block: make a new block GUID. A client skips a block with the
+            // GUID of the last block (ADR 0029 §Publisher Behavior).
+            _ => fresh_guid(),
+        };
         if !dropfile.value_routes.is_empty() && !payable {
             let missing_field = [
                 ("feed_guid", dropfile.feed_guid.as_deref()),
@@ -298,6 +305,7 @@ impl DropWatcher {
             BlockIdentity {
                 track,
                 block_guid,
+                payable,
                 last_payload: payload.clone(),
             },
         );

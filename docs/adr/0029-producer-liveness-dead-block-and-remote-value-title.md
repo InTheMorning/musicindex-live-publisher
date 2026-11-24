@@ -16,6 +16,9 @@
   Stream". Each other field of the dead block stays. A jingle still pays nobody.
 - Revised: 2026-11-24. The orchestrator session asked for the setting `dead_block_image`. It changes only `image`
   (§Context, §The Dead Block).
+- Revised: 2026-11-24. A change between the dead block and a track block gets a new `blockGuid` (§Publisher
+  Behavior). On the test station with b9e35b1, a track block had the `blockGuid` of the dead block before it. The
+  v4vmusic.com client skipped that track block.
 - Operator choice 2, 2026-11-24: the `title` of a payable track block is "artist - title", for example "Anni Powell -
   Beyond the Hills". The display state does not change.
 
@@ -115,6 +118,11 @@ different in these conditions. The publisher has only the drop file, so it does 
 | Free or missing | Any | The dead block one time | No keepalive |
 
 - The publisher never publishes a block with zero destinations. An empty `value_routes` list gives the dead block.
+- Each block has its own `blockGuid`. A next track gets a new `blockGuid`. A change from the dead block to a track
+  block gets a new `blockGuid`, also for the same track. The reverse change also gets a new `blockGuid`. Only a
+  rewrite of the same track that stays a track block keeps its `blockGuid`, for example a route change.
+- The publisher sends the dead block while the routes of a new track are not ready. It does not keep the block of the
+  last track, because that block pays the last artist.
 - Each change publishes its block at once, with the header `Listener-Delay-Secs`. The relay applies the delay
   (ADR 0011). A keepalive carries no content and no header.
 - When the producer lock becomes free, the publisher publishes the dead block one time, at once. The keepalive stops
@@ -164,6 +172,7 @@ Mechanical, in the publisher:
   destination.
 - An empty `dead_block_image` gives a configuration error that names the target. A value that is not an `http` or
   `https` URL, and a value of more than 2,048 characters, also give that error.
+- The same track, first with no routes and then with routes, gives two blocks with two `blockGuid` values.
 - A payable drop file with the artist "Anni Powell" and the title "Beyond the Hills" gives the payload `title` "Anni
   Powell - Beyond the Hills". An empty artist gives the title alone.
 

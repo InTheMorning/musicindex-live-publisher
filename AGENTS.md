@@ -263,7 +263,9 @@ This service routes money. These rules are not style preferences.
   display state keeps the song as its `title`.
 - A `split` is a decimal string in the payload, never a number. `90.0` renders
   `"90"` and `0.49` renders `"0.49"`.
-- Each track gets a fresh `blockGuid`.
+- Each track gets a fresh `blockGuid`. A change between the dead block and a
+  track block also gets a fresh `blockGuid`, because a client skips a block
+  with the GUID of the last block (ADR 0029).
 - Never derive a split from a title, a file name, or a fuzzy match. Use the
   supplied metadata only.
 - A block pays its routes only when its drop file has a feed GUID and a

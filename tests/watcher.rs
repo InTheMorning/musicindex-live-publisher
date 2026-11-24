@@ -494,6 +494,33 @@ fn watcher_same_track_rewritten_keeps_its_block_guid() -> Result<()> {
     Ok(())
 }
 
+/// The station producer can write the drop file of a new track before its
+/// routes are ready. The dead block and the track block of that track must
+/// have two block GUIDs, because a client skips a block with the GUID of the
+/// last block (ADR 0029 §Publisher Behavior, test station 2026-11-24).
+#[test]
+fn watcher_same_track_from_dead_block_to_track_block_gets_a_new_block_guid() -> Result<()> {
+    let temp = TempDir::new()?;
+    let path = temp.path().join("default.json");
+    let mut watcher = DropWatcher::new(target(), Duration::from_millis(0));
+
+    write(&path, dropfile_with_routes("Track One", json!([])))?;
+    let pending = watcher.process_event(upsert(&path), Instant::now())?;
+
+    write(&path, dropfile("Track One"))?;
+    let payable = watcher.process_event(upsert(&path), Instant::now())?;
+
+    write(&path, dropfile_with_routes("Track One", json!([])))?;
+    let dead_again = watcher.process_event(upsert(&path), Instant::now())?;
+
+    assert_eq!(pending[0].title, "No V4V track playing");
+    assert_eq!(payable[0].title, "Alice - Track One");
+    assert_eq!(dead_again[0].title, "No V4V track playing");
+    assert_ne!(pending[0].block_guid, payable[0].block_guid);
+    assert_ne!(payable[0].block_guid, dead_again[0].block_guid);
+    Ok(())
+}
+
 #[test]
 fn watcher_same_track_identical_payload_rewrite_is_skipped() -> Result<()> {
     let temp = TempDir::new()?;
