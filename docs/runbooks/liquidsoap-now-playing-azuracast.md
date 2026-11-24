@@ -292,7 +292,8 @@ and does not encode it again. Else it downloads the enclosure and converts it to
 `ffmpeg`.
 
 To change the bit rate, add `--mp3-bitrate KBPS` with a value from 32 to 320. `--mp3-bitrate` is not
-valid without `--format mp3`. `--format mp3` does not need `flac`. Without `ffmpeg`, an item that needs a
+valid without `--format mp3`. When you change the format, use a new `--out` folder. Else the file of the old format
+stays in the folder, and the manifest does not give it. `--format mp3` does not need `flac`. Without `ffmpeg`, an item that needs a
 conversion gets an `error` value that starts with `cannot convert the audio file to MP3`, and the run continues.
 For example:
 
