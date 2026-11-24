@@ -491,6 +491,7 @@ fn import_song(
         &SongTags {
             feed_guid: resolved.feed_guid,
             item_guid: resolved.item_guid,
+            image: new_image(&destination, resolved.image_url),
         },
         &edits,
         &NoReferences,
@@ -661,6 +662,7 @@ fn import_episode(
             feed_guid: guid.into(),
             item_guid: item_guid.into(),
             value_routes: routes,
+            image: new_image(&destination, musicindex_fetch::image_url(values, track)),
             splits: episode_splits.splits,
         },
         &edits,
@@ -863,6 +865,20 @@ fn missing_field_edits(path: &Path, fields: &DisplayFields<'_>) -> Vec<Id3v24Edi
         })
     })
     .collect()
+}
+
+/// The image URL to write in `TXXX:Podcast Image`.
+///
+/// A file that has the frame keeps its value, also when the feed has a
+/// different image (musicindex ADR 0096 R-IMAGE-3 item 2 and Open Point 1).
+/// The function then gives `None`, and the tag write writes no frame. An item
+/// with no image URL also gives `None` (R-IMAGE-3 item 3).
+fn new_image(path: &Path, image: Option<String>) -> Option<String> {
+    let present = read_podcast_tags(path)
+        .ok()
+        .and_then(|tags| tags.image)
+        .is_some_and(|value| nonempty(Some(&value)).is_some());
+    if present { None } else { image }
 }
 
 fn nonempty(value: Option<&str>) -> Option<&str> {

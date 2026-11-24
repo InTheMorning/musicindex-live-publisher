@@ -8,7 +8,9 @@ use std::time::Duration;
 
 use musicindex_convert::{ConverterObservation, ConverterProbe, ExecutableSource, ProbeOutcome};
 use musicindex_fetch::ReaderConfig;
-use musicindex_tags::{read_audio_tags, read_podcast_tags};
+use musicindex_tags::{
+    NoReferences, SongTags, read_audio_tags, read_podcast_tags, write_song_tags,
+};
 use serde_json::Value;
 use sha2::Digest;
 use station_import::{Options, OutputFormat, run, run_with};
@@ -113,13 +115,13 @@ fn routes(
     untagged_audio: Vec<u8>,
 ) -> HashMap<String, (u16, &'static str, Vec<u8>)> {
     let song_feed = format!(
-        r#"<?xml version="1.0"?><rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd" xmlns:podcast="https://podcastindex.org/namespace/1.0"><channel><title>Songs</title><itunes:author>Channel Band</itunes:author><podcast:guid>song-feed</podcast:guid><item><guid>song-item</guid><title>Song</title><itunes:author>Item Band</itunes:author><enclosure url="{base_url}/audio/tagged.mp3" type="audio/mpeg" length="1"/></item><item><guid>song-item-2</guid><title>Second Song</title><enclosure url="{base_url}/audio/untagged.flac" type="audio/flac" length="1"/></item></channel></rss>"#
+        r#"<?xml version="1.0"?><rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd" xmlns:podcast="https://podcastindex.org/namespace/1.0"><channel><title>Songs</title><itunes:author>Channel Band</itunes:author><podcast:guid>song-feed</podcast:guid><item><guid>song-item</guid><title>Song</title><itunes:author>Item Band</itunes:author><itunes:image href="{base_url}/art/song.jpg"/><enclosure url="{base_url}/audio/tagged.mp3" type="audio/mpeg" length="1"/></item><item><guid>song-item-2</guid><title>Second Song</title><enclosure url="{base_url}/audio/untagged.flac" type="audio/flac" length="1"/></item><item><guid>song-item-3</guid><title>Framed Song</title><itunes:image href="{base_url}/art/new.jpg"/><enclosure url="{base_url}/audio/framed.mp3" type="audio/mpeg" length="1"/></item></channel></rss>"#
     );
     let failed_song_feed = format!(
         r#"<?xml version="1.0"?><rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0"><channel><podcast:guid>failed-feed</podcast:guid><item><guid>failed-song</guid><title>Missing Audio</title><enclosure url="{base_url}/audio/missing.mp3" type="audio/mpeg" length="1"/></item></channel></rss>"#
     );
     let episode_feed = format!(
-        r#"<?xml version="1.0"?><rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd" xmlns:podcast="https://podcastindex.org/namespace/1.0"><channel><title>Episodes</title><podcast:guid>podcast-feed</podcast:guid><item><guid>episode-guid</guid><title>Episode 7</title><podcast:episode>7</podcast:episode><enclosure url="{base_url}/audio/tagged.mp3" type="audio/mpeg" length="1"/><podcast:value type="lightning" method="keysend"><podcast:valueTimeSplit startTime="0" duration="60"><podcast:remoteItem feedGuid="song-feed" itemGuid="song-item"/></podcast:valueTimeSplit><podcast:valueTimeSplit startTime="60" duration="60"><podcast:remoteItem feedGuid="missing-song-feed" itemGuid="missing-song"/></podcast:valueTimeSplit></podcast:value></item><item><guid>episode-guid-2</guid><title>Episode 8</title><podcast:episode>8</podcast:episode><enclosure url="{base_url}/audio/tagged.mp3" type="audio/mpeg" length="1"/><podcast:value type="lightning" method="keysend"><podcast:valueTimeSplit startTime="0" duration="60"><podcast:remoteItem feedGuid="song-feed" itemGuid="song-item"/></podcast:valueTimeSplit><podcast:valueTimeSplit startTime="60" duration="60"><podcast:remoteItem feedGuid="song-feed" itemGuid="song-item-2"/></podcast:valueTimeSplit></podcast:value></item><item><guid>episode-guid-3</guid><title>Episode 9</title><podcast:episode>9</podcast:episode><enclosure url="{base_url}/audio/untagged.flac" type="audio/flac" length="1"/><podcast:value type="lightning" method="keysend"><podcast:valueTimeSplit startTime="0" duration="60"><podcast:remoteItem feedGuid="song-feed" itemGuid="song-item"/></podcast:valueTimeSplit><podcast:valueTimeSplit startTime="60" duration="60"><podcast:remoteItem feedGuid="song-feed" itemGuid="song-item-2"/></podcast:valueTimeSplit></podcast:value></item></channel></rss>"#
+        r#"<?xml version="1.0"?><rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd" xmlns:podcast="https://podcastindex.org/namespace/1.0"><channel><title>Episodes</title><itunes:image href="{base_url}/art/show.jpg"/><podcast:guid>podcast-feed</podcast:guid><item><guid>episode-guid</guid><title>Episode 7</title><podcast:episode>7</podcast:episode><enclosure url="{base_url}/audio/tagged.mp3" type="audio/mpeg" length="1"/><podcast:value type="lightning" method="keysend"><podcast:valueTimeSplit startTime="0" duration="60"><podcast:remoteItem feedGuid="song-feed" itemGuid="song-item"/></podcast:valueTimeSplit><podcast:valueTimeSplit startTime="60" duration="60"><podcast:remoteItem feedGuid="missing-song-feed" itemGuid="missing-song"/></podcast:valueTimeSplit></podcast:value></item><item><guid>episode-guid-2</guid><title>Episode 8</title><podcast:episode>8</podcast:episode><enclosure url="{base_url}/audio/tagged.mp3" type="audio/mpeg" length="1"/><podcast:value type="lightning" method="keysend"><podcast:valueTimeSplit startTime="0" duration="60"><podcast:remoteItem feedGuid="song-feed" itemGuid="song-item"/></podcast:valueTimeSplit><podcast:valueTimeSplit startTime="60" duration="60"><podcast:remoteItem feedGuid="song-feed" itemGuid="song-item-2"/></podcast:valueTimeSplit></podcast:value></item><item><guid>episode-guid-3</guid><title>Episode 9</title><podcast:episode>9</podcast:episode><enclosure url="{base_url}/audio/untagged.flac" type="audio/flac" length="1"/><podcast:value type="lightning" method="keysend"><podcast:valueTimeSplit startTime="0" duration="60"><podcast:remoteItem feedGuid="song-feed" itemGuid="song-item"/></podcast:valueTimeSplit><podcast:valueTimeSplit startTime="60" duration="60"><podcast:remoteItem feedGuid="song-feed" itemGuid="song-item-2"/></podcast:valueTimeSplit></podcast:value></item></channel></rss>"#
     );
     let alt_song_feed = format!(
         r#"<?xml version="1.0"?><rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0"><channel><title>Alt Songs</title><podcast:guid>alt-feed</podcast:guid><item><guid>alt-song</guid><title>Alt Song</title><enclosure url="{base_url}/audio/untagged.flac" type="audio/flac" length="1"/><podcast:alternateEnclosure type="audio/mpeg" length="1"><podcast:source uri="{base_url}/audio/alt-first.mp3"/></podcast:alternateEnclosure><podcast:alternateEnclosure type="audio/mpeg" length="1"><podcast:source uri="{base_url}/audio/alt-second.mp3"/></podcast:alternateEnclosure></item></channel></rss>"#
@@ -165,6 +167,10 @@ fn routes(
         (200, "audio/mpeg", tagged_audio.clone()),
     );
     map.insert(
+        "/audio/framed.mp3".into(),
+        (200, "audio/mpeg", framed_audio(&tagged_audio)),
+    );
+    map.insert(
         "/audio/tagged.mp3".into(),
         (200, "audio/mpeg", tagged_audio),
     );
@@ -183,6 +189,27 @@ fn routes(
     );
     map
 }
+
+/// The MP3 fixture with the frame `TXXX:Podcast Image` before the import.
+fn framed_audio(tagged_audio: &[u8]) -> Vec<u8> {
+    let folder = tempfile::tempdir().expect("temporary folder");
+    let path = folder.path().join("framed.mp3");
+    std::fs::write(&path, tagged_audio).expect("write framed audio");
+    write_song_tags(
+        &path,
+        &SongTags {
+            feed_guid: "old-feed".into(),
+            item_guid: "old-item".into(),
+            image: Some(OLD_IMAGE.into()),
+        },
+        &[],
+        &NoReferences,
+    )
+    .expect("write the old image frame");
+    std::fs::read(&path).expect("read framed audio")
+}
+
+const OLD_IMAGE: &str = "https://old.example/cover.jpg";
 
 fn song_list_feed(base_url: &str) -> String {
     format!(
@@ -388,6 +415,66 @@ fn file_with_no_title_gets_the_item_title_artist_and_album() {
     assert_eq!(tags.title.as_deref(), Some("Second Song"));
     assert_eq!(tags.artist.as_deref(), Some("Channel Band"));
     assert_eq!(tags.album.as_deref(), Some("Songs"));
+}
+
+// musicindex ADR 0096 R-IMAGE-3 items 1 and 3.
+#[test]
+fn song_files_get_the_image_url_and_no_image_gives_no_frame() {
+    let server = TestServer::start();
+    let folder = tempfile::tempdir().expect("temporary folder");
+    let options = import_songs(&server, &folder);
+
+    let image = |name: &str| {
+        read_podcast_tags(&options.out.join(name))
+            .expect("read tags")
+            .image
+    };
+    assert_eq!(
+        image("songs/song-item.mp3"),
+        Some(format!("{}/art/song.jpg", server.base_url))
+    );
+    assert_eq!(image("songs/song-item-2.flac"), None);
+}
+
+// musicindex ADR 0096 R-IMAGE-3 item 1: the episode gets the channel image.
+#[test]
+fn episode_file_gets_the_channel_image_url() {
+    let server = TestServer::start();
+    let folder = tempfile::tempdir().expect("temporary folder");
+    let mut options = options(&folder);
+    options.episode_feed = Some(format!("{}/episode-feed.xml", server.base_url));
+    options.episodes = vec!["episode-guid".into()];
+
+    let result = run(&options, server.config()).expect("run import");
+    assert_eq!(result.error_count(), 0);
+    let tags =
+        read_podcast_tags(&options.out.join("episodes/episode-guid.mp3")).expect("read tags");
+    assert_eq!(
+        tags.image,
+        Some(format!("{}/art/show.jpg", server.base_url))
+    );
+}
+
+// musicindex ADR 0096 R-IMAGE-3 item 2 and Open Point 1: an old frame stays.
+#[test]
+fn file_with_an_image_frame_keeps_it() {
+    let server = TestServer::start();
+    let folder = tempfile::tempdir().expect("temporary folder");
+    let mut options = options(&folder);
+    options.songs = Some(write_local_feed(
+        &folder,
+        "music.xml",
+        &format!(
+            r#"<?xml version="1.0"?><rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0"><channel><title>Station list</title><podcast:remoteItem medium="music" feedGuid="song-feed" feedUrl="{}/song-feed.xml" itemGuid="song-item-3"/></channel></rss>"#,
+            server.base_url
+        ),
+    ));
+
+    let result = run(&options, server.config()).expect("run import");
+    assert_eq!(result.error_count(), 0);
+    let tags = read_podcast_tags(&options.out.join("songs/song-item-3.mp3")).expect("read tags");
+    assert_eq!(tags.image.as_deref(), Some(OLD_IMAGE));
+    assert_eq!(tags.item_guid.as_deref(), Some("song-item-3"));
 }
 
 #[test]

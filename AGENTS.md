@@ -167,7 +167,11 @@ packet.
   R-CONVERT-7). flac is optional but recommended on the computer that runs
   it. With `--format mp3`, it writes only MP3 files: the MP3 file of the
   feed, else a conversion with ffmpeg through musicindex-convert (musicindex
-  ADR 0095, task 002). It has no upload code.
+  ADR 0095, task 002). It writes the image URL of the feed in
+  `TXXX:Podcast Image` of each file, and a file that has that frame keeps it
+  (musicindex ADR 0096 R-IMAGE-3). Open Point 1 of that ADR (keep the old
+  frame or use the feed value) has no operator answer. The code keeps the old
+  frame. It has no upload code.
 - This item needs a new ADR before work starts: a track identity source that
   is earlier than the Mixxx history row.
 - Studio client task 001 is not started. The publisher will start and end a

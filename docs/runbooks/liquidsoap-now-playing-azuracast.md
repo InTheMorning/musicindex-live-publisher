@@ -310,6 +310,10 @@ Then write the files:
 station-import --out station-import-output --songs https://example.org/music.xml --episode-feed https://example.org/podcast.xml --episode episode-guid-1 --episode 7
 ```
 
+Each file gets the image URL of its feed in `TXXX:Podcast Image` (musicindex ADR 0096 R-IMAGE-3). The station
+producer shows that image. A downloaded file that has this frame keeps its value. An item with no image URL gets no
+frame. A file that you imported before this change has no frame. Import it again to get the frame.
+
 Send the `songs/` and `episodes/` folders to the station with its AzuraCast SFTP account. The command does not upload files (musicindex ADR 0092 R-STATION-5).
 
 ## Rollback
