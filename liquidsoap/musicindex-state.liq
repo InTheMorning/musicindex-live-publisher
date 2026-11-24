@@ -135,12 +135,13 @@ def musicindex_pictures(fname) =
     fun (kv) ->
       if fst(kv) == "metadata_block_picture" then
         list.iter(
-          fun (block) ->
+          fun (block) -> begin
             p = file.metadata.flac.cover.decode(block)
             if null.defined(p) then
               p = null.get(p)
               add(p.picture_type, (p : string))
-            end,
+            end
+          end,
           musicindex_flac_blocks(snd(kv))
         )
       end,
