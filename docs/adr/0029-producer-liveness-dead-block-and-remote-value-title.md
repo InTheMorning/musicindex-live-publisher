@@ -19,6 +19,8 @@
 - Revised: 2026-11-24. A change between the dead block and a track block gets a new `blockGuid` (§Publisher
   Behavior). On the test station with b9e35b1, a track block had the `blockGuid` of the dead block before it. The
   v4vmusic.com client skipped that track block.
+- Changed by: ADR 0031, 2026-11-24. The dead block has `value.destinations` as `[]`. The destination items of §The
+  Dead Block, the zero destination item of §Publisher Behavior and the zero destination invariant no longer apply.
 - Operator choice 2, 2026-11-24: the `title` of a payable track block is "artist - title", for example "Anni Powell -
   Beyond the Hills". The display state does not change.
 

@@ -301,18 +301,16 @@ fn track_payload_title(artist: &str, title: &str) -> String {
     }
 }
 
-/// Fixed payment-destination name for the dead block.
-const DEAD_BLOCK_RECIPIENT_NAME: &str = "No V4V payment route";
-
-/// Fixed lnaddress for the dead block.
-///
-/// A payment to this address fails, so the dead block pays nobody.
-const DEAD_BLOCK_ADDRESS: &str = "no-v4v-track@example.invalid";
+/// The lnaddress of the dead block before ADR 0031. A publisher of an earlier
+/// version can leave a dead block with this address on the relay. The keepalive
+/// check still reads that block as a dead block.
+const OLD_DEAD_BLOCK_ADDRESS: &str = "no-v4v-track@example.invalid";
 
 /// Builds the dead block with the title and the image of the target (ADR 0029).
 ///
-/// The model and destination are constants. The block carries no `feedGuid`
-/// or `itemGuid`. The caller supplies a fresh `block_guid` for each publish.
+/// The model is a constant. `destinations` is an empty array, and no setting
+/// adds a destination (ADR 0031). The block carries no `feedGuid` or
+/// `itemGuid`. The caller supplies a fresh `block_guid` for each publish.
 pub fn dead_payload(
     event_guid: &str,
     block_guid: &str,
@@ -338,28 +336,20 @@ pub fn dead_payload(
                 method: "lnaddress".to_owned(),
                 suggested: None,
             },
-            destinations: vec![LiveValueDestination {
-                kind: Some("lnaddress".to_owned()),
-                name: Some(DEAD_BLOCK_RECIPIENT_NAME.to_owned()),
-                address: Some(DEAD_BLOCK_ADDRESS.to_owned()),
-                split: Some("100".to_owned()),
-                custom_key: None,
-                custom_value: None,
-                fee: None,
-            }],
+            destinations: Vec::new(),
         },
         play_id: None,
         log: None,
     }
 }
 
-/// Returns whether every destination uses the fixed dead block address.
+/// Returns whether `value` is a dead block: no destination (ADR 0031), or only
+/// the old dead block address of an earlier publisher version.
 pub(crate) fn is_dead_block(value: &LiveValue) -> bool {
-    !value.destinations.is_empty()
-        && value
-            .destinations
-            .iter()
-            .all(|destination| destination.address.as_deref() == Some(DEAD_BLOCK_ADDRESS))
+    value
+        .destinations
+        .iter()
+        .all(|destination| destination.address.as_deref() == Some(OLD_DEAD_BLOCK_ADDRESS))
 }
 
 /// Maps a producer payment route to a live value destination.
@@ -597,28 +587,28 @@ mod tests {
         assert!(value.get("itemGuid").is_none());
         assert_eq!(value["value"]["model"]["type"], "lightning");
         assert_eq!(value["value"]["model"]["method"], "lnaddress");
-        assert_eq!(
-            value["value"]["destinations"].as_array().map(Vec::len),
-            Some(1)
-        );
-        assert_eq!(value["value"]["destinations"][0]["type"], "lnaddress");
-        assert_eq!(
-            value["value"]["destinations"][0]["name"],
-            "No V4V payment route"
-        );
-        assert_eq!(
-            value["value"]["destinations"][0]["address"],
-            "no-v4v-track@example.invalid"
-        );
-        assert_eq!(value["value"]["destinations"][0]["split"], "100");
-        assert!(!value["value"]["destinations"][0]["split"].is_number());
+        // ADR 0031: the field is present as an empty array. A client can throw
+        // when `value.destinations` is missing.
+        assert_eq!(value["value"]["destinations"], json!([]));
         Ok(())
     }
 
     #[test]
-    fn livevalue_dead_block_requires_all_destinations_to_use_dead_address() {
+    fn livevalue_dead_block_is_no_destination_or_the_old_dead_address() {
         let dead = dead_payload("event-guid", "block-guid", &DeadBlockSettings::default());
         assert!(is_dead_block(&dead.value));
+
+        let mut old = dead.clone();
+        old.value.destinations.push(LiveValueDestination {
+            kind: Some("lnaddress".to_owned()),
+            name: Some("No V4V payment route".to_owned()),
+            address: Some(OLD_DEAD_BLOCK_ADDRESS.to_owned()),
+            split: Some("100".to_owned()),
+            custom_key: None,
+            custom_value: None,
+            fee: None,
+        });
+        assert!(is_dead_block(&old.value));
 
         let payable = payload_from_dropfile(&dropfile(), "event-guid", "block-guid");
         assert!(!is_dead_block(&payable.value));

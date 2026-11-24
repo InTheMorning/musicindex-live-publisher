@@ -1108,6 +1108,28 @@ fn dead_block_image_is_read_and_trimmed() -> Result<()> {
     Ok(())
 }
 
+// ADR 0031: the dead block has `destinations: []`. The title and the image
+// settings of a target cannot add a destination.
+#[test]
+fn dead_block_of_a_configured_target_has_no_destination() -> Result<()> {
+    let temp = TempDir::new()?;
+    let watch_dir = temp.path().join("watch");
+    let token = write_token(temp.path(), "default.token", "secret-token")?;
+    let text = config_text(&watch_dir, &token, None).replace(
+        "# default target comment",
+        "dead_block_title = \"Station\"\ndead_block_image = \"https://example.com/station.png\"",
+    );
+    let path = write_config(temp.path(), &text)?;
+    let config = load_config(&path, ConfigOverrides::default())?;
+    let payload = musicindex_live_publisher::dead_payload("e", "b", &config.targets[0].dead_block);
+    let value = serde_json::to_value(&payload)?;
+    assert_eq!(value["title"], "Station");
+    assert_eq!(value["value"]["destinations"], json!([]));
+    assert_eq!(value["value"]["model"]["type"], "lightning");
+    assert_eq!(value["value"]["model"]["method"], "lnaddress");
+    Ok(())
+}
+
 #[test]
 fn bad_dead_block_image_is_an_error() -> Result<()> {
     let temp = TempDir::new()?;

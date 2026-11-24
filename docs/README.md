@@ -116,6 +116,9 @@ the next priority. Confirm that logging works before the show.
 - [ADR 0030: station-import writes the feed value in each standard frame](adr/0030-station-import-writes-the-feed-value-in-each-standard-frame.md)
   — Accepted. The feed value replaces `TIT2`, `TPE1`, `TALB`, `TPE2`, `TRCK` and
   `TDRC` of a station file. A frame with no feed value keeps the file value
+- [ADR 0031: The dead block has no destination](adr/0031-the-dead-block-has-no-destination.md)
+  — Accepted. The dead block has `value.destinations` as `[]`. It changes ADR
+  0029
 
 ## Plans
 
