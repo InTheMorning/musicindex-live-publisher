@@ -10,9 +10,9 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = "1"
-musicindex-fetch = { git = "https://github.com/InTheMorning/musicindex-lib", rev = "7d440251ca5f4e7d342f7ad0b34d0f7dbaf2ca17" }
-musicindex-convert = { git = "https://github.com/InTheMorning/musicindex-lib", rev = "7d440251ca5f4e7d342f7ad0b34d0f7dbaf2ca17" }
-musicindex-tags = { git = "https://github.com/InTheMorning/musicindex-lib", rev = "7d440251ca5f4e7d342f7ad0b34d0f7dbaf2ca17" }
+musicindex-fetch = { git = "https://github.com/InTheMorning/musicindex-lib", rev = "44cdc65a45f7e78b832b8ec1af3620584f5aba67" }
+musicindex-convert = { git = "https://github.com/InTheMorning/musicindex-lib", rev = "44cdc65a45f7e78b832b8ec1af3620584f5aba67" }
+musicindex-tags = { git = "https://github.com/InTheMorning/musicindex-lib", rev = "44cdc65a45f7e78b832b8ec1af3620584f5aba67" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"

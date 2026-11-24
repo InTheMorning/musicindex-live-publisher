@@ -5,9 +5,12 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow};
-use musicindex_convert::{ConverterObservation, convert_with};
+use musicindex_convert::{
+    ConverterObservation, DEFAULT_MP3_BIT_RATE_KBPS, convert_to_mp3_with, convert_with,
+};
 use musicindex_fetch::{
     FeedDocument, FeedReader, ReaderConfig, RemoteItemRef, download_enclosure, song_list,
+    track_mp3_url,
 };
 use musicindex_tags::format::AudioFormat;
 use musicindex_tags::{
@@ -30,6 +33,31 @@ pub struct Options {
     pub out: PathBuf,
     /// Skip downloads and tag writes.
     pub dry_run: bool,
+    /// The format of the audio files (musicindex ADR 0095 R-MP3-1).
+    pub format: OutputFormat,
+}
+
+/// The format of the audio files of one import (musicindex ADR 0095
+/// R-MP3-1).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum OutputFormat {
+    /// Keep the audio of the feed. A WAV song becomes a FLAC file (musicindex
+    /// ADR 0094 R-CONVERT-7).
+    #[default]
+    Keep,
+    /// Write only MP3 files. A converted file has this constant bit rate in
+    /// kbit/s (R-MP3-3 item 6).
+    Mp3 {
+        /// The bit rate of a converted file in kbit/s.
+        bit_rate_kbps: u32,
+    },
+}
+
+impl OutputFormat {
+    /// The format `mp3` with the default bit rate of 256 kbit/s.
+    pub const MP3: Self = Self::Mp3 {
+        bit_rate_kbps: DEFAULT_MP3_BIT_RATE_KBPS,
+    };
 }
 
 /// One manifest and its item results.
@@ -124,7 +152,7 @@ pub fn run(options: &Options, config: ReaderConfig) -> Result<Manifest> {
 }
 
 /// [`run`] with the converter probe that `probe` gives. The run calls
-/// `probe` one time, at the first WAV song.
+/// `probe` one time, at the first file that needs a conversion.
 ///
 /// # Errors
 ///
@@ -191,6 +219,7 @@ pub fn run_with(
                         selector,
                         options,
                         &mut claimed,
+                        &mut converter,
                     ));
                 }
             }
@@ -212,12 +241,13 @@ pub fn run_with(
     Ok(manifest)
 }
 
-/// The folder in the output folder that holds a WAV song while it becomes
-/// a FLAC file. The run removes it when it is empty.
+/// The folder in the output folder that holds a downloaded file while it
+/// becomes a FLAC or an MP3 file. The run removes it when it is empty.
 const STAGING_DIR: &str = ".convert";
 
 /// The converter of one run. It probes the programs one time, at the first
-/// WAV song (musicindex ADR 0094 R-CONVERT-7).
+/// file that needs a conversion (musicindex ADR 0094 R-CONVERT-7, ADR 0095
+/// R-MP3-3 item 4).
 struct Converter<'a> {
     probe: &'a dyn Fn() -> ConverterObservation,
     observation: Option<ConverterObservation>,
@@ -271,6 +301,110 @@ fn convert_wav(
     result.map(|()| Some(flac))
 }
 
+/// The source and the planned path of the audio file of one item.
+struct AudioPlan {
+    /// The URL that the import downloads.
+    url: String,
+    /// The path in the output folder before a conversion of the format
+    /// `keep`.
+    path: PathBuf,
+    /// The format `mp3` converts the downloaded file (musicindex ADR 0095
+    /// R-MP3-2 item 4).
+    convert: bool,
+}
+
+/// Selects the URL and the path of the audio file of an item.
+///
+/// With [`OutputFormat::Keep`], the URL is the enclosure. With
+/// [`OutputFormat::Mp3`], the URL is the MP3 file that musicindex-fetch
+/// selects (`mp3_url`, R-MP3-2 item 1), else the enclosure, which the import
+/// converts. The path then has the extension `mp3`.
+fn plan_audio(
+    folder: &str,
+    guid: &str,
+    enclosure_url: Option<&str>,
+    enclosure_type: Option<&str>,
+    mp3_url: Option<&str>,
+    format: OutputFormat,
+) -> Result<AudioPlan> {
+    if let (OutputFormat::Mp3 { .. }, Some(url)) = (format, mp3_url) {
+        return Ok(AudioPlan {
+            url: url.to_owned(),
+            path: mp3_path(folder, guid)?,
+            convert: false,
+        });
+    }
+    let url = enclosure_url.ok_or_else(|| anyhow!("item has no enclosure URL"))?;
+    match format {
+        OutputFormat::Keep => Ok(AudioPlan {
+            url: url.to_owned(),
+            path: item_path(folder, guid, enclosure_type, url)?,
+            convert: false,
+        }),
+        OutputFormat::Mp3 { .. } => Ok(AudioPlan {
+            url: url.to_owned(),
+            path: mp3_path(folder, guid)?,
+            convert: true,
+        }),
+    }
+}
+
+/// Downloads the audio file of `plan` and gives its path in the output
+/// folder, in the output format of the run.
+///
+/// With [`OutputFormat::Keep`], a WAV song becomes a FLAC file when
+/// `wav_to_flac` is `true` (musicindex ADR 0094 R-CONVERT-7 applies to
+/// songs). With [`OutputFormat::Mp3`] and a planned conversion, the file goes
+/// to the staging folder and becomes an MP3 file (ADR 0095 R-MP3-2 item 4).
+/// No downloaded file stays in the staging folder, also after an error.
+fn fetch_audio(
+    out: &Path,
+    plan: &AudioPlan,
+    format: OutputFormat,
+    wav_to_flac: bool,
+    converter: &mut Converter<'_>,
+) -> Result<PathBuf> {
+    let destination = out.join(&plan.path);
+    let bit_rate_kbps = match format {
+        OutputFormat::Mp3 { bit_rate_kbps } if plan.convert => bit_rate_kbps,
+        OutputFormat::Mp3 { .. } => {
+            download_enclosure(&plan.url, &destination, &user_agent())?;
+            return Ok(plan.path.clone());
+        }
+        OutputFormat::Keep => {
+            download_enclosure(&plan.url, &destination, &user_agent())?;
+            if !wav_to_flac {
+                return Ok(plan.path.clone());
+            }
+            return Ok(match convert_wav(out, &destination, converter)? {
+                Some(_) => plan.path.with_extension("flac"),
+                None => plan.path.clone(),
+            });
+        }
+    };
+    let staging = out.join(STAGING_DIR);
+    let stem = plan
+        .path
+        .file_stem()
+        .ok_or_else(|| anyhow!("the audio file has no name"))?;
+    let staged = staging.join(stem).with_extension("download");
+    fs::create_dir_all(&staging).context("create the staging folder")?;
+    download_enclosure(&plan.url, &staged, &user_agent())?;
+    // An MP3 file of a stopped run would block the conversion.
+    let _ = fs::remove_file(staged.with_extension("mp3"));
+    let result = convert_to_mp3_with(&staged, bit_rate_kbps, &converter.observation().ffmpeg)
+        .map_err(|error| anyhow!("cannot convert the audio file to MP3: {error}"))
+        .and_then(|converted| {
+            fs::rename(&converted, &destination)
+                .inspect_err(|_| {
+                    let _ = fs::remove_file(&converted);
+                })
+                .context("move the MP3 file to the output folder")
+        });
+    let _ = fs::remove_file(&staged);
+    result.map(|()| plan.path.clone())
+}
+
 fn import_song(
     reader: &mut FeedReader<musicindex_fetch::HttpFetch>,
     reference: &RemoteItemRef,
@@ -307,24 +441,22 @@ fn import_song(
         &resolved.feed_url,
         None,
     );
-    let Some(url) = resolved.enclosure_url.as_deref() else {
-        item.error = Some("item has no enclosure URL".into());
-        return item;
-    };
-    item.source_url = Some(url.to_owned());
-    let path = match item_path(
+    let plan = match plan_audio(
         "songs",
         &resolved.item_guid,
+        resolved.enclosure_url.as_deref(),
         resolved.enclosure_type.as_deref(),
-        url,
+        resolved.mp3_url(),
+        options.format,
     ) {
-        Ok(path) => path,
+        Ok(plan) => plan,
         Err(error) => {
             item.error = Some(error.to_string());
             return item;
         }
     };
-    item.path = Some(path.to_string_lossy().into_owned());
+    item.source_url = Some(plan.url.clone());
+    item.path = Some(plan.path.to_string_lossy().into_owned());
     if !claimed.insert(format!("song:{}", resolved.item_guid)) {
         item.error = Some("duplicate item GUID".into());
         return item;
@@ -332,22 +464,15 @@ fn import_song(
     if options.dry_run {
         return item;
     }
-    let mut destination = options.out.join(&path);
-    if let Err(error) = download_enclosure(url, &destination, &user_agent()) {
-        item.error = Some(error.to_string());
-        return item;
-    }
-    match convert_wav(&options.out, &destination, converter) {
-        Ok(Some(flac)) => {
-            item.path = Some(path.with_extension("flac").to_string_lossy().into_owned());
-            destination = flac;
-        }
-        Ok(None) => {}
+    let path = match fetch_audio(&options.out, &plan, options.format, true, converter) {
+        Ok(path) => path,
         Err(error) => {
             item.error = Some(format!("{error:#}"));
             return item;
         }
-    }
+    };
+    item.path = Some(path.to_string_lossy().into_owned());
+    let destination = options.out.join(&path);
     // The reader keeps the song feed from the resolve, so this read sends no request.
     let album = reader
         .read(&resolved.feed_url)
@@ -396,6 +521,7 @@ fn import_episode(
     selector: &str,
     options: &Options,
     claimed: &mut HashSet<String>,
+    converter: &mut Converter<'_>,
 ) -> ManifestItem {
     let number_selector = !selector.is_empty() && selector.bytes().all(|b| b.is_ascii_digit());
     let track = values.tracks.iter().find(|track| {
@@ -448,24 +574,22 @@ fn import_episode(
         url,
         Some(selector.into()),
     );
-    let Some(enclosure) = track.enclosure_url.as_deref() else {
-        item.error = Some("item has no enclosure URL".into());
-        return item;
-    };
-    item.source_url = Some(enclosure.into());
-    let path = match item_path(
+    let plan = match plan_audio(
         "episodes",
         item_guid,
+        track.enclosure_url.as_deref(),
         track.enclosure_type.as_deref(),
-        enclosure,
+        track_mp3_url(track),
+        options.format,
     ) {
-        Ok(path) => path,
+        Ok(plan) => plan,
         Err(error) => {
             item.error = Some(error.to_string());
             return item;
         }
     };
-    item.path = Some(path.to_string_lossy().into_owned());
+    item.source_url = Some(plan.url.clone());
+    item.path = Some(plan.path.to_string_lossy().into_owned());
     if !claimed.insert(format!("episode:{item_guid}")) {
         item.error = Some("duplicate item GUID".into());
         return item;
@@ -509,11 +633,15 @@ fn import_episode(
     if options.dry_run {
         return item;
     }
+    let path = match fetch_audio(&options.out, &plan, options.format, false, converter) {
+        Ok(path) => path,
+        Err(error) => {
+            item.error = Some(format!("{error:#}"));
+            return item;
+        }
+    };
+    item.path = Some(path.to_string_lossy().into_owned());
     let destination = options.out.join(&path);
-    if let Err(error) = download_enclosure(enclosure, &destination, &user_agent()) {
-        item.error = Some(error.to_string());
-        return item;
-    }
     let edits = missing_field_edits(
         &destination,
         &DisplayFields {
@@ -613,6 +741,12 @@ fn failed(
         selector,
         error: Some(error),
     }
+}
+fn mp3_path(folder: &str, guid: &str) -> Result<PathBuf> {
+    if guid.is_empty() {
+        return Err(anyhow!("item GUID is empty"));
+    }
+    Ok(PathBuf::from(folder).join(format!("{}.mp3", file_stem(guid))))
 }
 fn item_path(folder: &str, guid: &str, mime: Option<&str>, url: &str) -> Result<PathBuf> {
     if guid.is_empty() {

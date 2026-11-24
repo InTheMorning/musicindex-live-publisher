@@ -160,7 +160,9 @@ packet.
   musicindex-lib holds its feed read and download. It converts a WAV song to
   FLAC through musicindex-convert of musicindex-lib (musicindex ADR 0094
   R-CONVERT-7). flac is optional but recommended on the computer that runs
-  it. It has no upload code.
+  it. With `--format mp3`, it writes only MP3 files: the MP3 file of the
+  feed, else a conversion with ffmpeg through musicindex-convert (musicindex
+  ADR 0095, task 002). It has no upload code.
 - This item needs a new ADR before work starts: a track identity source that
   is earlier than the Mixxx history row.
 - Studio client task 001 is not started. The publisher will start and end a

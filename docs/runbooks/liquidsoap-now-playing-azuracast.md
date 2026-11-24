@@ -286,6 +286,20 @@ Linux install `flac` with this command:
 sudo pacman -S flac
 ```
 
+To write only MP3 files, add `--format mp3` (musicindex ADR 0095). The default is `--format keep`, which keeps the
+audio of the feed. With `--format mp3`, `station-import` downloads the MP3 file of the feed when the feed gives one,
+and does not encode it again. Else it downloads the enclosure and converts it to an MP3 file at 256 kbps with
+`ffmpeg`.
+
+To change the bit rate, add `--mp3-bitrate KBPS` with a value from 32 to 320. `--mp3-bitrate` is not
+valid without `--format mp3`. `--format mp3` does not need `flac`. Without `ffmpeg`, an item that needs a
+conversion gets an `error` value that starts with `cannot convert the audio file to MP3`, and the run continues.
+For example:
+
+```sh
+station-import --out station-import-output --songs https://example.org/music.xml --format mp3 --mp3-bitrate 192 --dry-run
+```
+
 An item GUID with characters that are not safe in a file name, for example a URL, gives the file name
 `sha256-` and the SHA-256 hex of the GUID. The tags and the manifest keep the item GUID.
 

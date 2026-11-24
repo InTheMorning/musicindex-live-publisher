@@ -348,7 +348,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -390,7 +390,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -1211,20 +1211,20 @@ dependencies = [
 [[package]]
 name = "musicindex-convert"
 version = "0.1.0"
-source = "git+https://github.com/InTheMorning/musicindex-lib?rev=7d440251ca5f4e7d342f7ad0b34d0f7dbaf2ca17#7d440251ca5f4e7d342f7ad0b34d0f7dbaf2ca17"
+source = "git+https://github.com/InTheMorning/musicindex-lib?rev=44cdc65a45f7e78b832b8ec1af3620584f5aba67#44cdc65a45f7e78b832b8ec1af3620584f5aba67"
 dependencies = [
  "chrono",
- "musicindex-tags 0.1.0 (git+https://github.com/InTheMorning/musicindex-lib?rev=7d440251ca5f4e7d342f7ad0b34d0f7dbaf2ca17)",
+ "musicindex-tags 0.1.0 (git+https://github.com/InTheMorning/musicindex-lib?rev=44cdc65a45f7e78b832b8ec1af3620584f5aba67)",
 ]
 
 [[package]]
 name = "musicindex-fetch"
 version = "0.1.0"
-source = "git+https://github.com/InTheMorning/musicindex-lib?rev=7d440251ca5f4e7d342f7ad0b34d0f7dbaf2ca17#7d440251ca5f4e7d342f7ad0b34d0f7dbaf2ca17"
+source = "git+https://github.com/InTheMorning/musicindex-lib?rev=44cdc65a45f7e78b832b8ec1af3620584f5aba67#44cdc65a45f7e78b832b8ec1af3620584f5aba67"
 dependencies = [
  "chrono",
- "musicindex-tags 0.1.0 (git+https://github.com/InTheMorning/musicindex-lib?rev=7d440251ca5f4e7d342f7ad0b34d0f7dbaf2ca17)",
- "musicindex-value 0.1.0 (git+https://github.com/InTheMorning/musicindex-lib?rev=7d440251ca5f4e7d342f7ad0b34d0f7dbaf2ca17)",
+ "musicindex-tags 0.1.0 (git+https://github.com/InTheMorning/musicindex-lib?rev=44cdc65a45f7e78b832b8ec1af3620584f5aba67)",
+ "musicindex-value 0.1.0 (git+https://github.com/InTheMorning/musicindex-lib?rev=44cdc65a45f7e78b832b8ec1af3620584f5aba67)",
  "reqwest",
  "serde_json",
  "sha2",
@@ -1253,7 +1253,7 @@ dependencies = [
 [[package]]
 name = "musicindex-tags"
 version = "0.1.0"
-source = "git+https://github.com/InTheMorning/musicindex-lib?rev=7d440251ca5f4e7d342f7ad0b34d0f7dbaf2ca17#7d440251ca5f4e7d342f7ad0b34d0f7dbaf2ca17"
+source = "git+https://github.com/InTheMorning/musicindex-lib?rev=44cdc65a45f7e78b832b8ec1af3620584f5aba67#44cdc65a45f7e78b832b8ec1af3620584f5aba67"
 dependencies = [
  "anyhow",
  "id3",
@@ -1277,7 +1277,7 @@ dependencies = [
 [[package]]
 name = "musicindex-value"
 version = "0.1.0"
-source = "git+https://github.com/InTheMorning/musicindex-lib?rev=7d440251ca5f4e7d342f7ad0b34d0f7dbaf2ca17#7d440251ca5f4e7d342f7ad0b34d0f7dbaf2ca17"
+source = "git+https://github.com/InTheMorning/musicindex-lib?rev=44cdc65a45f7e78b832b8ec1af3620584f5aba67#44cdc65a45f7e78b832b8ec1af3620584f5aba67"
 
 [[package]]
 name = "musicindex-value"
@@ -1348,7 +1348,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -1539,7 +1539,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.52.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -1741,7 +1741,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -1798,7 +1798,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.52.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -2011,7 +2011,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3d1e2c7f27f8d4cb10542a02c49005dbd6e93095799d6f3be745fae9f8fedd4"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -2040,7 +2040,7 @@ dependencies = [
  "chrono",
  "musicindex-convert",
  "musicindex-fetch",
- "musicindex-tags 0.1.0 (git+https://github.com/InTheMorning/musicindex-lib?rev=7d440251ca5f4e7d342f7ad0b34d0f7dbaf2ca17)",
+ "musicindex-tags 0.1.0 (git+https://github.com/InTheMorning/musicindex-lib?rev=44cdc65a45f7e78b832b8ec1af3620584f5aba67)",
  "serde",
  "serde_json",
  "sha2",
@@ -2050,7 +2050,7 @@ dependencies = [
 [[package]]
 name = "stophammer-parser"
 version = "0.22.0"
-source = "git+https://github.com/InTheMorning/stophammer-parser?rev=81fc50b5416efe01c4dcd3fbc6db0ef4e3bcb04b#81fc50b5416efe01c4dcd3fbc6db0ef4e3bcb04b"
+source = "git+https://github.com/InTheMorning/stophammer-parser?rev=15f8e7d257fb3cb8a54f51f24580ddc8083ba23f#15f8e7d257fb3cb8a54f51f24580ddc8083ba23f"
 dependencies = [
  "chrono",
  "regex",
@@ -2137,7 +2137,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -2573,7 +2573,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]

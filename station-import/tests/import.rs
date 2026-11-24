@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::TcpListener;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
@@ -11,12 +11,13 @@ use musicindex_fetch::ReaderConfig;
 use musicindex_tags::{read_audio_tags, read_podcast_tags};
 use serde_json::Value;
 use sha2::Digest;
-use station_import::{Options, run, run_with};
+use station_import::{Options, OutputFormat, run, run_with};
 
 struct TestServer {
     base_url: String,
     stop: Arc<AtomicBool>,
     thread: Option<JoinHandle<()>>,
+    requests: Arc<Mutex<Vec<String>>>,
 }
 
 impl TestServer {
@@ -33,6 +34,8 @@ impl TestServer {
         let stop = Arc::new(AtomicBool::new(false));
         let thread_stop = Arc::clone(&stop);
         let thread_routes = Arc::clone(&routes);
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let thread_requests = Arc::clone(&requests);
         let worker = thread::spawn(move || {
             while !thread_stop.load(Ordering::Relaxed) {
                 match listener.accept() {
@@ -45,6 +48,10 @@ impl TestServer {
                             .next()
                             .and_then(|line| line.split_whitespace().nth(1))
                             .unwrap_or("/");
+                        thread_requests
+                            .lock()
+                            .expect("request log")
+                            .push(path.to_owned());
                         let (status, content_type, body) = thread_routes
                             .get(path)
                             .map(|(status, content_type, body)| {
@@ -70,7 +77,16 @@ impl TestServer {
             base_url,
             stop,
             thread: Some(worker),
+            requests,
         }
+    }
+
+    fn requested(&self, path: &str) -> bool {
+        self.requests
+            .lock()
+            .expect("request log")
+            .iter()
+            .any(|request| request == path)
     }
 
     fn config(&self) -> ReaderConfig {
@@ -103,7 +119,10 @@ fn routes(
         r#"<?xml version="1.0"?><rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0"><channel><podcast:guid>failed-feed</podcast:guid><item><guid>failed-song</guid><title>Missing Audio</title><enclosure url="{base_url}/audio/missing.mp3" type="audio/mpeg" length="1"/></item></channel></rss>"#
     );
     let episode_feed = format!(
-        r#"<?xml version="1.0"?><rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd" xmlns:podcast="https://podcastindex.org/namespace/1.0"><channel><title>Episodes</title><podcast:guid>podcast-feed</podcast:guid><item><guid>episode-guid</guid><title>Episode 7</title><podcast:episode>7</podcast:episode><enclosure url="{base_url}/audio/tagged.mp3" type="audio/mpeg" length="1"/><podcast:value type="lightning" method="keysend"><podcast:valueTimeSplit startTime="0" duration="60"><podcast:remoteItem feedGuid="song-feed" itemGuid="song-item"/></podcast:valueTimeSplit><podcast:valueTimeSplit startTime="60" duration="60"><podcast:remoteItem feedGuid="missing-song-feed" itemGuid="missing-song"/></podcast:valueTimeSplit></podcast:value></item><item><guid>episode-guid-2</guid><title>Episode 8</title><podcast:episode>8</podcast:episode><enclosure url="{base_url}/audio/tagged.mp3" type="audio/mpeg" length="1"/><podcast:value type="lightning" method="keysend"><podcast:valueTimeSplit startTime="0" duration="60"><podcast:remoteItem feedGuid="song-feed" itemGuid="song-item"/></podcast:valueTimeSplit><podcast:valueTimeSplit startTime="60" duration="60"><podcast:remoteItem feedGuid="song-feed" itemGuid="song-item-2"/></podcast:valueTimeSplit></podcast:value></item></channel></rss>"#
+        r#"<?xml version="1.0"?><rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd" xmlns:podcast="https://podcastindex.org/namespace/1.0"><channel><title>Episodes</title><podcast:guid>podcast-feed</podcast:guid><item><guid>episode-guid</guid><title>Episode 7</title><podcast:episode>7</podcast:episode><enclosure url="{base_url}/audio/tagged.mp3" type="audio/mpeg" length="1"/><podcast:value type="lightning" method="keysend"><podcast:valueTimeSplit startTime="0" duration="60"><podcast:remoteItem feedGuid="song-feed" itemGuid="song-item"/></podcast:valueTimeSplit><podcast:valueTimeSplit startTime="60" duration="60"><podcast:remoteItem feedGuid="missing-song-feed" itemGuid="missing-song"/></podcast:valueTimeSplit></podcast:value></item><item><guid>episode-guid-2</guid><title>Episode 8</title><podcast:episode>8</podcast:episode><enclosure url="{base_url}/audio/tagged.mp3" type="audio/mpeg" length="1"/><podcast:value type="lightning" method="keysend"><podcast:valueTimeSplit startTime="0" duration="60"><podcast:remoteItem feedGuid="song-feed" itemGuid="song-item"/></podcast:valueTimeSplit><podcast:valueTimeSplit startTime="60" duration="60"><podcast:remoteItem feedGuid="song-feed" itemGuid="song-item-2"/></podcast:valueTimeSplit></podcast:value></item><item><guid>episode-guid-3</guid><title>Episode 9</title><podcast:episode>9</podcast:episode><enclosure url="{base_url}/audio/untagged.flac" type="audio/flac" length="1"/><podcast:value type="lightning" method="keysend"><podcast:valueTimeSplit startTime="0" duration="60"><podcast:remoteItem feedGuid="song-feed" itemGuid="song-item"/></podcast:valueTimeSplit><podcast:valueTimeSplit startTime="60" duration="60"><podcast:remoteItem feedGuid="song-feed" itemGuid="song-item-2"/></podcast:valueTimeSplit></podcast:value></item></channel></rss>"#
+    );
+    let alt_song_feed = format!(
+        r#"<?xml version="1.0"?><rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0"><channel><title>Alt Songs</title><podcast:guid>alt-feed</podcast:guid><item><guid>alt-song</guid><title>Alt Song</title><enclosure url="{base_url}/audio/untagged.flac" type="audio/flac" length="1"/><podcast:alternateEnclosure type="audio/mpeg" length="1"><podcast:source uri="{base_url}/audio/alt-first.mp3"/></podcast:alternateEnclosure><podcast:alternateEnclosure type="audio/mpeg" length="1"><podcast:source uri="{base_url}/audio/alt-second.mp3"/></podcast:alternateEnclosure></item></channel></rss>"#
     );
     let escape_feed = format!(
         r#"<?xml version="1.0"?><rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0"><channel><podcast:guid>escape-feed</podcast:guid><item><guid>../escape</guid><title>Escape</title><enclosure url="{base_url}/audio/tagged.mp3" type="audio/mpeg" length="1"/></item></channel></rss>"#
@@ -132,6 +151,18 @@ fn routes(
     map.insert(
         "/v1/feeds/song-feed".into(),
         (200, "application/json", song_lookup.into_bytes()),
+    );
+    map.insert(
+        "/alt-song-feed.xml".into(),
+        (200, "application/rss+xml", alt_song_feed.into_bytes()),
+    );
+    map.insert(
+        "/audio/alt-first.mp3".into(),
+        (200, "audio/mpeg", tagged_audio.clone()),
+    );
+    map.insert(
+        "/audio/alt-second.mp3".into(),
+        (200, "audio/mpeg", tagged_audio.clone()),
     );
     map.insert(
         "/audio/tagged.mp3".into(),
@@ -612,4 +643,224 @@ fn wav_song_with_no_converter_is_an_error_and_the_run_continues() {
     assert!(items[1]["error"].is_null());
     assert_eq!(song_files(&options), ["song-item.mp3"]);
     assert!(!options.out.join(".convert").exists());
+}
+
+/// A converter observation with an `ffmpeg` script that writes its arguments
+/// to `ffmpeg-arguments` and copies the MP3 fixture to the output path, the
+/// last argument. It has no `flac`.
+fn script_mp3_encoder(folder: &tempfile::TempDir) -> ConverterObservation {
+    use std::os::unix::fs::PermissionsExt;
+    let fixture = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/musicindex-tagged.mp3"
+    );
+    let log = folder.path().join("ffmpeg-arguments");
+    let script = folder.path().join("ffmpeg");
+    std::fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\necho \"$*\" >> '{}'\nfor out in \"$@\"; do :; done\ncp '{fixture}' \"$out\"\n",
+            log.display()
+        ),
+    )
+    .expect("write encoder script");
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755))
+        .expect("make encoder script executable");
+    ConverterObservation {
+        flac: probe(
+            std::path::Path::new("flac"),
+            ExecutableSource::Path,
+            ProbeOutcome::Missing,
+        ),
+        ffmpeg: probe(
+            &script,
+            ExecutableSource::Path,
+            ProbeOutcome::Exited(Some(0)),
+        ),
+    }
+}
+
+fn no_converter() -> ConverterObservation {
+    ConverterObservation {
+        flac: probe(
+            std::path::Path::new("flac"),
+            ExecutableSource::Path,
+            ProbeOutcome::Missing,
+        ),
+        ffmpeg: probe(
+            std::path::Path::new("ffmpeg"),
+            ExecutableSource::Path,
+            ProbeOutcome::Missing,
+        ),
+    }
+}
+
+fn encoder_arguments(folder: &tempfile::TempDir) -> String {
+    std::fs::read_to_string(folder.path().join("ffmpeg-arguments")).unwrap_or_default()
+}
+
+fn mp3_song_list(base_url: &str, items: &[(&str, &str, &str)]) -> String {
+    let references: String = items
+        .iter()
+        .map(|(feed_guid, feed, item_guid)| {
+            format!(
+                r#"<podcast:remoteItem medium="music" feedGuid="{feed_guid}" feedUrl="{base_url}/{feed}" itemGuid="{item_guid}"/>"#
+            )
+        })
+        .collect();
+    format!(
+        r#"<?xml version="1.0"?><rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0"><channel><title>Station list</title>{references}</channel></rss>"#
+    )
+}
+
+fn mp3_options(
+    folder: &tempfile::TempDir,
+    base_url: &str,
+    items: &[(&str, &str, &str)],
+) -> Options {
+    let mut options = options(folder);
+    options.songs = Some(write_local_feed(
+        folder,
+        "music.xml",
+        &mp3_song_list(base_url, items),
+    ));
+    options.format = OutputFormat::MP3;
+    options
+}
+
+const SONG: (&str, &str, &str) = ("song-feed", "song-feed.xml", "song-item");
+const FLAC_SONG: (&str, &str, &str) = ("song-feed", "song-feed.xml", "song-item-2");
+const ALT_SONG: (&str, &str, &str) = ("alt-feed", "alt-song-feed.xml", "alt-song");
+const WAV_SONG: (&str, &str, &str) = ("wav-feed", "wav-song-feed.xml", "wav-song");
+
+// musicindex ADR 0095 §Checks, R-MP3-2 items 1 and 2.
+#[test]
+fn mp3_format_takes_the_feed_mp3_file_with_no_conversion() {
+    let server = TestServer::start();
+    let folder = tempfile::tempdir().expect("temporary folder");
+    let options = mp3_options(&folder, &server.base_url, &[SONG]);
+
+    let result = run_with(&options, server.config(), &no_converter).expect("run import");
+    assert_eq!(result.error_count(), 0);
+    let item = manifest(&folder)["items"][0].clone();
+    assert_eq!(item["path"], "songs/song-item.mp3");
+    assert_eq!(
+        item["source_url"],
+        format!("{}/audio/tagged.mp3", server.base_url)
+    );
+    assert_eq!(song_files(&options), ["song-item.mp3"]);
+    assert!(!options.out.join(".convert").exists());
+}
+
+// musicindex ADR 0095 §Checks, R-MP3-2 item 1.
+#[test]
+fn mp3_format_takes_the_mp3_alternate_and_not_the_flac_file() {
+    let server = TestServer::start();
+    let folder = tempfile::tempdir().expect("temporary folder");
+    let options = mp3_options(&folder, &server.base_url, &[ALT_SONG]);
+
+    let result = run_with(&options, server.config(), &no_converter).expect("run import");
+    assert_eq!(result.error_count(), 0);
+    let item = manifest(&folder)["items"][0].clone();
+    assert_eq!(item["path"], "songs/alt-song.mp3");
+    assert_eq!(
+        item["source_url"],
+        format!("{}/audio/alt-first.mp3", server.base_url)
+    );
+    assert!(server.requested("/audio/alt-first.mp3"));
+    assert!(!server.requested("/audio/untagged.flac"));
+    assert!(!server.requested("/audio/alt-second.mp3"));
+}
+
+// musicindex ADR 0095 §Checks, R-MP3-3 item 6.
+#[test]
+fn converted_file_has_the_bit_rate_of_the_flag() {
+    for (format, expected) in [
+        (OutputFormat::MP3, "-b:a 256k"),
+        (OutputFormat::Mp3 { bit_rate_kbps: 192 }, "-b:a 192k"),
+    ] {
+        let server = TestServer::start();
+        let folder = tempfile::tempdir().expect("temporary folder");
+        let mut options = mp3_options(&folder, &server.base_url, &[FLAC_SONG]);
+        options.format = format;
+        let encoder = script_mp3_encoder(&folder);
+
+        let result = run_with(&options, server.config(), &|| encoder.clone()).expect("run import");
+        assert_eq!(result.error_count(), 0);
+        let arguments = encoder_arguments(&folder);
+        assert!(arguments.contains(expected), "{arguments}");
+        assert_eq!(song_files(&options), ["song-item-2.mp3"]);
+        assert!(!options.out.join(".convert").exists());
+    }
+}
+
+// musicindex ADR 0095 §Checks, R-MP3-2 item 4.
+#[test]
+fn mp3_format_converts_a_wav_song() {
+    let server = TestServer::start();
+    let folder = tempfile::tempdir().expect("temporary folder");
+    let options = mp3_options(&folder, &server.base_url, &[WAV_SONG]);
+    let encoder = script_mp3_encoder(&folder);
+
+    let result = run_with(&options, server.config(), &|| encoder.clone()).expect("run import");
+    assert_eq!(result.error_count(), 0);
+    assert_eq!(song_files(&options), ["wav-song.mp3"]);
+    let tags = read_podcast_tags(&options.out.join("songs/wav-song.mp3")).expect("read tags");
+    assert_eq!(tags.item_guid.as_deref(), Some("wav-song"));
+    assert!(!options.out.join(".convert").exists());
+}
+
+// musicindex ADR 0095 §Checks, R-MP3-4.
+#[test]
+fn mp3_format_with_no_encoder_is_an_error_and_the_run_continues() {
+    let server = TestServer::start();
+    let folder = tempfile::tempdir().expect("temporary folder");
+    let options = mp3_options(&folder, &server.base_url, &[WAV_SONG, SONG]);
+
+    let result = run_with(&options, server.config(), &no_converter).expect("run import");
+    assert_eq!(result.error_count(), 1);
+    let items = manifest(&folder)["items"].clone();
+    let error = items[0]["error"].as_str().unwrap_or_default().to_owned();
+    assert!(error.contains("no MP3 encoder"), "{error}");
+    assert!(items[1]["error"].is_null());
+    assert_eq!(song_files(&options), ["song-item.mp3"]);
+    assert!(!options.out.join(".convert").exists());
+}
+
+// musicindex ADR 0095 §Checks, R-MP3-5 and R-MP3-6.
+#[test]
+fn mp3_format_episode_has_its_chapters() {
+    let server = TestServer::start();
+    let folder = tempfile::tempdir().expect("temporary folder");
+    let mut options = mp3_options(&folder, &server.base_url, &[SONG, FLAC_SONG, ALT_SONG]);
+    options.episode_feed = Some(format!("{}/episode-feed.xml", server.base_url));
+    options.episodes = vec!["9".into()];
+    let encoder = script_mp3_encoder(&folder);
+
+    let result = run_with(&options, server.config(), &|| encoder.clone()).expect("run import");
+    assert_eq!(result.error_count(), 0);
+    let episode = options.out.join("episodes/episode-guid-3.mp3");
+    let tags = read_podcast_tags(&episode).expect("read episode tags");
+    assert_eq!(tags.feed_guid.as_deref(), Some("podcast-feed"));
+    assert_eq!(tags.item_guid.as_deref(), Some("episode-guid-3"));
+    assert_eq!(tags.chapters().expect("read chapters").len(), 2);
+    // R-MP3-5 item 2: the MP3 file has its CHAP and CTOC frames.
+    assert_eq!(tags.chapter_frames.len(), 2);
+    assert_eq!(tags.toc.len(), 2);
+    let manifest = manifest(&folder);
+    let items = manifest["items"].as_array().expect("manifest items");
+    assert_eq!(items.len(), 4);
+    for item in items {
+        let relative = item["path"].as_str().expect("item path");
+        assert!(relative.ends_with(".mp3"), "{relative}");
+        let path = options.out.join(relative);
+        let bytes = std::fs::read(&path).expect("read output file");
+        assert_eq!(
+            item["sha256"],
+            format!("{:x}", sha2::Sha256::digest(&bytes)).as_str()
+        );
+        let tags = read_podcast_tags(&path).expect("read output tags");
+        assert_eq!(tags.item_guid.as_deref(), item["item_guid"].as_str());
+        assert_eq!(tags.feed_guid.as_deref(), item["feed_guid"].as_str());
+    }
 }
