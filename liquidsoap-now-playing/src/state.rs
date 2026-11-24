@@ -40,6 +40,9 @@ pub struct StateFile {
     pub feed_guid: Option<String>,
     #[serde(default)]
     pub image: Option<String>,
+    /// The embedded picture file name in the state folder (ADR 0028).
+    #[serde(default)]
+    pub picture: String,
     #[serde(default)]
     pub value_routes: Option<String>,
     #[serde(default)]

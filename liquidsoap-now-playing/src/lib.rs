@@ -11,8 +11,9 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use lookup::RouteLookups;
-use now_playing_drop::display::{Artwork, DisplayOutput, ShownTrack, image_url};
+use now_playing_drop::display::{Artwork, DisplayOutput, ShownTrack};
 use now_playing_drop::merge::{has_percentage, local_split_routes, merged_routes};
+use now_playing_drop::picture::{MAX_PICTURE_BYTES, artwork_from, embedded_artwork};
 use now_playing_drop::sink::{OutputFile, Presence};
 use now_playing_drop::{
     InstanceSettings, LOCK_WAIT_LIMIT, PaymentRoute, ProducerLock, Version3DropFile,
@@ -35,6 +36,7 @@ pub type SongRoutes = HashMap<(String, String), Vec<PaymentRoute>>;
 #[derive(Debug)]
 pub struct Producer {
     state_path: PathBuf,
+    state_dir: PathBuf,
     target: String,
     output: OutputFile,
     drop_path: PathBuf,
@@ -46,16 +48,42 @@ pub struct Producer {
     bad_chapters_seq: Option<i64>,
     lookups: RouteLookups,
     display: Option<DisplayOutput>,
+    picture_cache: Option<(PictureKey, Option<Artwork>)>,
+}
+
+/// Identifies one picture read. The `seq` of the slot starts again at 0 after a
+/// restart of Liquidsoap, so the key also holds the track start and the name.
+#[derive(Debug, Clone, PartialEq)]
+struct PictureKey {
+    seq: i64,
+    track_started: u64,
+    picture: String,
+}
+
+impl PictureKey {
+    fn of(state: &StateFile) -> Self {
+        Self {
+            seq: state.seq,
+            track_started: state.track_started.to_bits(),
+            picture: state.picture.clone(),
+        }
+    }
 }
 
 impl Producer {
     /// Creates a producer for one state file and configured instance.
     pub fn new(state_path: impl Into<PathBuf>, settings: InstanceSettings) -> Self {
+        let state_path = state_path.into();
+        let state_dir = state_path
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .to_path_buf();
         let drop_path = settings.drop_dir.join(format!("{}.json", settings.target));
         // ADR 0026: the producer writes `display.json` only with `display_dir`.
         let display = settings.display_dir.map(DisplayOutput::new);
         Self {
-            state_path: state_path.into(),
+            state_path,
+            state_dir,
             target: settings.target,
             output: OutputFile::new(&drop_path),
             drop_path,
@@ -67,6 +95,7 @@ impl Producer {
             bad_chapters_seq: None,
             lookups: RouteLookups::new(None),
             display,
+            picture_cache: None,
         }
     }
 
@@ -179,12 +208,14 @@ impl Producer {
     /// Writes the display track of one fresh state (ADR 0026 §What The
     /// Producer Writes In `display.json`). A write error gives a warning.
     fn write_display_track(&mut self, state: &StateFile, content: &serde_json::Value) {
-        let Some(display) = self.display.as_mut() else {
+        if self.display.is_none() {
             return;
-        };
+        }
         let line = song_line(state).filter(|line| line.chars().count() <= MAX_SONG_LINE_CHARS);
         let Some(line) = line else {
-            write_display(display, None);
+            if let Some(display) = self.display.as_mut() {
+                write_display(display, None);
+            }
             return;
         };
         let (artist, title, play_id) = if state.jingle {
@@ -197,20 +228,70 @@ impl Producer {
                 content["play_id"].as_str(),
             )
         };
-        let artwork = nonempty(state.image.as_deref())
-            .and_then(image_url)
-            .map(|url| Artwork::Url(url.to_owned()));
-        write_display(
-            display,
-            Some(ShownTrack {
-                artist,
-                title,
-                artwork: artwork.as_ref(),
-                song_line: &line,
-                play_id,
-                album: nonempty(state.album.as_deref()),
-            }),
-        );
+        // ADR 0028 §The Artwork Sequence: a valid image URL wins, else the
+        // picture file of the state, else `null`.
+        let artwork = artwork_from(nonempty(state.image.as_deref()), None)
+            .or_else(|| self.picture_artwork(state));
+        if let Some(display) = self.display.as_mut() {
+            write_display(
+                display,
+                Some(ShownTrack {
+                    artist,
+                    title,
+                    artwork: artwork.as_ref(),
+                    song_line: &line,
+                    play_id,
+                    album: nonempty(state.album.as_deref()),
+                }),
+            );
+        }
+    }
+
+    /// Gives the artwork of the picture file of the state. The producer
+    /// prepares the picture one time for each track (ADR 0028 §The Producer
+    /// Reads The Picture File).
+    fn picture_artwork(&mut self, state: &StateFile) -> Option<Artwork> {
+        let key = PictureKey::of(state);
+        if let Some((cached_key, cached)) = &self.picture_cache
+            && *cached_key == key
+        {
+            return cached.clone();
+        }
+        let artwork = self.read_picture(state);
+        self.picture_cache = Some((key, artwork.clone()));
+        artwork
+    }
+
+    /// Reads and prepares the picture file. A name that is not `picture-`
+    /// and 1 to 20 digits, a file of more than 64 MiB, and a missing file
+    /// give `None`.
+    fn read_picture(&self, state: &StateFile) -> Option<Artwork> {
+        let name = state.picture.as_str();
+        let digits = name.strip_prefix("picture-")?;
+        if digits.is_empty()
+            || digits.len() > 20
+            || !digits.bytes().all(|byte| byte.is_ascii_digit())
+        {
+            return None;
+        }
+        let path = self.state_dir.join(name);
+        let metadata = match fs::metadata(&path) {
+            Ok(metadata) => metadata,
+            Err(error) => {
+                tracing::debug!(path = %path.display(), %error, "cannot read picture metadata");
+                return None;
+            }
+        };
+        if metadata.len() > MAX_PICTURE_BYTES as u64 {
+            return None;
+        }
+        match fs::read(&path) {
+            Ok(bytes) => embedded_artwork(Some(&bytes)),
+            Err(error) => {
+                tracing::debug!(path = %path.display(), %error, "cannot read picture file");
+                None
+            }
+        }
     }
 
     fn is_fresh(&self, now: Instant) -> bool {
@@ -250,6 +331,7 @@ impl Producer {
     fn clear(&mut self) -> Result<()> {
         self.output.set(Presence::Absent)?;
         self.lock = None;
+        self.picture_cache = None;
         // ADR 0026: the display state is `null` when the producer releases
         // the lock. The writer does not rewrite a file with the same content.
         if let Some(display) = self.display.as_mut() {
@@ -1546,7 +1628,19 @@ mod tests {
         patch: &serde_json::Value,
         reads: &[(f64, f64)],
     ) -> Result<Vec<(serde_json::Value, serde_json::Value)>> {
+        display_reads_with_picture(patch, reads, None, false)
+    }
+
+    fn display_reads_with_picture(
+        patch: &serde_json::Value,
+        reads: &[(f64, f64)],
+        picture: Option<(&str, &[u8])>,
+        remove_after_first: bool,
+    ) -> Result<Vec<(serde_json::Value, serde_json::Value)>> {
         let temp = TempDir::new()?;
+        if let Some((name, bytes)) = picture {
+            fs::write(temp.path().join(name), bytes)?;
+        }
         let path = temp.path().join("state.json");
         let mut producer = Producer::new(&path, display_settings(&temp));
         producer.start()?;
@@ -1561,10 +1655,31 @@ mod tests {
             let written = f64::from(u32::try_from(step)?) + 1.0;
             fs::write(&path, patched(written, &fields)?)?;
             producer.poll(now + Duration::from_millis(100 * (u64::try_from(step)? + 1)))?;
+            let shown = read_display(&temp)?;
+            if let Some(artwork) = shown["track"]["artwork"].as_object()
+                && let (Some(sha), Some(mime)) = (
+                    artwork.get("sha256").and_then(serde_json::Value::as_str),
+                    artwork.get("mime").and_then(serde_json::Value::as_str),
+                )
+            {
+                let extension = if mime == "image/png" { "png" } else { "jpg" };
+                assert!(
+                    temp.path()
+                        .join("display")
+                        .join(format!("{sha}.{extension}"))
+                        .exists()
+                );
+            }
             outputs.push((
                 serde_json::from_slice(&fs::read(&producer.drop_path)?)?,
-                read_display(&temp)?,
+                shown,
             ));
+            if remove_after_first
+                && step == 0
+                && let Some((name, _)) = picture
+            {
+                fs::remove_file(temp.path().join(name))?;
+            }
         }
         producer.shutdown()?;
         Ok(outputs)
@@ -1752,6 +1867,183 @@ mod tests {
             out[0].1["track"]["artwork"],
             serde_json::json!({"url": url})
         );
+        Ok(())
+    }
+
+    fn encoded_picture(format: image::ImageFormat) -> Result<Vec<u8>> {
+        let image = image::RgbImage::from_pixel(12, 9, image::Rgb([20, 40, 60]));
+        let mut bytes = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgb8(image).write_to(&mut bytes, format)?;
+        Ok(bytes.into_inner())
+    }
+
+    #[test]
+    fn valid_image_url_wins_over_picture_file() -> Result<()> {
+        let picture = encoded_picture(image::ImageFormat::Jpeg)?;
+        let url = "https://example.test/a.png";
+        let out = display_reads_with_picture(
+            &serde_json::json!({"image": url, "picture": "picture-4"}),
+            &[(1.0, 0.0)],
+            Some(("picture-4", &picture)),
+            false,
+        )?;
+        assert_eq!(
+            out[0].1["track"]["artwork"],
+            serde_json::json!({"url": url})
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn empty_image_uses_jpeg_picture_and_writes_display_image() -> Result<()> {
+        let picture = encoded_picture(image::ImageFormat::Jpeg)?;
+        let out = display_reads_with_picture(
+            &serde_json::json!({"image": "", "picture": "picture-4"}),
+            &[(1.0, 0.0)],
+            Some(("picture-4", &picture)),
+            false,
+        )?;
+        assert_eq!(
+            out[0].1["track"]["artwork"]["sha256"],
+            now_playing_drop::display::sha256_hex(&picture)
+        );
+        assert_eq!(out[0].1["track"]["artwork"]["mime"], "image/jpeg");
+        Ok(())
+    }
+
+    #[test]
+    fn refused_image_url_uses_png_picture() -> Result<()> {
+        let picture = encoded_picture(image::ImageFormat::Png)?;
+        let out = display_reads_with_picture(
+            &serde_json::json!({"image": "ftp://host/a.png", "picture": "picture-4"}),
+            &[(1.0, 0.0)],
+            Some(("picture-4", &picture)),
+            false,
+        )?;
+        assert_eq!(out[0].1["track"]["artwork"]["mime"], "image/png");
+        Ok(())
+    }
+
+    #[test]
+    fn no_picture_missing_file_and_gif_give_null_artwork() -> Result<()> {
+        let gif = b"GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xff\xff\xff!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;";
+        for (patch, file) in [
+            (serde_json::json!({}), None),
+            (serde_json::json!({"picture": "picture-4"}), None),
+            (
+                serde_json::json!({"picture": "picture-4"}),
+                Some(("picture-4", gif.as_slice())),
+            ),
+        ] {
+            let out = display_reads_with_picture(&patch, &[(1.0, 0.0)], file, false)?;
+            assert!(out[0].1["track"]["artwork"].is_null());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn invalid_picture_names_give_null_without_reading() -> Result<()> {
+        for name in ["../state.json", "picture-", "picture-12a"] {
+            let out = display_reads_with_picture(
+                &serde_json::json!({"picture": name}),
+                &[(1.0, 0.0)],
+                None,
+                false,
+            )?;
+            assert!(out[0].1["track"]["artwork"].is_null(), "{name}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn picture_over_64_mib_gives_null_artwork() -> Result<()> {
+        use std::fs::File;
+
+        let temp = TempDir::new()?;
+        let state_path = temp.path().join("state.json");
+        File::create(temp.path().join("picture-4"))?.set_len(MAX_PICTURE_BYTES as u64 + 1)?;
+        let mut producer = Producer::new(&state_path, display_settings(&temp));
+        producer.start()?;
+        let parsed: StateFile =
+            serde_json::from_str(&patched(1.0, &serde_json::json!({"picture": "picture-4"}))?)?;
+        producer.write_display_track(&parsed, &serde_json::json!({}));
+        assert!(read_display(&temp)?["track"]["artwork"].is_null());
+        producer.shutdown()?;
+        Ok(())
+    }
+
+    #[test]
+    fn chapter_segments_keep_picture_after_slot_removes_file() -> Result<()> {
+        let picture = encoded_picture(image::ImageFormat::Jpeg)?;
+        let patch = chapter_state(serde_json::json!({"picture": "picture-4"}));
+        let out = display_reads_with_picture(
+            &patch,
+            &CHAPTER_READS,
+            Some(("picture-4", &picture)),
+            true,
+        )?;
+        let first = out[0].1["track"]["artwork"].clone();
+        assert!(first.is_object());
+        for (_, shown) in &out[1..] {
+            assert_eq!(shown["track"]["artwork"], first);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn jingle_uses_the_picture_of_the_last_song() -> Result<()> {
+        let picture = encoded_picture(image::ImageFormat::Jpeg)?;
+        let out = display_reads_with_picture(
+            &serde_json::json!({"jingle": true, "picture": "picture-4"}),
+            &[(1.0, 0.0)],
+            Some(("picture-4", &picture)),
+            false,
+        )?;
+        assert_eq!(
+            out[0].1["track"]["artwork"]["sha256"],
+            now_playing_drop::display::sha256_hex(&picture)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn restart_with_same_seq_reads_the_new_picture() -> Result<()> {
+        let temp = TempDir::new()?;
+        let state_path = temp.path().join("state.json");
+        let mut producer = Producer::new(&state_path, display_settings(&temp));
+        producer.start()?;
+        let mut shown = Vec::new();
+        for (started, format) in [
+            (100.0, image::ImageFormat::Jpeg),
+            (200.0, image::ImageFormat::Png),
+        ] {
+            let picture = encoded_picture(format)?;
+            fs::write(temp.path().join("picture-4"), &picture)?;
+            let fields = serde_json::json!({"picture": "picture-4", "track_started": started});
+            let parsed: StateFile = serde_json::from_str(&patched(1.0, &fields)?)?;
+            producer.write_display_track(&parsed, &serde_json::json!({}));
+            shown.push((
+                read_display(&temp)?["track"]["artwork"]["sha256"].clone(),
+                now_playing_drop::display::sha256_hex(&picture),
+            ));
+        }
+        for (artwork, expected) in shown {
+            assert_eq!(artwork, expected);
+        }
+        producer.shutdown()?;
+        Ok(())
+    }
+
+    #[test]
+    fn format_2_state_without_picture_parses() -> Result<()> {
+        let mut value: serde_json::Value = serde_json::from_str(&state(0.0, false, ""))?;
+        value["format"] = state::STATE_FORMAT_2.into();
+        value
+            .as_object_mut()
+            .context("state object")?
+            .remove("picture");
+        let parsed: StateFile = serde_json::from_value(value)?;
+        assert_eq!(parsed.picture, "");
         Ok(())
     }
 

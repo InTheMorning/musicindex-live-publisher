@@ -1,10 +1,15 @@
 # ADR 0028: The Station Producer Uses The Embedded Picture Of The File As The Artwork Fallback
 
 - Status: Accepted on 2026-11-24 by the operator, as at commit ca460a2. The orchestrator session relayed the decision.
-  The two Open Questions stay open. The check of §Before Implementation is open.
+  The two Open Questions stay open.
 - Revised 2026-11-24, after acceptance: the FLAC reader is `file.metadata.flac_native`, not `file.metadata.flac`. A
   read of the Liquidsoap source showed that `file.metadata.flac` gives only the Vorbis comments. The slot text also
   separates the joined picture blocks. This is a defect correction. No decision was reversed.
+- Revised 2026-11-24, after the review of task 012: four defect corrections and one limit. No decision was reversed.
+  The slot text skips a write when a new track starts during the picture read. A track mark with no metadata keeps the
+  picture. The slot text keeps a list of the picture files to remove. The producer keys its picture result by `seq`,
+  track start and picture name, because `seq` starts again after a restart. The limit: Liquidsoap keeps one value for
+  each metadata key, so an MP3 file with more than one `APIC` frame gives only one frame (§Formats).
 - Date: 2026-11-24
 - Changes: ADR 0026 §What The Producer Writes In `display.json`, the `artwork` row of the track table and the item
   "The producer writes no embedded image". ADR 0026 §One Display Writer, the sentence that keeps `prepare_image` and
@@ -110,8 +115,12 @@ The slot text selects the picture and writes the bytes. It does not change, redu
 - It reads and writes the picture in the write thread of `musicindex_write`, not in the `on_track` or `on_metadata`
   handler. A slow file read thus does not stop the audio.
 - It reads the picture one time for each `seq`. It writes the state with the new `picture` after the picture file.
-- After it writes that state, it removes the picture file of the last track.
-- A jingle (`jingle` is `true`) gets no new picture. It keeps the `picture` of the last track.
+- If a new track starts during the picture read, it does not write the state of that cycle. The next cycle reads the
+  picture of the new track.
+- After it writes that state, it removes the picture files of the earlier tracks. A failed write keeps them in the
+  list for the next write.
+- A jingle (`jingle` is `true`) gets no new picture. It keeps the `picture` of the last track. A track mark with no
+  metadata also keeps it, because the metadata of a jingle can come after the track mark.
 - An empty `filename`, a file of a different format, a file with no picture, or a read failure gives an empty
   `picture`. A read failure writes a log line at level 2, as the write failure of `state.json`.
 
@@ -119,8 +128,10 @@ The slot text selects the picture and writes the bytes. It does not change, redu
 
 - The producer reads the picture file only when rule 1 of §The Artwork Sequence does not apply.
 - It rejects a file of more than 64 MiB without a read of its content (ADR 0008 §The Embedded Image).
-- It prepares the picture one time for each `seq`. Each segment of the file uses that result. A picture file that the
-  slot text removed after the first read does not change the artwork of the next segment.
+- It prepares the picture one time for each track. The key is `seq`, `track_started` and `picture`, because `seq`
+  starts again at 0 after a restart of Liquidsoap. The producer clears the result when it releases the lock.
+- Each segment of the file uses that result. A picture file that the slot text removed after the first read does not
+  change the artwork of the next segment.
 - A missing or unreadable picture file gives the artwork `null`. This is not an error, and the producer
   writes no line at level `warn`.
 - The display writer of `now-playing-drop` writes the image into the display folder, as for Mixxx (ADR 0008 §The
@@ -144,6 +155,9 @@ producers use them.
 ### Formats
 
 - MP3 with ID3v2.3 or ID3v2.4 `APIC` frames, and FLAC with `PICTURE` blocks, give a picture.
+- Limit: `file.metadata.id3v2` gives metadata that keeps one value for each key (`Methods.from_list` in Liquidsoap
+  2.4.6). An MP3 file with more than one `APIC` frame thus gives one frame, not each frame. The front cover rule then
+  applies only to that frame. An MP3 file with one `APIC` frame is not affected. FLAC is not affected.
 - Each other format gives an empty `picture`. The station files of `station-import` are MP3 or FLAC (musicindex
   ADR 0094 and ADR 0095).
 - `prepare_image` accepts JPEG and PNG only, by the first bytes (ADR 0008). An `mjpeg` attached picture of an MP3 file
@@ -166,6 +180,13 @@ On the test station, a person or an agent with access runs the slot text functio
 2. `file.metadata.flac_native` on a FLAC file with a picture gives a `metadata_block_picture` value. This check proves
    the inference of §Context. If it fails, the implementation stops and reports. The FLAC part then needs a new
    decision.
+
+Result, 2026-11-24, from the orchestrator session in the Liquidsoap 2.4.6 of AzuraCast: the check passed. A temporary
+copy of a station FLAC file got a front cover PNG (type 3). `file.metadata.flac_native` gave `metadata_block_picture`.
+The decode gave `image/png` and `picture_type` 3, and the written bytes were equal to the source picture.
+`file.metadata.flac` gave no `metadata_block_picture`. `file.metadata.id3v2` gave `apic` for the MP3 file of item 1.
+`string.apic.parse` did not run in this check. Station check 1 of §Verification examines it. `string.length` counts
+UTF-8 characters, not bytes, so the slot text uses `string.bytes.length` for the 64 MiB limit.
 
 ## Verification
 

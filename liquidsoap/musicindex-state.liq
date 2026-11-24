@@ -1,6 +1,7 @@
 # MusicIndex producer support: the reference slot text of publisher ADR 0022.
 # It writes state.json in the format musicindex-liquidsoap-state/2 (ADR 0025).
 # liquidsoap-now-playing reads that file. A new required field needs a new format version. An optional field does not (ADR 0026).
+# It also writes the picture file of ADR 0028 into the same folder. The producer reads it.
 # Put this text in the AzuraCast Pre-Broadcast slot, after azuracast.handle_jingle_mode.
 # Replace INSTANCE on the musicindex_dir line with the instance name of ADR 0022 §The Template Unit.
 settings.request.metadata_decoders.recode.exclude := list.append(settings.request.metadata_decoders.recode.exclude(), ["podcast value routes", "podcast chapters"])
@@ -69,33 +70,180 @@ def musicindex_on_metadata(m) =
 end
 source.methods(radio).on_metadata(synchronous=true, musicindex_on_metadata)
 
+# The picture file of ADR 0028. The slot text selects the front cover of the
+# file, else the first picture, and writes the bytes with no change. The
+# producer reads the picture file. It never reads the media file.
+musicindex_picture_max = 67108864
+# The seq of the last picture read, and the name of its picture file.
+musicindex_picture = ref((-1, ""))
+# The picture files to remove after the next write of state.json.
+musicindex_picture_old = ref([])
+
+# A picture file of an earlier start of Liquidsoap is not current.
+try
+  list.iter(
+    fun (f) -> file.remove(f),
+    file.ls(absolute=true, pattern="picture-*", musicindex_dir)
+  )
+catch err do
+  log(level=2, label="musicindex", "The removal of old picture files failed: #{err}")
+end
+
+# Gives the picture blocks of a FLAC metadata_block_picture value.
+# file.metadata.flac_native joins two blocks with ", " (ADR 0028 §Context).
+# Each block holds its lengths, so the function reads them to find the next block.
+def musicindex_flac_blocks(s) =
+  total = string.bytes.length(s)
+  def int_at(i) =
+    string.binary.to_int(little_endian=false, string.sub(encoding="ascii", s, start=i, length=4))
+  end
+  blocks = ref([])
+  i = ref(0)
+  while i() + 32 <= total do
+    mime_len = int_at(i() + 4)
+    desc_len = int_at(i() + 8 + mime_len)
+    data_len = int_at(i() + 28 + mime_len + desc_len)
+    len = 32 + mime_len + desc_len + data_len
+    if i() + len > total then
+      # A block that is not complete stops the read.
+      i := total
+    else
+      blocks := list.append(blocks(), [string.sub(encoding="ascii", s, start=i(), length=len)])
+      i := i() + len + 2
+    end
+  end
+  blocks()
+end
+
+# Gives the pictures of a file as a list of (picture type, data), in file order.
+# MP3 gives one APIC frame: Liquidsoap keeps one value for each metadata key
+# (ADR 0028 §Formats). FLAC gives its picture blocks. Each other format gives [].
+def musicindex_pictures(fname) =
+  pictures = ref([])
+  def add(picture_type, data) =
+    pictures := list.append(pictures(), [(picture_type, data)])
+  end
+  list.iter(
+    fun (kv) ->
+      if fst(kv) == "apic" then
+        p = string.apic.parse(snd(kv))
+        add(p.picture_type, (p : string))
+      end,
+    file.metadata.id3v2(fname)
+  )
+  list.iter(
+    fun (kv) ->
+      if fst(kv) == "metadata_block_picture" then
+        list.iter(
+          fun (block) ->
+            p = file.metadata.flac.cover.decode(block)
+            if null.defined(p) then
+              p = null.get(p)
+              add(p.picture_type, (p : string))
+            end,
+          musicindex_flac_blocks(snd(kv))
+        )
+      end,
+    file.metadata.flac_native(fname)
+  )
+  pictures()
+end
+
+# Writes the picture file of the track with this seq. Gives the name of the
+# picture file, or "" when the track has no picture.
+def musicindex_write_picture(seq, fname) =
+  if fname == "" then
+    ""
+  else
+    pictures = musicindex_pictures(fname)
+    # The front cover has the picture type 3.
+    front = ref("")
+    list.iter(fun (p) -> if front() == "" and fst(p) == 3 then front := snd(p) end, pictures)
+    data =
+      if front() != "" then
+        front()
+      elsif list.length(pictures) > 0 then
+        snd(list.hd(pictures))
+      else
+        ""
+      end
+    if data == "" or string.bytes.length(data) > musicindex_picture_max then
+      ""
+    else
+      name = "picture-#{seq}"
+      file.write(atomic=true, temp_dir=musicindex_dir, data=data, "#{musicindex_dir}/#{name}")
+      name
+    end
+  end
+end
+
+# Reads the picture one time for each seq, in this thread and not in the
+# streaming thread. A jingle keeps the picture of the last track. A track mark
+# with no metadata also keeps it, because a jingle can give its metadata later.
+def musicindex_update_picture(seq, m, jingle) =
+  let (picture_seq, picture_name) = musicindex_picture()
+  if not jingle and list.length(m) > 0 and seq != picture_seq then
+    name =
+      try
+        musicindex_write_picture(seq, m["filename"])
+      catch err do
+        log(level=2, label="musicindex", "The read of the picture failed: #{err}")
+        ""
+      end
+    musicindex_picture := (seq, name)
+    if picture_name != "" and picture_name != name then
+      musicindex_picture_old := list.append(musicindex_picture_old(), [picture_name])
+    end
+  end
+end
+
 def musicindex_write() =
+  let (picture_seq, _, picture_m, _, picture_jingle) = musicindex_state()
+  musicindex_update_picture(picture_seq, picture_m, picture_jingle)
   let (seq, started, m, _, jingle) = musicindex_state()
-  data = json.stringify({
-    format = "musicindex-liquidsoap-state/2",
-    seq = seq,
-    written = time(),
-    live = azuracast.to_live(),
-    jingle = jingle,
-    track_started = started,
-    elapsed = source.methods(radio).elapsed(),
-    cue_in = float_of_string(default=0., m["liq_cue_in"]),
-    title = m["title"],
-    artist = m["artist"],
-    song = m["song"],
-    album = m["album"],
-    track_guid = m["podcast item guid"],
-    feed_guid = m["podcast feed guid"],
-    value_routes = m["podcast value routes"],
-    image = m["podcast image"],
-    description = m["podcast description"],
-    contributors = m["podcast contributors"],
-    chapters = m["podcast chapters"]
-  })
-  try
-    file.write(atomic=true, temp_dir=musicindex_dir, data=data, "#{musicindex_dir}/state.json")
-  catch err do
-    log(level=2, label="musicindex", "The write of state.json failed: #{err}")
+  # A new track during the picture read: the next write reads its picture.
+  # This write must not give the metadata of the last track with a new elapsed.
+  if seq == picture_seq then
+    let (_, picture_name) = musicindex_picture()
+    data = json.stringify({
+      format = "musicindex-liquidsoap-state/2",
+      seq = seq,
+      written = time(),
+      live = azuracast.to_live(),
+      jingle = jingle,
+      track_started = started,
+      elapsed = source.methods(radio).elapsed(),
+      cue_in = float_of_string(default=0., m["liq_cue_in"]),
+      title = m["title"],
+      artist = m["artist"],
+      song = m["song"],
+      album = m["album"],
+      track_guid = m["podcast item guid"],
+      feed_guid = m["podcast feed guid"],
+      value_routes = m["podcast value routes"],
+      image = m["podcast image"],
+      description = m["podcast description"],
+      contributors = m["podcast contributors"],
+      chapters = m["podcast chapters"],
+      picture = picture_name
+    })
+    try
+      file.write(atomic=true, temp_dir=musicindex_dir, data=data, "#{musicindex_dir}/state.json")
+      # The state now names the new picture file, so the old file can go.
+      old = musicindex_picture_old()
+      musicindex_picture_old := []
+      list.iter(
+        fun (name) ->
+          try
+            file.remove("#{musicindex_dir}/#{name}")
+          catch err do
+            log(level=2, label="musicindex", "The removal of #{name} failed: #{err}")
+          end,
+        old
+      )
+    catch err do
+      log(level=2, label="musicindex", "The write of state.json failed: #{err}")
+    end
   end
 end
 thread.run(every=1., musicindex_write)

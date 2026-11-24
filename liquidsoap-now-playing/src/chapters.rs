@@ -201,6 +201,7 @@ mod tests {
             track_guid: None,
             feed_guid: None,
             image: None,
+            picture: String::new(),
             value_routes: None,
             elapsed: Some(0.0),
             cue_in: Some(0.0),

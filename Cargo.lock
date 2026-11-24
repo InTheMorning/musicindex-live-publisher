@@ -1062,6 +1062,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "directories",
+ "image",
  "now-playing-drop",
  "serde",
  "serde_json",
@@ -1333,6 +1334,7 @@ name = "now-playing-drop"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "image",
  "musicindex-value 0.1.0 (git+https://github.com/InTheMorning/musicindex-lib?rev=e6d11118d33069c26c01368f7de71524988039c6)",
  "reqwest",
  "serde",
@@ -1340,6 +1342,7 @@ dependencies = [
  "sha2",
  "tempfile",
  "toml",
+ "tracing",
 ]
 
 [[package]]

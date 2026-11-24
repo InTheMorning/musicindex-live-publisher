@@ -8,7 +8,7 @@ use mixxx_now_playing::connector::{
     Outcome, Row, STATE_REQUEST, open_device, pump, send_command, spawn_reader,
 };
 use mixxx_now_playing::display::{
-    Artwork, DisplayOutput, ShownTrack, file_artwork, v4v_artwork, write_null_at_exit,
+    Artwork, DisplayOutput, ShownTrack, artwork_from, file_artwork, write_null_at_exit,
 };
 use mixxx_now_playing::expiry::Expiry;
 use mixxx_now_playing::history::{HistoryWatcher, TrackRow};
@@ -557,7 +557,7 @@ impl<'a> Runtime<'a> {
         self.row_artwork = match input {
             ArtworkInput::File => file_artwork(path),
             ArtworkInput::V4v { image_tag, picture } => {
-                v4v_artwork(image_tag.as_deref(), picture.as_deref())
+                artwork_from(image_tag.as_deref(), picture.as_deref())
             }
             ArtworkInput::Unreadable => None,
         };

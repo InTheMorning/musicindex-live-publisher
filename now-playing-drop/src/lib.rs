@@ -5,6 +5,7 @@ pub mod instance;
 pub mod lock;
 pub mod merge;
 pub mod payment_route;
+pub mod picture;
 pub mod route_service;
 pub mod sink;
 #[cfg(any(test, feature = "test-server"))]

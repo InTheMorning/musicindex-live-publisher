@@ -9,7 +9,7 @@ use lofty::picture::{MimeType, Picture, PictureType};
 use lofty::prelude::*;
 use lofty::tag::Tag;
 use lofty::tag::{ItemKey, ItemValue, TagItem};
-use mixxx_now_playing::display::{Artwork, ImageMime, file_artwork, sha256_hex, v4v_artwork};
+use mixxx_now_playing::display::{Artwork, ImageMime, artwork_from, file_artwork, sha256_hex};
 use mixxx_now_playing::tags::{read_tags, read_tags_with_picture};
 use tempfile::TempDir;
 
@@ -77,7 +77,7 @@ fn mp3_with_image_tag(temp: &TempDir, value: &str) -> Result<PathBuf> {
 /// Gives the artwork of a V4V file through the tag read of the producer.
 fn v4v_file_artwork(path: &Path) -> Result<Option<Artwork>> {
     let (tags, picture) = read_tags_with_picture(path)?;
-    Ok(v4v_artwork(
+    Ok(artwork_from(
         tags.musicindex_value("Image"),
         picture.as_deref(),
     ))

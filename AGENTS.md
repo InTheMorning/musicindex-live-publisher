@@ -153,10 +153,11 @@ packet.
   producer asks the route service for a song state with the two state GUIDs,
   and the service routes win over the routes of the state. The station check
   of its §Verification passed on 2026-11-23.
-- ADR 0028 is `Accepted`, and no implementation exists. In it,
-  the slot text writes the embedded front cover of an MP3 or FLAC file into
-  the state folder. The station producer uses that picture when the state has
-  no image URL. The picture code moves to `now-playing-drop`.
+- ADR 0028 is `Accepted`, and its code is complete (task 012). The slot text
+  writes the embedded front cover of an MP3 or FLAC file into the state folder
+  as `picture-SEQ`. The station producer uses that picture when the state has
+  no image URL. The picture code is in `now-playing-drop/src/picture.rs`. The
+  four station checks of task 012 are open, and need a person.
 - The binary `station-import` (crate `station-import/`, task 001 of the
   station import) is complete. It makes a folder of song and episode files
   with their GUID and chapter tags and `manifest.json`, for the AzuraCast SFTP
