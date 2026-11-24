@@ -67,3 +67,4 @@ install -m 0644 liquidsoap/musicindex-state.liq docs/runbooks/liquidsoap-now-pla
 
 "$out/musicindex-live-publisher" --version
 echo "The bundle is in $out"
+echo "station-import converts a WAV song to FLAC only with flac or ffmpeg on PATH. flac is optional but recommended (musicindex ADR 0094)."

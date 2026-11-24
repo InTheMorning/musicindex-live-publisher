@@ -1,6 +1,6 @@
 # Station Import Task 001: The Binary `station-import`
 
-Status: Done - 2026-11-23, with musicindex-fetch at `7b36f6a`. The crate now uses musicindex-lib `5db5c80` and its `value_routes(blocks, routes)`. musicindex ADR 0092 is accepted (musicindex `35d3305`). The crate `musicindex-fetch` is in
+Status: Done - 2026-11-23, with musicindex-fetch at `7b36f6a`. The crate now uses musicindex-lib `7d44025` and its `value_routes(blocks, routes)`. musicindex ADR 0092 is accepted (musicindex `35d3305`). The crate `musicindex-fetch` is in
 musicindex-lib `7b36f6a`.
 
 All criteria are mechanical, except the one item in §Visual And Manual Criteria. No test reaches the network.
@@ -278,5 +278,18 @@ musicindex-tags that was missing or that did not work as this file states.
 
 Operator choice (orchestrator, 2026-11-23, after test station step 18 of musicindex-research commit 53bf07f): an item
 GUID that is not safe for a file name gets the file name `sha256-` and the SHA-256 hex of the GUID, for example a URL
-item GUID of a song feed. The tags and the manifest keep the GUID. The runbook says that the import cannot tag a WAV
-file. The import does not convert a WAV file to FLAC.
+item GUID of a song feed. The tags and the manifest keep the GUID.
+
+Operator choice (orchestrator, 2026-11-23, musicindex ADR 0094 R-CONVERT-7, which changes ADR 0092 R-STATION-4):
+the import converts a WAV song to FLAC with `convert_with` of musicindex-convert, after one converter probe for the
+run, and tags the FLAC file. The WAV file goes to the temporary folder `.convert/` of the output folder, and the run
+removes it. The manifest gives the FLAC path and its SHA-256 hash. With no converter, the song gets an `error` value
+and the run continues. A dry run does not download, so a WAV song keeps its `.wav` path in the manifest. flac is
+optional but recommended. The runbook and the bundle script say this. The packages do not ship `station-import`, so
+they get no change.
+
+12. `wav_song_becomes_a_tagged_flac_file`: a WAV song and a test converter script. The manifest gives the `.flac`
+    path and the SHA-256 of that file. `read_podcast_tags` gives the two GUIDs. No WAV file stays in the output
+    folder.
+13. `wav_song_with_no_converter_is_an_error_and_the_run_continues`: a WAV song and a probe with no converter. The
+    entry has an error that starts with `cannot convert the WAV song to FLAC`, and the other song is written.

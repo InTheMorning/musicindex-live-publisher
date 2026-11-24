@@ -6,10 +6,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
+use musicindex_convert::{ConverterObservation, ConverterProbe, ExecutableSource, ProbeOutcome};
 use musicindex_fetch::ReaderConfig;
 use musicindex_tags::{read_audio_tags, read_podcast_tags};
 use serde_json::Value;
-use station_import::{Options, run};
+use sha2::Digest;
+use station_import::{Options, run, run_with};
 
 struct TestServer {
     base_url: String,
@@ -106,6 +108,9 @@ fn routes(
     let escape_feed = format!(
         r#"<?xml version="1.0"?><rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0"><channel><podcast:guid>escape-feed</podcast:guid><item><guid>../escape</guid><title>Escape</title><enclosure url="{base_url}/audio/tagged.mp3" type="audio/mpeg" length="1"/></item></channel></rss>"#
     );
+    let wav_song_feed = format!(
+        r#"<?xml version="1.0"?><rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0"><channel><title>Wav Songs</title><podcast:guid>wav-feed</podcast:guid><item><guid>wav-song</guid><title>Wav Song</title><enclosure url="{base_url}/audio/song.wav" type="audio/wav" length="1"/></item></channel></rss>"#
+    );
     let song_lookup = format!(r#"{{"data":{{"feed_url":"{base_url}/song-feed.xml"}}}}"#);
     let mut map = HashMap::new();
     map.insert(
@@ -136,6 +141,11 @@ fn routes(
         "/audio/untagged.flac".into(),
         (200, "audio/flac", untagged_audio),
     );
+    map.insert(
+        "/wav-song-feed.xml".into(),
+        (200, "application/rss+xml", wav_song_feed.into_bytes()),
+    );
+    map.insert("/audio/song.wav".into(), (200, "audio/wav", wav_bytes()));
     map.insert(
         "/audio/missing.mp3".into(),
         (404, "text/plain", b"missing".to_vec()),
@@ -458,4 +468,148 @@ fn unsafe_item_guid_gets_a_hash_file_name() {
             .count(),
         1
     );
+}
+
+/// A WAV file with a 44-byte header and four samples of silence.
+fn wav_bytes() -> Vec<u8> {
+    let data = [0_u8; 8];
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(b"RIFF");
+    bytes.extend_from_slice(&(36 + data.len() as u32).to_le_bytes());
+    bytes.extend_from_slice(b"WAVEfmt ");
+    bytes.extend_from_slice(&16_u32.to_le_bytes());
+    bytes.extend_from_slice(&1_u16.to_le_bytes()); // PCM
+    bytes.extend_from_slice(&1_u16.to_le_bytes()); // one channel
+    bytes.extend_from_slice(&44_100_u32.to_le_bytes());
+    bytes.extend_from_slice(&88_200_u32.to_le_bytes());
+    bytes.extend_from_slice(&2_u16.to_le_bytes());
+    bytes.extend_from_slice(&16_u16.to_le_bytes());
+    bytes.extend_from_slice(b"data");
+    bytes.extend_from_slice(&(data.len() as u32).to_le_bytes());
+    bytes.extend_from_slice(&data);
+    bytes
+}
+
+fn probe(
+    executable: &std::path::Path,
+    source: ExecutableSource,
+    outcome: ProbeOutcome,
+) -> ConverterProbe {
+    ConverterProbe {
+        executable: executable.to_path_buf(),
+        source,
+        recorded_at: chrono::Utc::now(),
+        outcome,
+    }
+}
+
+/// A converter observation with a `flac` script that copies the FLAC fixture
+/// to the output path, and no `ffmpeg`.
+fn script_converter(folder: &tempfile::TempDir) -> ConverterObservation {
+    use std::os::unix::fs::PermissionsExt;
+    let fixture = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/untagged.flac");
+    let script = folder.path().join("flac");
+    std::fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\nwhile [ $# -gt 0 ]; do if [ \"$1\" = -o ]; then out=\"$2\"; fi; shift; done\ncp '{fixture}' \"$out\"\n"
+        ),
+    )
+    .expect("write converter script");
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755))
+        .expect("make converter script executable");
+    ConverterObservation {
+        flac: probe(
+            &script,
+            ExecutableSource::Configured,
+            ProbeOutcome::Exited(Some(0)),
+        ),
+        ffmpeg: probe(
+            std::path::Path::new("ffmpeg"),
+            ExecutableSource::Path,
+            ProbeOutcome::Missing,
+        ),
+    }
+}
+
+fn wav_song_list(base_url: &str) -> String {
+    format!(
+        r#"<?xml version="1.0"?><rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0"><channel><title>Station list</title><podcast:remoteItem medium="music" feedGuid="wav-feed" feedUrl="{base_url}/wav-song-feed.xml" itemGuid="wav-song"/><podcast:remoteItem medium="music" feedGuid="song-feed" feedUrl="{base_url}/song-feed.xml" itemGuid="song-item"/></channel></rss>"#
+    )
+}
+
+fn song_files(options: &Options) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(options.out.join("songs"))
+        .expect("songs folder")
+        .map(|entry| {
+            entry
+                .expect("entry")
+                .file_name()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    names.sort();
+    names
+}
+
+// musicindex ADR 0094 §Checks, R-CONVERT-7 items 1 and 2.
+#[test]
+fn wav_song_becomes_a_tagged_flac_file() {
+    let server = TestServer::start();
+    let folder = tempfile::tempdir().expect("temporary folder");
+    let mut options = options(&folder);
+    options.songs = Some(write_local_feed(
+        &folder,
+        "music.xml",
+        &wav_song_list(&server.base_url),
+    ));
+    let converter = script_converter(&folder);
+
+    let result = run_with(&options, server.config(), &|| converter.clone()).expect("run import");
+    assert_eq!(result.error_count(), 0);
+    assert_eq!(song_files(&options), ["song-item.mp3", "wav-song.flac"]);
+    assert!(!options.out.join(".convert").exists());
+    let flac = options.out.join("songs/wav-song.flac");
+    let tags = read_podcast_tags(&flac).expect("read FLAC tags");
+    assert_eq!(tags.feed_guid.as_deref(), Some("wav-feed"));
+    assert_eq!(tags.item_guid.as_deref(), Some("wav-song"));
+    let item = manifest(&folder)["items"][0].clone();
+    assert_eq!(item["path"], "songs/wav-song.flac");
+    let hash = format!(
+        "{:x}",
+        sha2::Sha256::digest(std::fs::read(&flac).expect("read FLAC"))
+    );
+    assert_eq!(item["sha256"], hash);
+}
+
+// musicindex ADR 0094 §Checks, R-CONVERT-7 item 3.
+#[test]
+fn wav_song_with_no_converter_is_an_error_and_the_run_continues() {
+    let server = TestServer::start();
+    let folder = tempfile::tempdir().expect("temporary folder");
+    let mut options = options(&folder);
+    options.songs = Some(write_local_feed(
+        &folder,
+        "music.xml",
+        &wav_song_list(&server.base_url),
+    ));
+    let missing = std::path::Path::new("flac");
+    let none = ConverterObservation {
+        flac: probe(missing, ExecutableSource::Path, ProbeOutcome::Missing),
+        ffmpeg: probe(
+            std::path::Path::new("ffmpeg"),
+            ExecutableSource::Path,
+            ProbeOutcome::Missing,
+        ),
+    };
+
+    let result = run_with(&options, server.config(), &|| none.clone()).expect("run import");
+    assert_eq!(result.error_count(), 1);
+    let items = manifest(&folder)["items"].clone();
+    let error = items[0]["error"].as_str().unwrap_or_default().to_owned();
+    assert!(error.contains("no converter"), "{error}");
+    assert!(items[1]["error"].is_null());
+    assert_eq!(song_files(&options), ["song-item.mp3"]);
+    assert!(!options.out.join(".convert").exists());
 }

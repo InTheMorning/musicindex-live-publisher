@@ -5,9 +5,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow};
+use musicindex_convert::{ConverterObservation, convert_with};
 use musicindex_fetch::{
     FeedDocument, FeedReader, ReaderConfig, RemoteItemRef, download_enclosure, song_list,
 };
+use musicindex_tags::format::AudioFormat;
 use musicindex_tags::{
     EpisodeTags, Id3v24Edit, NoReferences, SongTags, SplitTarget, read_audio_tags,
     read_podcast_tags, write_episode_tags, write_song_tags,
@@ -110,12 +112,28 @@ impl Manifest {
     }
 }
 
-/// Runs an import and writes its manifest last.
+/// Runs an import and writes its manifest last. A WAV song becomes a FLAC
+/// file through `flac` or `ffmpeg` on `PATH` (musicindex ADR 0094
+/// R-CONVERT-7).
 ///
 /// # Errors
 ///
 /// Returns an error when setup or manifest writing fails.
-pub fn run(options: &Options, mut config: ReaderConfig) -> Result<Manifest> {
+pub fn run(options: &Options, config: ReaderConfig) -> Result<Manifest> {
+    run_with(options, config, &|| ConverterObservation::refresh(None))
+}
+
+/// [`run`] with the converter probe that `probe` gives. The run calls
+/// `probe` one time, at the first WAV song.
+///
+/// # Errors
+///
+/// Returns an error when setup or manifest writing fails.
+pub fn run_with(
+    options: &Options,
+    mut config: ReaderConfig,
+    probe: &dyn Fn() -> ConverterObservation,
+) -> Result<Manifest> {
     if options.songs.is_none() && options.episode_feed.is_none() {
         return Err(anyhow!("at least one input is required"));
     }
@@ -137,6 +155,10 @@ pub fn run(options: &Options, mut config: ReaderConfig) -> Result<Manifest> {
     config.user_agent = format!("station-import/{}", env!("CARGO_PKG_VERSION"));
     let mut reader = FeedReader::new(config).context("make feed reader")?;
     let mut claimed = HashSet::new();
+    let mut converter = Converter {
+        probe,
+        observation: None,
+    };
     if let Some(source) = &options.songs {
         let document = if source.starts_with("http://") || source.starts_with("https://") {
             reader
@@ -149,9 +171,13 @@ pub fn run(options: &Options, mut config: ReaderConfig) -> Result<Manifest> {
             FeedDocument::parse(source, bytes).map_err(|e| anyhow!(e.to_string()))?
         };
         for reference in song_list(&document.values) {
-            manifest
-                .items
-                .push(import_song(&mut reader, &reference, options, &mut claimed));
+            manifest.items.push(import_song(
+                &mut reader,
+                &reference,
+                options,
+                &mut claimed,
+                &mut converter,
+            ));
         }
     }
     if let Some(url) = &options.episode_feed {
@@ -180,8 +206,69 @@ pub fn run(options: &Options, mut config: ReaderConfig) -> Result<Manifest> {
             }
         }
     }
+    // A failed run can leave the staging folder. Only an empty one goes.
+    let _ = fs::remove_dir(options.out.join(STAGING_DIR));
     write_manifest(&options.out, &manifest)?;
     Ok(manifest)
+}
+
+/// The folder in the output folder that holds a WAV song while it becomes
+/// a FLAC file. The run removes it when it is empty.
+const STAGING_DIR: &str = ".convert";
+
+/// The converter of one run. It probes the programs one time, at the first
+/// WAV song (musicindex ADR 0094 R-CONVERT-7).
+struct Converter<'a> {
+    probe: &'a dyn Fn() -> ConverterObservation,
+    observation: Option<ConverterObservation>,
+}
+
+impl Converter<'_> {
+    fn observation(&mut self) -> &ConverterObservation {
+        self.observation.get_or_insert_with(self.probe)
+    }
+}
+
+/// Changes a downloaded WAV song into a FLAC file with the same name and the
+/// extension `flac` (musicindex ADR 0094 R-CONVERT-7 item 1). Gives `None`
+/// for a file that is not WAV. The WAV file does not stay in the output
+/// folder, also after an error.
+fn convert_wav(
+    out: &Path,
+    downloaded: &Path,
+    converter: &mut Converter<'_>,
+) -> Result<Option<PathBuf>> {
+    if !matches!(
+        AudioFormat::detect_from_file(downloaded),
+        Ok(AudioFormat::Wav)
+    ) {
+        return Ok(None);
+    }
+    let flac = downloaded.with_extension("flac");
+    let staging = out.join(STAGING_DIR);
+    let stem = downloaded
+        .file_stem()
+        .ok_or_else(|| anyhow!("the song file has no name"))?;
+    let staged = staging.join(stem).with_extension("wav");
+    let moved = fs::create_dir_all(&staging)
+        .and_then(|()| fs::rename(downloaded, &staged))
+        .context("move the WAV song to the staging folder");
+    if let Err(error) = moved {
+        let _ = fs::remove_file(downloaded);
+        return Err(error);
+    }
+    // A FLAC file of an earlier run is replaced, as a download replaces a file.
+    let result = convert_with(&staged, converter.observation())
+        .map_err(|error| anyhow!("cannot convert the WAV song to FLAC: {error}"))
+        .and_then(|(converted, _)| {
+            fs::rename(&converted, &flac)
+                .inspect_err(|_| {
+                    let _ = fs::remove_file(&converted);
+                })
+                .context("move the FLAC song to the output folder")
+        });
+    let _ = fs::remove_file(&staged);
+    result.map(|()| Some(flac))
 }
 
 fn import_song(
@@ -189,6 +276,7 @@ fn import_song(
     reference: &RemoteItemRef,
     options: &Options,
     claimed: &mut HashSet<String>,
+    converter: &mut Converter<'_>,
 ) -> ManifestItem {
     let resolved = match reader.resolve(reference) {
         Ok(item) => item,
@@ -244,10 +332,21 @@ fn import_song(
     if options.dry_run {
         return item;
     }
-    let destination = options.out.join(&path);
+    let mut destination = options.out.join(&path);
     if let Err(error) = download_enclosure(url, &destination, &user_agent()) {
         item.error = Some(error.to_string());
         return item;
+    }
+    match convert_wav(&options.out, &destination, converter) {
+        Ok(Some(flac)) => {
+            item.path = Some(path.with_extension("flac").to_string_lossy().into_owned());
+            destination = flac;
+        }
+        Ok(None) => {}
+        Err(error) => {
+            item.error = Some(format!("{error:#}"));
+            return item;
+        }
     }
     // The reader keeps the song feed from the resolve, so this read sends no request.
     let album = reader

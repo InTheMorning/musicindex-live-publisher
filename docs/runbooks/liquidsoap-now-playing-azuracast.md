@@ -275,8 +275,16 @@ station-import --out station-import-output --songs https://example.org/music.xml
 
 Read `manifest.json` first. Examine each item with an `error` value. Examine each entry in `unresolved_splits`.
 
-`station-import` cannot tag a WAV file, and it does not change the format of a file. A WAV song gets an
-`error` value in the manifest that starts with `cannot tag raw WAV`. The command does not write that song.
+`flac` is an optional but recommended dependency of `station-import` on your computer (musicindex ADR 0094 §The
+Packages). `ffmpeg` is also optional. With `flac` or `ffmpeg` on `PATH`, `station-import` converts a WAV song to
+FLAC and tags the FLAC file. The manifest gives the path and the SHA-256 hash of the FLAC file. The WAV file does not
+stay in the output folder. Without the two programs, the manifest gives an `error` value for each WAV song that
+starts with `cannot convert the WAV song to FLAC`, and the run continues with the other items. For example, on Arch
+Linux install `flac` with this command:
+
+```sh
+sudo pacman -S flac
+```
 
 An item GUID with characters that are not safe in a file name, for example a URL, gives the file name
 `sha256-` and the SHA-256 hex of the GUID. The tags and the manifest keep the item GUID.

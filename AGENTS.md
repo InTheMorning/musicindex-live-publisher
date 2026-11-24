@@ -152,12 +152,15 @@ packet.
 - ADR 0027 is `Accepted`, and its code is complete (task 011). The station
   producer asks the route service for a song state with the two state GUIDs,
   and the service routes win over the routes of the state. The station check
-  of its §Verification is open, and needs a person.
+  of its §Verification passed on 2026-11-23.
 - The binary `station-import` (crate `station-import/`, task 001 of the
   station import) is complete. It makes a folder of song and episode files
   with their GUID and chapter tags and `manifest.json`, for the AzuraCast SFTP
   account. musicindex ADR 0092 owns its rules, and musicindex-fetch of
-  musicindex-lib holds its feed read and download. It has no upload code.
+  musicindex-lib holds its feed read and download. It converts a WAV song to
+  FLAC through musicindex-convert of musicindex-lib (musicindex ADR 0094
+  R-CONVERT-7). flac is optional but recommended on the computer that runs
+  it. It has no upload code.
 - This item needs a new ADR before work starts: a track identity source that
   is earlier than the Mixxx history row.
 - Studio client task 001 is not started. The publisher will start and end a

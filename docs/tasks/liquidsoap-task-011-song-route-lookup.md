@@ -1,6 +1,6 @@
 # Liquidsoap Task 011: The Station Producer Asks The Route Service For A Song File
 
-Status: Done - 2026-11-23. The operator accepted ADR 0027. Criterion 7 is open.
+Status: Done - 2026-11-23. The operator accepted ADR 0027. Criterion 7 passed on the test station on 2026-11-23.
 
 Criteria 1 to 6 are mechanical. Criterion 7 is a station check for a person.
 
@@ -45,3 +45,7 @@ Station check, for a person:
 
 7. The test station plays an imported song with no routes in the file. The relay gets a payable block with the routes
    of the route service.
+
+Result of criterion 7 (orchestrator, 2026-11-23, bundle `a30d701`): the song "Bulldozer" by Horseheads played with
+no routes in the file. The producer got 4 routes from the route service, and the relay got a payable block at seq
+991.
