@@ -24,6 +24,63 @@ The steps use two names:
 
 Replace the two names in each command.
 
+## Check A New Slot Text Before The Restart
+
+Do this check each time that you replace the slot text. Do it before you click **Restart Broadcasting** (tutorial
+step 6). A parse error in the slot text stops Liquidsoap, and the station goes off air. The
+test `slot_text` of this repository finds only one known fault, because the build host has no Liquidsoap.
+
+The generated `liquidsoap.liq` holds the station API key and the source passwords. Do not print it, and do not copy
+it out of the host. The commands below write it only to `/root` and to a temporary folder in the container, and they
+remove the copies at the end.
+
+1. As root on the host, put the slot text that is in the box now into `/root/slot-old.liq`. Put the new slot text into
+   `/root/slot-new.liq`. Replace `INSTANCE` in the new text.
+2. Make sure that the new text has no `INSTANCE` on the `musicindex_dir` line. This command must print nothing:
+
+   ```sh
+   grep -n '^musicindex_dir = .*INSTANCE' /root/slot-new.liq
+   ```
+
+   If `INSTANCE` stays, Liquidsoap starts, but each write of `state.json` fails.
+3. Find the configuration folder of the station. Its name comes from the station short name in AzuraCast, not from
+   `INSTANCE`:
+
+   ```sh
+   docker exec azuracast ls /var/azuracast/stations
+   ```
+
+4. Make a copy of the configuration with the new slot text. Replace `STATION` with the folder name of step 3:
+
+   ```sh
+   docker exec azuracast cat /var/azuracast/stations/STATION/config/liquidsoap.liq > /root/lq-gen.liq
+   ```
+
+   ```sh
+   python3 -c 'import sys; g=open("/root/lq-gen.liq").read(); o=open("/root/slot-old.liq").read().strip(); n=open("/root/slot-new.liq").read().strip(); assert o and g.count(o) == 1, "the old slot text is not in the configuration one time"; open("/root/lq-new.liq", "w").write(g.replace(o, n))'
+   ```
+
+5. Check the copy in the container:
+
+   ```sh
+   docker exec azuracast mkdir -p /tmp/lqcheck
+   docker cp /root/lq-new.liq azuracast:/tmp/lqcheck/full.liq
+   docker exec azuracast chown -R azuracast /tmp/lqcheck
+   docker exec -u azuracast azuracast sh -c 'cd /tmp/lqcheck && liquidsoap --check full.liq'; echo EXIT $?
+   ```
+
+   `EXIT 0` is correct. Warning 6 ("Top-level variable frame/add is overridden") is not an error. Each other result
+   is an error. Do not restart. Put the old slot text back in the box.
+6. Remove the copies:
+
+   ```sh
+   docker exec azuracast rm -rf /tmp/lqcheck
+   rm -f /root/lq-gen.liq /root/lq-new.liq /root/slot-old.liq /root/slot-new.liq
+   ```
+
+The orchestrator session used these commands on the test station on 2026-11-24. They need an old slot text in the
+box. For a first install, the tutorial gives the steps.
+
 ## Prerequisites
 
 - Steps 1 to 7 of the tutorial are complete. `/var/lib/musicindex/azuracast/INSTANCE/state.json` exists, and its
