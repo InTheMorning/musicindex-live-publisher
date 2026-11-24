@@ -1,6 +1,7 @@
 # ADR 0028: The Station Producer Uses The Embedded Picture Of The File As The Artwork Fallback
 
-- Status: Proposed on 2026-11-24.
+- Status: Accepted on 2026-11-24 by the operator, as at commit ca460a2. The orchestrator session relayed the decision.
+  The two Open Questions stay open. The check of §Before Implementation is open.
 - Date: 2026-11-24
 - Changes: ADR 0026 §What The Producer Writes In `display.json`, the `artwork` row of the track table and the item
   "The producer writes no embedded image". ADR 0026 §One Display Writer, the sentence that keeps `prepare_image` and

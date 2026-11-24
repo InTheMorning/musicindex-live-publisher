@@ -3,7 +3,7 @@
 - Status: Accepted on 2026-11-22, accepted by the operator as at commit ba8cf78. The orchestrator session relayed the
   decision. The four Open Questions stay open.
 - Date: 2026-11-22
-- Changed by: ADR 0028, Proposed on 2026-11-24. The embedded picture of the file is the artwork fallback, and the
+- Changed by: ADR 0028, accepted 2026-11-24. The embedded picture of the file is the artwork fallback, and the
   picture code moves to `now-playing-drop`.
 - Changes: ADR 0025 §The State File Format 2, by one optional field `song`. ADR 0022 §The State File Contract, the
   rule "A field change needs a new format version" (ADR 0022 line 77): an optional field does not need a new version.

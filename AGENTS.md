@@ -153,7 +153,7 @@ packet.
   producer asks the route service for a song state with the two state GUIDs,
   and the service routes win over the routes of the state. The station check
   of its §Verification passed on 2026-11-23.
-- ADR 0028 has the status `Proposed`, and no implementation exists. In it,
+- ADR 0028 is `Accepted`, and no implementation exists. In it,
   the slot text writes the embedded front cover of an MP3 or FLAC file into
   the state folder. The station producer uses that picture when the state has
   no image URL. The picture code moves to `now-playing-drop`.
