@@ -1394,7 +1394,7 @@ mod tests {
         musicindex_live_publisher::dead_payload(
             event_guid,
             block_guid,
-            musicindex_live_publisher::DEFAULT_DEAD_BLOCK_TITLE,
+            &musicindex_live_publisher::DeadBlockSettings::default(),
         )
     }
 
@@ -1561,7 +1561,7 @@ mod tests {
             vec![musicindex_live_publisher::WatchTarget {
                 name: "default".to_owned(),
                 event_guid: "event".to_owned(),
-                dead_block_title: musicindex_live_publisher::DEFAULT_DEAD_BLOCK_TITLE.to_owned(),
+                dead_block: musicindex_live_publisher::DeadBlockSettings::default(),
             }],
             Duration::ZERO,
         );
@@ -1628,7 +1628,7 @@ mod tests {
             vec![musicindex_live_publisher::WatchTarget {
                 name: "default".to_owned(),
                 event_guid: "event-default".to_owned(),
-                dead_block_title: musicindex_live_publisher::DEFAULT_DEAD_BLOCK_TITLE.to_owned(),
+                dead_block: musicindex_live_publisher::DeadBlockSettings::default(),
             }],
             Duration::ZERO,
         );

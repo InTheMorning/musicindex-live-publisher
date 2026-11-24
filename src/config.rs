@@ -10,10 +10,13 @@ use std::{env, fs};
 use anyhow::{Context, Result, anyhow};
 use serde::{Deserialize, Serialize};
 
-use crate::{DEFAULT_DEAD_BLOCK_TITLE, WatchTarget};
+use crate::{DEFAULT_DEAD_BLOCK_TITLE, DeadBlockSettings, WatchTarget};
 
 /// Maximum length of a configured dead block title.
 pub const MAX_DEAD_BLOCK_TITLE_CHARS: usize = 256;
+
+/// Maximum length of a configured dead block image URL (ADR 0029).
+pub const MAX_DEAD_BLOCK_IMAGE_CHARS: usize = 2_048;
 
 /// Default service configuration path.
 pub const DEFAULT_CONFIG_PATH: &str = "/etc/musicindex-live-publisher/config.toml";
@@ -61,7 +64,8 @@ pub struct PublisherTarget {
     pub token_file: PathBuf,
     pub token: String,
     pub stream_delay: Duration,
-    pub dead_block_title: String,
+    /// The dead block title and image of this target (ADR 0029).
+    pub dead_block: DeadBlockSettings,
     /// The display directory of the producer of this target (ADR 0008).
     /// `None` turns the display path off for this target.
     pub display_dir: Option<PathBuf>,
@@ -76,7 +80,7 @@ impl fmt::Debug for PublisherTarget {
             .field("token_file", &self.token_file)
             .field("token", &"<redacted>")
             .field("stream_delay", &self.stream_delay)
-            .field("dead_block_title", &self.dead_block_title)
+            .field("dead_block", &self.dead_block)
             .field("display_dir", &self.display_dir)
             .finish()
     }
@@ -88,7 +92,7 @@ impl PublisherTarget {
         WatchTarget {
             name: self.name.clone(),
             event_guid: self.event_id.clone(),
-            dead_block_title: self.dead_block_title.clone(),
+            dead_block: self.dead_block.clone(),
         }
     }
 }
@@ -183,6 +187,7 @@ struct RawTarget {
     token_file: PathBuf,
     stream_delay_secs: Option<f64>,
     dead_block_title: Option<String>,
+    dead_block_image: Option<String>,
     display_dir: Option<PathBuf>,
     /// Detects a removed `[target.fallback]` table (ADR 0029). The publisher
     /// never reads its content.
@@ -212,6 +217,7 @@ struct RawTargetSummary {
     token_file: PathBuf,
     stream_delay_secs: Option<f64>,
     dead_block_title: Option<String>,
+    dead_block_image: Option<String>,
     display_dir: Option<PathBuf>,
     fallback: Option<toml::Value>,
 }
@@ -573,6 +579,7 @@ fn redacted_target_from_raw(
     validate_event_id(&target.name, &target.event_id)?;
     validate_stream_delay_secs(&target.name, target.stream_delay_secs)?;
     resolve_dead_block_title(&target.name, target.dead_block_title.as_deref())?;
+    resolve_dead_block_image(&target.name, target.dead_block_image.as_deref())?;
     reject_removed_fallback_table(&target.name, target.fallback.as_ref())?;
     Ok(RedactedPublisherTarget {
         name: target.name,
@@ -663,8 +670,10 @@ fn resolve_target(target: RawTarget, seen: &mut HashSet<String>) -> Result<Publi
     validate_event_id(&target.name, &target.event_id)?;
     reject_removed_fallback_table(&target.name, target.fallback.as_ref())?;
     let stream_delay = resolve_stream_delay(&target.name, target.stream_delay_secs)?;
-    let dead_block_title =
-        resolve_dead_block_title(&target.name, target.dead_block_title.as_deref())?;
+    let dead_block = DeadBlockSettings {
+        title: resolve_dead_block_title(&target.name, target.dead_block_title.as_deref())?,
+        image: resolve_dead_block_image(&target.name, target.dead_block_image.as_deref())?,
+    };
 
     let token_file = resolve_token_file_path(
         &target.token_file,
@@ -679,7 +688,7 @@ fn resolve_target(target: RawTarget, seen: &mut HashSet<String>) -> Result<Publi
         token_file,
         token,
         stream_delay,
-        dead_block_title,
+        dead_block,
         display_dir: target.display_dir,
     })
 }
@@ -700,6 +709,33 @@ fn resolve_dead_block_title(target_name: &str, title: Option<&str>) -> Result<St
         ));
     }
     Ok(title.to_owned())
+}
+
+/// Gives the `image` of the dead block of a target (ADR 0029 §The Dead Block).
+///
+/// An absent setting gives `None`. The value is trimmed, and it must be an
+/// `http` or `https` URL with a host, of at most
+/// `MAX_DEAD_BLOCK_IMAGE_CHARS` characters.
+fn resolve_dead_block_image(target_name: &str, image: Option<&str>) -> Result<Option<String>> {
+    let Some(image) = image else {
+        return Ok(None);
+    };
+    let image = image.trim();
+    if image.chars().count() > MAX_DEAD_BLOCK_IMAGE_CHARS {
+        return Err(anyhow!(
+            "target {target_name} dead_block_image must not exceed {MAX_DEAD_BLOCK_IMAGE_CHARS} characters"
+        ));
+    }
+    let url_ok = reqwest::Url::parse(image).is_ok_and(|url| {
+        matches!(url.scheme(), "http" | "https")
+            && url.host_str().is_some_and(|host| !host.is_empty())
+    });
+    if !url_ok {
+        return Err(anyhow!(
+            "target {target_name} dead_block_image must be an http or https URL"
+        ));
+    }
+    Ok(Some(image.to_owned()))
 }
 
 fn validate_target_config_edit(edit: &TargetConfigEdit) -> Result<()> {

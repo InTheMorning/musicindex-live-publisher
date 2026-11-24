@@ -257,7 +257,8 @@ This service routes money. These rules are not style preferences.
 - When the MIDI connector is available, a drop file exists only while its
   linked deck plays (ADR 0006).
 - The dead block pays nobody. No setting changes its model or its destination.
-  Only its title is a setting of each target, `dead_block_title` (ADR 0029).
+  Only its title and its image are settings of each target, `dead_block_title`
+  and `dead_block_image` (ADR 0029).
 - The `title` of a payable track block is "artist - title" (ADR 0029). The
   display state keeps the song as its `title`.
 - A `split` is a decimal string in the payload, never a number. `90.0` renders

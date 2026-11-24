@@ -14,10 +14,16 @@
   the destinations of the dead block.
 - Operator choice 1, 2026-11-24: the dead block title is a setting of each target, for example "HeyCitizen Test
   Stream". Each other field of the dead block stays. A jingle still pays nobody.
+- Revised: 2026-11-24. The orchestrator session asked for the setting `dead_block_image`. It changes only `image`
+  (§Context, §The Dead Block).
 - Operator choice 2, 2026-11-24: the `title` of a payable track block is "artist - title", for example "Anni Powell -
   Beyond the Hills". The display state does not change.
 
 ## Context
+
+The setting `dead_block_image` came after the Podcast Guru test of f8c5792 on the test station. Podcast Guru changed
+the artwork only after a pause and a play. One or two dead blocks with no `image` came before each song. Inference: the
+app does not load a new picture after a block with no `image`. The setting tests that inference.
 
 Podcast Guru shows only the `title` field of the `remoteValue` event. On the test station on 2026-11-24, it showed
 "No V4V track playing" during each jingle, and only the song title during a song, for example "Beyond the Hills". The
@@ -61,7 +67,7 @@ These fields are constants in the publisher. No setting changes them:
 - `value.model`: `{"type": "lightning", "method": "lnaddress"}`.
 - One destination: name "No V4V payment route", type `lnaddress`, address `no-v4v-track@example.invalid`, split
   "100". A payment to that address fails, so no money moves.
-- No `image`, no `feedGuid` and no `itemGuid`.
+- No `feedGuid` and no `itemGuid`.
 
 The publisher rejects a configuration with a `[target.fallback]` table, and it has no option `--fallback-value-block`.
 
@@ -71,6 +77,13 @@ The `title` is the setting `dead_block_title` of the target:
 - The publisher trims the value. An empty value or a value of more than 256 characters is a configuration error that
   names the target.
 - The setting changes only the title. It cannot make the dead block payable.
+
+The `image` is the setting `dead_block_image` of the target:
+
+- When the setting is absent, the dead block has no `image`.
+- The publisher trims the value. The value must be an `http` or `https` URL with a host, of at most 2,048 characters.
+  Each other value is a configuration error that names the target.
+- The setting changes only the image. It cannot make the dead block payable.
 
 ### The Title Of A Track Block
 
@@ -146,13 +159,19 @@ Mechanical, in the publisher:
 - An empty `dead_block_title`, a value of only spaces, and a value of 257 characters each give a configuration error
   that names the target.
 - A dead block with a configured title has the same model and destination as the default dead block.
+- A target with no `dead_block_image` gives a dead block with no `image`. A target with `dead_block_image =
+  "https://example.com/station.png"` gives that `image` in each dead block of that target, with the same model and
+  destination.
+- An empty `dead_block_image` gives a configuration error that names the target. A value that is not an `http` or
+  `https` URL, and a value of more than 2,048 characters, also give that error.
 - A payable drop file with the artist "Anni Powell" and the title "Beyond the Hills" gives the payload `title` "Anni
   Powell - Beyond the Hills". An empty artist gives the title alone.
 
 Mechanical, in the producers: the existing tests of the lock, the duration source and the maximum stay green.
 
 Manual, by a person, because a test cannot reach the app. On the test station, Podcast Guru shows the configured title
-during a jingle. It shows "artist - title" during a song.
+during a jingle. It shows "artist - title" during a song. With `dead_block_image`, it shows the artwork of each song with
+no pause and play.
 
 ## Non-Goals
 
@@ -169,7 +188,7 @@ during a jingle. It shows "artist - title" during a song.
 
 ## Consequences
 
-- A station can show its name during a jingle. The dead block still pays nobody.
+- A station can show its name and its image during a jingle. The dead block still pays nobody.
 - An app that shows only `title` shows the artist of a song.
 - citizenradio decides that a block is not payable from the title "No V4V track playing" or from the address host
   `example.invalid`. With a configured title, only the host check applies.

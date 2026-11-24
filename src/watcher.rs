@@ -10,7 +10,8 @@ use uuid::Uuid;
 
 use crate::livevalue::has_payable_routes;
 use crate::{
-    DropFile, LiveValuePayload, LogFacts, ProducerState, dead_payload, parse, payload_from_dropfile,
+    DeadBlockSettings, DropFile, LiveValuePayload, LogFacts, ProducerState, dead_payload, parse,
+    payload_from_dropfile,
 };
 
 /// Debounce window for repeated filesystem notifications on one path.
@@ -21,7 +22,8 @@ pub const DEFAULT_DEBOUNCE_WINDOW: Duration = Duration::from_millis(75);
 pub struct WatchTarget {
     pub name: String,
     pub event_guid: String,
-    pub dead_block_title: String,
+    /// The dead block title and image of this target (ADR 0029).
+    pub dead_block: DeadBlockSettings,
 }
 
 /// Filesystem actions that can affect the currently published payload.
@@ -135,7 +137,7 @@ impl DropWatcher {
                 .values()
                 .filter(|target| !present.contains(&target.event_guid))
                 .map(|target| {
-                    dead_payload_with_log(&target.event_guid, &target.dead_block_title, observed_at)
+                    dead_payload_with_log(&target.event_guid, &target.dead_block, observed_at)
                 }),
         );
         Ok(payloads)
@@ -207,7 +209,7 @@ impl DropWatcher {
                     .map(|target| {
                         vec![dead_payload_with_log(
                             &target.event_guid,
-                            &target.dead_block_title,
+                            &target.dead_block,
                             observed_at,
                         )]
                     })
@@ -270,7 +272,7 @@ impl DropWatcher {
             );
         }
         let mut payload = if !payable {
-            dead_payload(&target.event_guid, &block_guid, &target.dead_block_title)
+            dead_payload(&target.event_guid, &block_guid, &target.dead_block)
         } else {
             payload_from_dropfile(&dropfile, &target.event_guid, &block_guid)
         };
@@ -312,7 +314,7 @@ impl DropWatcher {
         self.targets
             .values()
             .map(|target| {
-                dead_payload_with_log(&target.event_guid, &target.dead_block_title, observed_at)
+                dead_payload_with_log(&target.event_guid, &target.dead_block, observed_at)
             })
             .collect()
     }
@@ -386,10 +388,10 @@ fn fresh_guid() -> String {
 /// drop file is gone, or was never there, at `observed_at`.
 fn dead_payload_with_log(
     event_guid: &str,
-    title: &str,
+    settings: &DeadBlockSettings,
     observed_at: SystemTime,
 ) -> LiveValuePayload {
-    let mut payload = dead_payload(event_guid, &fresh_guid(), title);
+    let mut payload = dead_payload(event_guid, &fresh_guid(), settings);
     payload.log = Some(LogFacts::clear(observed_at));
     payload
 }

@@ -139,7 +139,8 @@ Edit `~/.config/musicindex-live-publisher/mixxx/config.toml`:
 - Keep
   `token_file = "~/.config/musicindex-live-publisher/mixxx/tokens/default.token"`.
 - Do not add a `[target.fallback]` table. The publisher uses the fixed dead
-  block (ADR 0029). Only its title is a setting, `dead_block_title`.
+  block (ADR 0029). Only its title and its image are settings, `dead_block_title`
+  and `dead_block_image`.
 
 Optional producer config:
 

@@ -387,7 +387,7 @@ fn display_config(endpoint: &str) -> PublisherConfig {
             token_file: PathBuf::from("/nonexistent/default.token"),
             token: TOKEN.to_owned(),
             stream_delay: Duration::ZERO,
-            dead_block_title: musicindex_live_publisher::DEFAULT_DEAD_BLOCK_TITLE.to_owned(),
+            dead_block: musicindex_live_publisher::DeadBlockSettings::default(),
             display_dir: Some(PathBuf::from("/nonexistent/display")),
         }],
         show_log_retention_days: 365,

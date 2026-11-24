@@ -270,6 +270,28 @@ pub(crate) fn has_payable_routes(dropfile: &DropFile) -> bool {
 /// Default title when a target has no `dead_block_title` (ADR 0029).
 pub const DEFAULT_DEAD_BLOCK_TITLE: &str = "No V4V track playing";
 
+/// The settings of a target for its dead block (ADR 0029 §The Dead Block).
+///
+/// The settings change only `title` and `image`. The model and the
+/// destination of the dead block stay constants.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DeadBlockSettings {
+    /// The `title` of the dead block.
+    pub title: String,
+    /// The `image` URL of the dead block. `None` gives no `image`.
+    pub image: Option<String>,
+}
+
+impl Default for DeadBlockSettings {
+    /// Gives the title "No V4V track playing" and no image.
+    fn default() -> Self {
+        Self {
+            title: DEFAULT_DEAD_BLOCK_TITLE.to_owned(),
+            image: None,
+        }
+    }
+}
+
 /// Builds the track title from the trimmed artist and title (ADR 0029 §The Title Of A Track Block).
 fn track_payload_title(artist: &str, title: &str) -> String {
     match (artist.trim(), title.trim()) {
@@ -287,14 +309,18 @@ const DEAD_BLOCK_RECIPIENT_NAME: &str = "No V4V payment route";
 /// A payment to this address fails, so the dead block pays nobody.
 const DEAD_BLOCK_ADDRESS: &str = "no-v4v-track@example.invalid";
 
-/// Builds the dead block with the target title (ADR 0029).
+/// Builds the dead block with the title and the image of the target (ADR 0029).
 ///
 /// The model and destination are constants. The block carries no `feedGuid`
 /// or `itemGuid`. The caller supplies a fresh `block_guid` for each publish.
-pub fn dead_payload(event_guid: &str, block_guid: &str, title: &str) -> LiveValuePayload {
+pub fn dead_payload(
+    event_guid: &str,
+    block_guid: &str,
+    settings: &DeadBlockSettings,
+) -> LiveValuePayload {
     LiveValuePayload {
-        title: title.to_owned(),
-        image: None,
+        title: settings.title.clone(),
+        image: settings.image.clone(),
         description: String::new(),
         kind: "music".to_owned(),
         start_time: 0,
@@ -440,13 +466,34 @@ mod tests {
 
     #[test]
     fn dead_block_title_does_not_change_its_value() {
-        let station = dead_payload("e", "b", "Station");
-        let default = dead_payload("e", "b", DEFAULT_DEAD_BLOCK_TITLE);
+        let settings = DeadBlockSettings {
+            title: "Station".to_owned(),
+            image: None,
+        };
+        let station = dead_payload("e", "b", &settings);
+        let default = dead_payload("e", "b", &DeadBlockSettings::default());
         assert_eq!(station.title, "Station");
         assert_eq!(station.value, default.value);
         assert!(station.image.is_none());
         assert!(station.feed_guid.is_none());
         assert!(station.item_guid.is_none());
+    }
+
+    #[test]
+    fn dead_block_image_does_not_change_its_value() -> Result<()> {
+        let settings = DeadBlockSettings {
+            title: "Station".to_owned(),
+            image: Some("https://example.com/station.png".to_owned()),
+        };
+        let station = dead_payload("e", "b", &settings);
+        let default = dead_payload("e", "b", &DeadBlockSettings::default());
+        assert_eq!(station.value, default.value);
+        assert!(is_dead_block(&station.value));
+        let json = serde_json::to_value(&station)?;
+        assert_eq!(json["image"], "https://example.com/station.png");
+        assert!(json.get("feedGuid").is_none());
+        assert!(json.get("itemGuid").is_none());
+        Ok(())
     }
 
     #[test]
@@ -540,7 +587,7 @@ mod tests {
 
     #[test]
     fn livevalue_dead_payload_has_the_fixed_dead_block_values() -> Result<()> {
-        let payload = dead_payload("event-guid", "block-guid", crate::DEFAULT_DEAD_BLOCK_TITLE);
+        let payload = dead_payload("event-guid", "block-guid", &DeadBlockSettings::default());
         let value = serde_json::to_value(&payload)?;
 
         assert_eq!(value["title"], "No V4V track playing");
@@ -570,7 +617,7 @@ mod tests {
 
     #[test]
     fn livevalue_dead_block_requires_all_destinations_to_use_dead_address() {
-        let dead = dead_payload("event-guid", "block-guid", crate::DEFAULT_DEAD_BLOCK_TITLE);
+        let dead = dead_payload("event-guid", "block-guid", &DeadBlockSettings::default());
         assert!(is_dead_block(&dead.value));
 
         let payable = payload_from_dropfile(&dropfile(), "event-guid", "block-guid");
@@ -582,12 +629,12 @@ mod tests {
         let first = serde_json::to_value(dead_payload(
             "event-guid",
             "block-guid-1",
-            crate::DEFAULT_DEAD_BLOCK_TITLE,
+            &DeadBlockSettings::default(),
         ))?;
         let second = serde_json::to_value(dead_payload(
             "event-guid",
             "block-guid-2",
-            crate::DEFAULT_DEAD_BLOCK_TITLE,
+            &DeadBlockSettings::default(),
         ))?;
 
         assert_ne!(first["blockGuid"], second["blockGuid"]);
@@ -654,7 +701,7 @@ mod tests {
 
     #[test]
     fn livevalue_dead_payload_never_has_link_key() -> Result<()> {
-        let payload = dead_payload("event-guid", "block-guid", crate::DEFAULT_DEAD_BLOCK_TITLE);
+        let payload = dead_payload("event-guid", "block-guid", &DeadBlockSettings::default());
         let value = serde_json::to_value(payload)?;
 
         assert!(value.get("link").is_none());
@@ -663,7 +710,7 @@ mod tests {
 
     #[test]
     fn livevalue_dead_payload_has_no_new_fields() -> Result<()> {
-        let payload = dead_payload("event-guid", "block-guid", crate::DEFAULT_DEAD_BLOCK_TITLE);
+        let payload = dead_payload("event-guid", "block-guid", &DeadBlockSettings::default());
         let value = serde_json::to_value(&payload)?;
 
         let mut keys: Vec<&str> = value

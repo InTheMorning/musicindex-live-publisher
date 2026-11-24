@@ -51,7 +51,7 @@ event_id = "replace-with-provisioned-event-guid"
 token_file = "~/.config/musicindex-live-publisher/mixxx/tokens/default.token"
 
 # The publisher uses the dead block while idle or non-V4V (ADR 0029).
-# Only its title is a setting: dead_block_title.
+# Only its title and its image are settings: dead_block_title, dead_block_image.
 ```
 
 Required top-level fields:
@@ -97,6 +97,13 @@ Optional target fields:
   The publisher trims the value. An empty value or a value of more than 256
   characters is rejected at startup with the target name in the error. See
   "Dead Block" below.
+
+- `dead_block_image`: the `image` URL of the dead block of this target, for
+  example `"https://example.com/station.png"` (ADR 0029). Without this field,
+  the dead block has no `image`. The publisher trims the value. The value
+  must be an `http` or `https` URL with a host, of at most 2,048 characters.
+  The publisher stops at startup for each other value, with the target name
+  in the error.
 
 - `display_dir`: the display directory of the producer of this target. It is
   the `DIR` of `mixxx-now-playing --display-dir DIR`. Without this field, the
@@ -337,7 +344,9 @@ That block gives the stream no usable payment route when no V4V track plays.
 The model and the destination are constants. No configuration changes them.
 
 The setting `dead_block_title` changes only the title. A podcast app that
-shows only the `title` field then shows the station name during a jingle:
+shows only the `title` field then shows the station name during a jingle.
+The setting `dead_block_image` changes only the `image`. Use it when an app
+does not load a new picture after a block with no `image`:
 
 ```toml
 [[target]]
@@ -345,6 +354,7 @@ name = "default"
 event_id = "replace-with-provisioned-event-guid"
 token_file = "~/.config/musicindex-live-publisher/mixxx/tokens/default.token"
 dead_block_title = "HeyCitizen Test Stream"
+dead_block_image = "https://example.com/station.png"
 ```
 
 The track block of a payable song has the title "artist - title", for example
@@ -360,6 +370,8 @@ Validation rules:
   the ADR.
 - `dead_block_title`, when present, must not be empty after the trim and must
   not exceed 256 characters.
+- `dead_block_image`, when present, must be an `http` or `https` URL with a
+  host, and must not exceed 2,048 characters.
 - Empty token files are rejected.
 - `stream_delay_secs` must be finite, must not be negative, and must not exceed
   300.

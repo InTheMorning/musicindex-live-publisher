@@ -21,7 +21,7 @@ into `/usr/bin`.
   built `musicindex-live-relay` for rehearsal.
 
 The publisher uses a fixed dead block while idle or playing non-V4V audio
-(ADR 0029). Only its title is a setting, `dead_block_title`.
+(ADR 0029). Only its title and its image are settings, `dead_block_title` and `dead_block_image`.
 
 ## Arch Package Install
 
@@ -119,7 +119,7 @@ event_id = "replace-with-provisioned-event-guid"
 token_file = "~/.config/musicindex-live-publisher/mixxx/tokens/default.token"
 
 # The publisher uses the dead block while idle or non-V4V (ADR 0029).
-# Only its title is a setting: dead_block_title.
+# Only its title and its image are settings: dead_block_title, dead_block_image.
 ```
 
 Replace `event_id` with the value printed by `provision` before starting the

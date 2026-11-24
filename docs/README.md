@@ -111,7 +111,7 @@ the next priority. Confirm that logging works before the show.
 - [ADR 0029: Producer liveness, the dead block and the remoteValue title](adr/0029-producer-liveness-dead-block-and-remote-value-title.md)
   — Accepted. It replaces ADR 0005: the producer lock, the dead block, the
   relay keepalive and the expiry limit without the MIDI connector. The dead
-  block title is a setting of each target, and a track block has the title
+  block title and image are settings of each target, and a track block has the title
   "artist - title". It changes ADR 0010
 
 ## Plans

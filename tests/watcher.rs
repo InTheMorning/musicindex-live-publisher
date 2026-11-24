@@ -13,7 +13,7 @@ fn target() -> WatchTarget {
     WatchTarget {
         name: "default".to_owned(),
         event_guid: "event-guid".to_owned(),
-        dead_block_title: musicindex_live_publisher::DEFAULT_DEAD_BLOCK_TITLE.to_owned(),
+        dead_block: musicindex_live_publisher::DeadBlockSettings::default(),
     }
 }
 
@@ -295,7 +295,10 @@ fn watcher_startup_fills_a_target_with_no_file_with_the_dead_block() -> Result<(
     let other = WatchTarget {
         name: "other".to_owned(),
         event_guid: "event-guid-other".to_owned(),
-        dead_block_title: "HeyCitizen Test Stream".to_owned(),
+        dead_block: musicindex_live_publisher::DeadBlockSettings {
+            title: "HeyCitizen Test Stream".to_owned(),
+            image: None,
+        },
     };
     let mut watcher =
         DropWatcher::new_targets(vec![target(), other.clone()], Duration::from_millis(75));
@@ -347,7 +350,10 @@ fn watcher_producer_missing_payloads_gives_one_dead_block_for_each_target() -> R
     let other = WatchTarget {
         name: "other".to_owned(),
         event_guid: "event-guid-other".to_owned(),
-        dead_block_title: "HeyCitizen Test Stream".to_owned(),
+        dead_block: musicindex_live_publisher::DeadBlockSettings {
+            title: "HeyCitizen Test Stream".to_owned(),
+            image: Some("https://example.com/station.png".to_owned()),
+        },
     };
     let mut watcher =
         DropWatcher::new_targets(vec![target(), other.clone()], Duration::from_millis(75));
@@ -355,10 +361,16 @@ fn watcher_producer_missing_payloads_gives_one_dead_block_for_each_target() -> R
     let mut payloads = watcher.producer_missing_payloads();
     payloads.sort_by(|a, b| a.event_guid.cmp(&b.event_guid));
 
-    // Each target has the dead block title of its own setting (ADR 0029).
+    // Each target has the dead block title and image of its own settings
+    // (ADR 0029).
     assert_eq!(payloads.len(), 2);
     assert_eq!(payloads[0].title, "No V4V track playing");
+    assert_eq!(payloads[0].image, None);
     assert_eq!(payloads[1].title, "HeyCitizen Test Stream");
+    assert_eq!(
+        payloads[1].image.as_deref(),
+        Some("https://example.com/station.png")
+    );
     assert_eq!(payloads[0].value, payloads[1].value);
     assert_eq!(payloads[0].event_guid, "event-guid");
     assert_eq!(payloads[1].event_guid, other.event_guid);

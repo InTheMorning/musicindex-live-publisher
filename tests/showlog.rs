@@ -168,7 +168,7 @@ fn config(endpoint: &str) -> PublisherConfig {
             token_file: PathBuf::from("/tmp/default.token"),
             token: TOKEN.to_owned(),
             stream_delay: Duration::ZERO,
-            dead_block_title: musicindex_live_publisher::DEFAULT_DEAD_BLOCK_TITLE.to_owned(),
+            dead_block: musicindex_live_publisher::DeadBlockSettings::default(),
             display_dir: None,
         }],
         show_log_retention_days: 365,
@@ -180,7 +180,7 @@ fn watch_target() -> WatchTarget {
     WatchTarget {
         name: "default".to_owned(),
         event_guid: "event-guid".to_owned(),
-        dead_block_title: musicindex_live_publisher::DEFAULT_DEAD_BLOCK_TITLE.to_owned(),
+        dead_block: musicindex_live_publisher::DeadBlockSettings::default(),
     }
 }
 

@@ -1085,7 +1085,66 @@ fn config_loads_single_target_and_trims_token() -> Result<()> {
     assert_eq!(config.targets.len(), 1);
     assert_eq!(config.targets[0].name, "default");
     assert_eq!(config.targets[0].token, "secret-token");
-    assert_eq!(config.targets[0].dead_block_title, "No V4V track playing");
+    assert_eq!(config.targets[0].dead_block.title, "No V4V track playing");
+    assert_eq!(config.targets[0].dead_block.image, None);
+    Ok(())
+}
+
+#[test]
+fn dead_block_image_is_read_and_trimmed() -> Result<()> {
+    let temp = TempDir::new()?;
+    let watch_dir = temp.path().join("watch");
+    let token = write_token(temp.path(), "default.token", "secret-token")?;
+    let text = config_text(&watch_dir, &token, None).replace(
+        "# default target comment",
+        "dead_block_image = \" https://example.com/station.png \"",
+    );
+    let path = write_config(temp.path(), &text)?;
+    let config = load_config(&path, ConfigOverrides::default())?;
+    assert_eq!(
+        config.targets[0].dead_block.image.as_deref(),
+        Some("https://example.com/station.png")
+    );
+    Ok(())
+}
+
+#[test]
+fn bad_dead_block_image_is_an_error() -> Result<()> {
+    let temp = TempDir::new()?;
+    let watch_dir = temp.path().join("watch");
+    let token = write_token(temp.path(), "default.token", "secret-token")?;
+    let long = format!("https://example.com/{}", "x".repeat(2_029));
+    for image in [
+        String::new(),
+        "   ".to_owned(),
+        "station.png".to_owned(),
+        "ftp://example.com/station.png".to_owned(),
+        "https://".to_owned(),
+        long,
+    ] {
+        let text = config_text(&watch_dir, &token, None).replace(
+            "# default target comment",
+            &format!("dead_block_image = {image:?}"),
+        );
+        let path = write_config(temp.path(), &text)?;
+        let error = load_config(&path, ConfigOverrides::default())
+            .err()
+            .ok_or_else(|| anyhow!("invalid dead_block_image {image:?} was accepted"))?;
+        assert!(
+            error
+                .to_string()
+                .contains("target default dead_block_image"),
+            "{error}"
+        );
+    }
+    let longest = format!("https://example.com/{}", "x".repeat(2_028));
+    assert_eq!(longest.chars().count(), 2_048);
+    let text = config_text(&watch_dir, &token, None).replace(
+        "# default target comment",
+        &format!("dead_block_image = {longest:?}"),
+    );
+    let path = write_config(temp.path(), &text)?;
+    load_config(&path, ConfigOverrides::default())?;
     Ok(())
 }
 
@@ -1100,7 +1159,7 @@ fn dead_block_title_is_read_and_trimmed() -> Result<()> {
     );
     let path = write_config(temp.path(), &text)?;
     let config = load_config(&path, ConfigOverrides::default())?;
-    assert_eq!(config.targets[0].dead_block_title, "HeyCitizen Test Stream");
+    assert_eq!(config.targets[0].dead_block.title, "HeyCitizen Test Stream");
     Ok(())
 }
 

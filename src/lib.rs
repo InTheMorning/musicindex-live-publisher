@@ -26,8 +26,9 @@ pub use display::{
 pub use dropfile::{DropFile, PaymentRoute, SCHEMA_VERSION, parse};
 pub use liveness::{LOCK_FILE_NAME, ProducerState, probe_producer};
 pub use livevalue::{
-    DEFAULT_DEAD_BLOCK_TITLE, LiveValue, LiveValueDestination, LiveValueModel, LiveValuePayload,
-    LogFacts, dead_payload, destination_from_payment_route, format_split, payload_from_dropfile,
+    DEFAULT_DEAD_BLOCK_TITLE, DeadBlockSettings, LiveValue, LiveValueDestination, LiveValueModel,
+    LiveValuePayload, LogFacts, dead_payload, destination_from_payment_route, format_split,
+    payload_from_dropfile,
 };
 pub use relay::{
     DEFAULT_INITIAL_BACKOFF, DEFAULT_MAX_BACKOFF, DEFAULT_REQUEST_TIMEOUT, DisplayOutcome,
