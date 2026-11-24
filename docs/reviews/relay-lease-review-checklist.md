@@ -7,7 +7,7 @@ task 004.
 
 Reviewed work:
 
-- `docs/adr/0005-producer-liveness-and-dead-block.md`
+- `docs/archive/adr/0005-producer-liveness-and-dead-block.md`
 - `docs/plans/relay-lease-keepalive.md`
 - `docs/tasks/relay-lease-task-001-producer-lock-and-expiry-max.md`
 - `docs/tasks/relay-lease-task-002-dead-block.md`

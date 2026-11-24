@@ -1,6 +1,6 @@
 //! Producer liveness probing through the producer lock file.
 //!
-//! ADR 0005 names the producer lock as the source of truth for producer
+//! ADR 0029 names the producer lock as the source of truth for producer
 //! liveness. `mixxx-now-playing` holds an exclusive lock on
 //! `.producer.lock` in its drop directory for the life of its process (see
 //! `mixxx-now-playing/src/lock.rs`). This module holds the publisher side of

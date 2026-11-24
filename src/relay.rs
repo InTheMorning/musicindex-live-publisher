@@ -541,7 +541,7 @@ pub fn write_token_file(path: &Path, token: &str) -> Result<()> {
 ///
 /// The channel that once carried only [`LiveValuePayload`] now carries this
 /// enum, so the main loop can tell a worker about a producer liveness change
-/// (ADR 0005) on the same channel a new payload arrives on.
+/// (ADR 0029) on the same channel a new payload arrives on.
 #[derive(Debug)]
 enum WorkerCommand {
     /// A live value payload to publish.
@@ -769,7 +769,7 @@ impl RelayPublisher {
 
     /// Tells every relay worker about a producer liveness change.
     ///
-    /// ADR 0005 and relay-lease-task-004: `Producer(Running)` reaches every
+    /// ADR 0029 and relay-lease-task-004: `Producer(Running)` reaches every
     /// worker at once, because a producer that returns affects the whole
     /// service, not one target. The startup probe result also goes through
     /// this method, one time, before the first payload.
@@ -785,7 +785,7 @@ impl RelayPublisher {
 
     /// Tells one target's relay worker about a producer liveness change.
     ///
-    /// ADR 0005, ADR 0011 and relay-lease-task-004: the main loop sends each
+    /// ADR 0029, ADR 0011 and relay-lease-task-004: the main loop sends each
     /// target's dead block on its own, so `Producer(Missing)` for a missing
     /// producer goes to one target at a time, only after that target's dead
     /// block is sent.
@@ -1152,7 +1152,7 @@ fn run_keepalive(
                     }
                     Ok(WorkerCommand::Producer(state)) => {
                         *producer_state = state;
-                        // ADR 0005: no keepalive goes out while the producer is
+                        // ADR 0029: no keepalive goes out while the producer is
                         // missing. A retry must not keep the event on air.
                         if state == ProducerState::Missing {
                             return KeepaliveAttempt::Paused;
@@ -1278,7 +1278,7 @@ fn publish_worker(inputs: PublishWorkerInputs, fatal: &Mutex<Option<String>>) {
     let mut last_accepted: Option<LiveValuePayload> = None;
     let mut keepalive_interval: Option<Duration> = None;
     // `Producer(Running)` reaches every worker once at startup, with the
-    // first probe result, before any payload (ADR 0005). Missing is the
+    // first probe result, before any payload (ADR 0029). Missing is the
     // safe default until that first command arrives: it holds off any
     // keepalive rather than send one with no producer confirmed live.
     let mut producer_state = ProducerState::Missing;

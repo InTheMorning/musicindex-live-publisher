@@ -15,7 +15,7 @@ and ignores version 2. The payload does not change.
 
 - `docs/adr/0014-one-assembler-and-track-reporting.md` (§Each Producer
   Reports Each Track)
-- `docs/adr/0005-producer-liveness-and-dead-block.md` (§Publisher Behavior,
+- `docs/archive/adr/0005-producer-liveness-and-dead-block.md` (§Publisher Behavior,
   §Payment Timing Without The MIDI Connector)
 - `mixxx-now-playing/src/connector/link.rs`: `Row`, `Coordinator::history_row`,
   `Coordinator::row`, `CurrentRow`, the expiry handling
@@ -131,7 +131,7 @@ Implement only this task. Do not redesign the architecture.
 
 Read:
 - docs/adr/0014-one-assembler-and-track-reporting.md
-- docs/adr/0005-producer-liveness-and-dead-block.md
+- docs/archive/adr/0005-producer-liveness-and-dead-block.md
 - docs/tasks/track-reporting-task-001-dropfile-v3-history-only.md
 - mixxx-now-playing/src/connector/link.rs, main.rs, render.rs, tags.rs
 - mixxx-now-playing/tests/live_publisher_dropfile.rs

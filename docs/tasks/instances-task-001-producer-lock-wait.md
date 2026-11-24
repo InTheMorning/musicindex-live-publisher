@@ -13,7 +13,7 @@ directory. The producer then exits.
 ## Files To Inspect
 
 - `docs/adr/0016-instances-events-and-producer-lock.md` (§The Producer Lock)
-- `docs/adr/0005-producer-liveness-and-dead-block.md` (the amendment of
+- `docs/archive/adr/0005-producer-liveness-and-dead-block.md` (the amendment of
   2026-10-18)
 - `mixxx-now-playing/src/lock.rs`
 - `mixxx-now-playing/src/main.rs` (the call of `ProducerLock::acquire`)

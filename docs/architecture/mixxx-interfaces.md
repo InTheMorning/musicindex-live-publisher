@@ -177,7 +177,7 @@ Tested with two AutoDJ track changes:
 ## References
 
 - `docs/adr/0001-rust-now-playing-lifecycle.md`
-- `docs/adr/0005-producer-liveness-and-dead-block.md`
+- `docs/adr/0029-producer-liveness-dead-block-and-remote-value-title.md`
 - `mixxx-now-playing/src/history.rs`
 - Mixxx source: https://github.com/mixxxdj/mixxx, tag `2.5.6`
 - PortMidi source: https://github.com/PortMidi/portmidi, tag `v2.0.7`

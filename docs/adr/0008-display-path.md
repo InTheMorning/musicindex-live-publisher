@@ -314,7 +314,7 @@ Negative and risks:
 ## References
 
 - `docs/adr/0002-nowplaying-drop-file-contract.md`
-- `docs/adr/0005-producer-liveness-and-dead-block.md`
+- `docs/adr/0029-producer-liveness-dead-block-and-remote-value-title.md`
 - `docs/adr/0006-mixxx-midi-connector.md`
 - `musicindex-live-relay`: `docs/adr/0001-reserved-live-items.md`
 - `musicindex-live-relay`: `docs/adr/0003-display-state-and-artwork.md`

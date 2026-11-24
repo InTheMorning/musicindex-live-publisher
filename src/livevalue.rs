@@ -235,7 +235,7 @@ pub fn payload_from_dropfile(
     ];
 
     LiveValuePayload {
-        title: dropfile.title.clone(),
+        title: track_payload_title(&dropfile.artist, &dropfile.title),
         image: dropfile.image.clone(),
         description: String::new(),
         kind: "music".to_owned(),
@@ -267,10 +267,17 @@ pub(crate) fn has_payable_routes(dropfile: &DropFile) -> bool {
             .is_some_and(|guid| !guid.trim().is_empty())
 }
 
-/// Fixed title for the dead block.
-///
-/// ADR 0005 states this value as a constant. No configuration can change it.
-const DEAD_BLOCK_TITLE: &str = "No V4V track playing";
+/// Default title when a target has no `dead_block_title` (ADR 0029).
+pub const DEFAULT_DEAD_BLOCK_TITLE: &str = "No V4V track playing";
+
+/// Builds the track title from the trimmed artist and title (ADR 0029 §The Title Of A Track Block).
+fn track_payload_title(artist: &str, title: &str) -> String {
+    match (artist.trim(), title.trim()) {
+        ("", title) => title.to_owned(),
+        (artist, "") => artist.to_owned(),
+        (artist, title) => format!("{artist} - {title}"),
+    }
+}
 
 /// Fixed payment-destination name for the dead block.
 const DEAD_BLOCK_RECIPIENT_NAME: &str = "No V4V payment route";
@@ -280,16 +287,13 @@ const DEAD_BLOCK_RECIPIENT_NAME: &str = "No V4V payment route";
 /// A payment to this address fails, so the dead block pays nobody.
 const DEAD_BLOCK_ADDRESS: &str = "no-v4v-track@example.invalid";
 
-/// Builds the dead block: the fixed live value payload for "no payable block
-/// plays here now" (ADR 0005).
+/// Builds the dead block with the target title (ADR 0029).
 ///
-/// The dead block is a constant. No configuration can change its title, its
-/// model, or its destination. It carries no `feedGuid` and no `itemGuid`,
-/// because no producer supplied a track. The caller supplies `event_guid` for
-/// the target and a fresh `block_guid` for each publish.
-pub fn dead_payload(event_guid: &str, block_guid: &str) -> LiveValuePayload {
+/// The model and destination are constants. The block carries no `feedGuid`
+/// or `itemGuid`. The caller supplies a fresh `block_guid` for each publish.
+pub fn dead_payload(event_guid: &str, block_guid: &str, title: &str) -> LiveValuePayload {
     LiveValuePayload {
-        title: DEAD_BLOCK_TITLE.to_owned(),
+        title: title.to_owned(),
         image: None,
         description: String::new(),
         kind: "music".to_owned(),
@@ -414,6 +418,38 @@ mod tests {
     }
 
     #[test]
+    fn track_payload_title_uses_artist_and_trimmed_title() {
+        let mut track = dropfile();
+        track.artist = " Anni Powell ".to_owned();
+        track.title = " Beyond the Hills ".to_owned();
+        let payload = payload_from_dropfile(&track, "event", "block");
+        assert_eq!(payload.title, "Anni Powell - Beyond the Hills");
+        assert_eq!(
+            payload.line,
+            Some(vec![
+                " Beyond the Hills ".to_owned(),
+                " Anni Powell ".to_owned()
+            ])
+        );
+        assert_eq!(payload.author.as_deref(), Some(" Anni Powell "));
+
+        track.artist.clear();
+        let payload = payload_from_dropfile(&track, "event", "block");
+        assert_eq!(payload.title, "Beyond the Hills");
+    }
+
+    #[test]
+    fn dead_block_title_does_not_change_its_value() {
+        let station = dead_payload("e", "b", "Station");
+        let default = dead_payload("e", "b", DEFAULT_DEAD_BLOCK_TITLE);
+        assert_eq!(station.title, "Station");
+        assert_eq!(station.value, default.value);
+        assert!(station.image.is_none());
+        assert!(station.feed_guid.is_none());
+        assert!(station.item_guid.is_none());
+    }
+
+    #[test]
     fn livevalue_null_custom_fields_and_fee_are_omitted() -> Result<()> {
         let payload = payload_from_dropfile(&dropfile(), "event-guid", "block-guid");
         let value = serde_json::to_value(payload)?;
@@ -504,7 +540,7 @@ mod tests {
 
     #[test]
     fn livevalue_dead_payload_has_the_fixed_dead_block_values() -> Result<()> {
-        let payload = dead_payload("event-guid", "block-guid");
+        let payload = dead_payload("event-guid", "block-guid", crate::DEFAULT_DEAD_BLOCK_TITLE);
         let value = serde_json::to_value(&payload)?;
 
         assert_eq!(value["title"], "No V4V track playing");
@@ -534,7 +570,7 @@ mod tests {
 
     #[test]
     fn livevalue_dead_block_requires_all_destinations_to_use_dead_address() {
-        let dead = dead_payload("event-guid", "block-guid");
+        let dead = dead_payload("event-guid", "block-guid", crate::DEFAULT_DEAD_BLOCK_TITLE);
         assert!(is_dead_block(&dead.value));
 
         let payable = payload_from_dropfile(&dropfile(), "event-guid", "block-guid");
@@ -543,8 +579,16 @@ mod tests {
 
     #[test]
     fn livevalue_two_dead_payloads_only_differ_by_block_guid() -> Result<()> {
-        let first = serde_json::to_value(dead_payload("event-guid", "block-guid-1"))?;
-        let second = serde_json::to_value(dead_payload("event-guid", "block-guid-2"))?;
+        let first = serde_json::to_value(dead_payload(
+            "event-guid",
+            "block-guid-1",
+            crate::DEFAULT_DEAD_BLOCK_TITLE,
+        ))?;
+        let second = serde_json::to_value(dead_payload(
+            "event-guid",
+            "block-guid-2",
+            crate::DEFAULT_DEAD_BLOCK_TITLE,
+        ))?;
 
         assert_ne!(first["blockGuid"], second["blockGuid"]);
 
@@ -610,7 +654,7 @@ mod tests {
 
     #[test]
     fn livevalue_dead_payload_never_has_link_key() -> Result<()> {
-        let payload = dead_payload("event-guid", "block-guid");
+        let payload = dead_payload("event-guid", "block-guid", crate::DEFAULT_DEAD_BLOCK_TITLE);
         let value = serde_json::to_value(payload)?;
 
         assert!(value.get("link").is_none());
@@ -619,7 +663,7 @@ mod tests {
 
     #[test]
     fn livevalue_dead_payload_has_no_new_fields() -> Result<()> {
-        let payload = dead_payload("event-guid", "block-guid");
+        let payload = dead_payload("event-guid", "block-guid", crate::DEFAULT_DEAD_BLOCK_TITLE);
         let value = serde_json::to_value(&payload)?;
 
         let mut keys: Vec<&str> = value

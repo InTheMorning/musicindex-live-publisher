@@ -1085,6 +1085,51 @@ fn config_loads_single_target_and_trims_token() -> Result<()> {
     assert_eq!(config.targets.len(), 1);
     assert_eq!(config.targets[0].name, "default");
     assert_eq!(config.targets[0].token, "secret-token");
+    assert_eq!(config.targets[0].dead_block_title, "No V4V track playing");
+    Ok(())
+}
+
+#[test]
+fn dead_block_title_is_read_and_trimmed() -> Result<()> {
+    let temp = TempDir::new()?;
+    let watch_dir = temp.path().join("watch");
+    let token = write_token(temp.path(), "default.token", "secret-token")?;
+    let text = config_text(&watch_dir, &token, None).replace(
+        "# default target comment",
+        "dead_block_title = \"  HeyCitizen Test Stream \"",
+    );
+    let path = write_config(temp.path(), &text)?;
+    let config = load_config(&path, ConfigOverrides::default())?;
+    assert_eq!(config.targets[0].dead_block_title, "HeyCitizen Test Stream");
+    Ok(())
+}
+
+#[test]
+fn empty_or_long_dead_block_title_is_an_error() -> Result<()> {
+    let temp = TempDir::new()?;
+    let watch_dir = temp.path().join("watch");
+    let token = write_token(temp.path(), "default.token", "secret-token")?;
+    for title in [String::new(), "   ".to_owned(), "x".repeat(257)] {
+        let text = config_text(&watch_dir, &token, None).replace(
+            "# default target comment",
+            &format!("dead_block_title = {title:?}"),
+        );
+        let path = write_config(temp.path(), &text)?;
+        let error = load_config(&path, ConfigOverrides::default())
+            .err()
+            .ok_or_else(|| anyhow!("invalid dead_block_title was accepted"))?;
+        assert!(
+            error
+                .to_string()
+                .contains("target default dead_block_title")
+        );
+    }
+    let text = config_text(&watch_dir, &token, None).replace(
+        "# default target comment",
+        &format!("dead_block_title = {:?}", "x".repeat(256)),
+    );
+    let path = write_config(temp.path(), &text)?;
+    load_config(&path, ConfigOverrides::default())?;
     Ok(())
 }
 
@@ -1139,7 +1184,7 @@ fn config_loads_two_targets_and_routes_dropfile_to_matching_target() -> Result<(
         Instant::now(),
     )?)?;
 
-    assert_eq!(payload["title"], "Aux Track");
+    assert_eq!(payload["title"], "Alice - Aux Track");
     assert_eq!(payload["eventGuid"], "event-aux");
     Ok(())
 }
@@ -1171,7 +1216,7 @@ token_file = "{}"
 
     assert!(error.is_some_and(|error| {
         let message = error.to_string();
-        message.contains("ADR 0005")
+        message.contains("ADR 0029")
             && message.contains("[target.fallback]")
             && message.contains("target default")
     }));

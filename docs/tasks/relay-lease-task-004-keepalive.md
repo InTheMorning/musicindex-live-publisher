@@ -16,7 +16,7 @@ publishes its last payload again.
 
 ## Files To Inspect
 
-- `docs/adr/0005-producer-liveness-and-dead-block.md` (§Publisher Behavior)
+- `docs/archive/adr/0005-producer-liveness-and-dead-block.md` (§Publisher Behavior)
 - `musicindex-live-relay`: `docs/adr/0002-live-lease.md` (§The Keepalive Route
   and §Wire Changes)
 - `src/relay.rs` (`RelayClient`, `PublishResponse`, `PublishOutcome`,
@@ -139,7 +139,7 @@ You are implementing one bounded task from a larger plan.
 Implement only this task. Do not redesign the architecture.
 
 Read:
-- docs/adr/0005-producer-liveness-and-dead-block.md
+- docs/archive/adr/0005-producer-liveness-and-dead-block.md
 - docs/tasks/relay-lease-task-004-keepalive.md
 - ../musicindex-live-relay/docs/adr/0002-live-lease.md
 - src/relay.rs

@@ -31,10 +31,6 @@ the next priority. Confirm that logging works before the show.
 - [ADR 0004: Publisher control CLI](adr/0004-publisher-control-cli.md) —
   Implemented. The target and JSON commands that let HitIt control this
   repository without writing its configuration file
-- [ADR 0005: Producer liveness, the dead block and the relay lease](adr/0005-producer-liveness-and-dead-block.md)
-  — Implemented. The producer lock, the dead block that replaces the configured
-  fallback, the relay keepalive, and a limit on the expiry timer without the
-  MIDI connector
 - [ADR 0006: Mixxx MIDI connector](adr/0006-mixxx-midi-connector.md) —
   Accepted. A kernel virtual MIDI port gives the producer the deck play state,
   so a stop or a pause ends the payment at once
@@ -112,6 +108,11 @@ the next priority. Confirm that logging works before the show.
   — Accepted. The slot text writes the front cover of an MP3 or FLAC file into
   the state folder, and the producer uses it when the state has no image URL.
   It changes ADR 0025 and ADR 0026
+- [ADR 0029: Producer liveness, the dead block and the remoteValue title](adr/0029-producer-liveness-dead-block-and-remote-value-title.md)
+  — Accepted. It replaces ADR 0005: the producer lock, the dead block, the
+  relay keepalive and the expiry limit without the MIDI connector. The dead
+  block title is a setting of each target, and a track block has the title
+  "artist - title". It changes ADR 0010
 
 ## Plans
 
@@ -360,6 +361,8 @@ Superseded decisions and their packets. Read them for research only.
 
 - [ADR 0003: Show log contract](archive/adr/0003-show-log-contract.md)
   — Superseded by ADR 0017 on 2026-10-19
+- [ADR 0005: Producer liveness, the dead block and the relay lease](archive/adr/0005-producer-liveness-and-dead-block.md)
+  — Replaced by ADR 0029 on 2026-11-24
 - [Show log task 001 — Show log writer](archive/tasks/show-log-task-001-log-writer.md)
   — never started
 - [Show log task 002 — Read contract and documentation](archive/tasks/show-log-task-002-read-contract-and-docs.md)

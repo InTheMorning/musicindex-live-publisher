@@ -559,7 +559,7 @@ Negative and risks:
 - `docs/architecture/mixxx-interfaces.md`
 - `docs/adr/0001-rust-now-playing-lifecycle.md`
 - `docs/adr/0002-nowplaying-drop-file-contract.md`
-- `docs/adr/0005-producer-liveness-and-dead-block.md`
+- `docs/adr/0029-producer-liveness-dead-block-and-remote-value-title.md`
 - Linux source: `sound/core/seq/seq_virmidi.c`
 - PortMidi source, tag `v2.0.7`: `pm_linux/pmlinuxalsa.c`,
   `pm_common/portmidi.c`

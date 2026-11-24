@@ -21,7 +21,7 @@ dead block of a different sender (ADR 0023 §The Publisher Restores Its Block).
 ## Files To Inspect
 
 - `docs/adr/0023-dj-takeover.md`
-- `docs/adr/0005-producer-liveness-and-dead-block.md` §Publisher Behavior
+- `docs/archive/adr/0005-producer-liveness-and-dead-block.md` §Publisher Behavior
 - `src/relay.rs`: `RelayClient::keepalive`, `run_keepalive`, `republish_after_lease_expiry`, `publish_worker`
 - `src/livevalue.rs`: `dead_payload`, `LiveValuePayload`
 - `tests/relay.rs`

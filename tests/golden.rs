@@ -89,8 +89,16 @@ fn required_string<'a>(value: &'a Value, key: &str) -> Result<&'a str> {
 }
 
 fn expected_sourceable_payload(reference: &Value) -> Result<Value> {
+    let artist = reference["line"]
+        .as_array()
+        .and_then(|line| line.last())
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    // Each reference has an artist, so the payload title is "artist - title"
+    // (ADR 0029 §The Title Of A Track Block).
+    let track_title = format!("{artist} - {}", required_string(reference, "title")?);
     let mut payload = json!({
-        "title": required_string(reference, "title")?,
+        "title": track_title,
         "image": required_string(reference, "image")?,
         "description": "",
         "type": "music",

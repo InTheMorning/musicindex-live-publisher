@@ -15,7 +15,7 @@ publish, by the order of the worker channel.
 ## Files To Inspect
 
 - `docs/adr/0011-relay-applies-stream-delay.md` (each section)
-- `docs/adr/0005-producer-liveness-and-dead-block.md` (§Invariants)
+- `docs/archive/adr/0005-producer-liveness-and-dead-block.md` (§Invariants)
 - `docs/adr/0008-display-path.md` (§The Publisher)
 - `docs/tasks/relay-delay-task-001-delay-header.md`
 - `src/main.rs`: `run_watch_loop`, `update_producer_state`, `emit_items`,
@@ -125,7 +125,7 @@ Implement only this task. Do not redesign the architecture.
 
 Read:
 - docs/adr/0011-relay-applies-stream-delay.md
-- docs/adr/0005-producer-liveness-and-dead-block.md
+- docs/archive/adr/0005-producer-liveness-and-dead-block.md
 - docs/adr/0008-display-path.md
 - docs/tasks/relay-delay-task-002-send-at-once.md
 - src/main.rs, src/display.rs, src/schedule.rs, src/relay.rs, src/lib.rs

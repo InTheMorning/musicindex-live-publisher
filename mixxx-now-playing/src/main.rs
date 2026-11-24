@@ -715,7 +715,7 @@ impl<'a> Runtime<'a> {
         Ok(())
     }
 
-    /// Gives the ADR 0005 expiry for a row, by `--expiry`.
+    /// Gives the ADR 0029 expiry for a row, by `--expiry`.
     fn make_expiry(&self, now: Instant, duration: Option<Duration>) -> Expiry {
         match self.cli.expiry {
             cli::ExpiryMode::Duration => {

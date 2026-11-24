@@ -15,7 +15,7 @@ again. At startup, the publisher publishes one block for each target.
 
 ## Files To Inspect
 
-- `docs/adr/0005-producer-liveness-and-dead-block.md` (§The Producer Lock and
+- `docs/archive/adr/0005-producer-liveness-and-dead-block.md` (§The Producer Lock and
   §Publisher Behavior)
 - `docs/tasks/relay-lease-task-001-producer-lock-and-expiry-max.md` (the lock
   path and the lock kind)
@@ -124,7 +124,7 @@ You are implementing one bounded task from a larger plan.
 Implement only this task. Do not redesign the architecture.
 
 Read:
-- docs/adr/0005-producer-liveness-and-dead-block.md
+- docs/archive/adr/0005-producer-liveness-and-dead-block.md
 - docs/tasks/relay-lease-task-003-producer-liveness.md
 - src/main.rs
 - src/watcher.rs

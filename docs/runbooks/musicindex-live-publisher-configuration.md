@@ -50,8 +50,8 @@ name = "default"
 event_id = "replace-with-provisioned-event-guid"
 token_file = "~/.config/musicindex-live-publisher/mixxx/tokens/default.token"
 
-# The publisher uses a fixed dead block while idle or non-V4V (ADR 0005).
-# No configuration changes it.
+# The publisher uses the dead block while idle or non-V4V (ADR 0029).
+# Only its title is a setting: dead_block_title.
 ```
 
 Required top-level fields:
@@ -92,11 +92,17 @@ Optional target fields:
   are negative, not finite, or above 300 are rejected at startup with the
   target name in the error.
 
+- `dead_block_title`: the title of the dead block of this target, for example
+  `"HeyCitizen Test Stream"` (ADR 0029). Defaults to `"No V4V track playing"`.
+  The publisher trims the value. An empty value or a value of more than 256
+  characters is rejected at startup with the target name in the error. See
+  "Dead Block" below.
+
 - `display_dir`: the display directory of the producer of this target. It is
   the `DIR` of `mixxx-now-playing --display-dir DIR`. Without this field, the
   target has no display path. See "The Display Path" below.
 
-A `[target.fallback]` table is a load error. ADR 0005 removes the configured
+A `[target.fallback]` table is a load error. ADR 0029 removes the configured
 fallback. The error names the ADR and the target, so an operator can remove
 the table.
 
@@ -275,8 +281,8 @@ publisher does not perform that resolution:
 }
 ```
 
-The dead block (ADR 0005) uses the same fixed `lnaddress` shape, at the
-address `no-v4v-track@example.invalid`. No configuration changes it.
+The dead block (ADR 0029) uses the same fixed `lnaddress` shape, at the
+address `no-v4v-track@example.invalid`. No configuration changes the address.
 
 Direct LNURL-pay URLs or bech32 LNURL strings are not a documented Podcasting
 `valueRecipient` type in the current namespace docs. This publisher will not
@@ -297,7 +303,7 @@ References:
 
 ## Dead Block
 
-Each target gets the dead block (ADR 0005) when no payable block plays. This
+Each target gets the dead block (ADR 0029) when no payable block plays. This
 is a publisher safety measure, not a Podcasting namespace requirement.
 
 The publisher posts the dead block at startup when the watched directory has
@@ -308,7 +314,7 @@ clear command of its own, so only a new publish can replace that payload. A
 stale track payload can then send a boost to the last song, after play moves
 on, stops, or changes to non-V4V audio.
 
-The dead block is a constant:
+The dead block of a target with no `dead_block_title`:
 
 ```json
 {
@@ -327,8 +333,23 @@ The dead block is a constant:
 }
 ```
 
-That fixed block gives the stream no usable payment route when no V4V track
-plays. No configuration changes it.
+That block gives the stream no usable payment route when no V4V track plays.
+The model and the destination are constants. No configuration changes them.
+
+The setting `dead_block_title` changes only the title. A podcast app that
+shows only the `title` field then shows the station name during a jingle:
+
+```toml
+[[target]]
+name = "default"
+event_id = "replace-with-provisioned-event-guid"
+token_file = "~/.config/musicindex-live-publisher/mixxx/tokens/default.token"
+dead_block_title = "HeyCitizen Test Stream"
+```
+
+The track block of a payable song has the title "artist - title", for example
+"Anni Powell - Beyond the Hills" (ADR 0029). When the artist is empty, the
+title is the song title alone.
 
 Validation rules:
 
@@ -336,7 +357,9 @@ Validation rules:
 - Target names must be unique and non-empty.
 - `event_id` must be non-empty and must not be the example placeholder.
 - A `[target.fallback]` table in a target stanza is a load error that names
-  ADR 0005.
+  the ADR.
+- `dead_block_title`, when present, must not be empty after the trim and must
+  not exceed 256 characters.
 - Empty token files are rejected.
 - `stream_delay_secs` must be finite, must not be negative, and must not exceed
   300.
@@ -646,7 +669,7 @@ Options:
 - `--connector-card <id>`: card ID of the MIDI connector card. Default: `V4V`.
   See [MIDI Connector](#midi-connector).
 - `--no-connector`: do not use the MIDI connector. The producer uses the
-  history-only mode of ADR 0005 with `--expiry-max`.
+  history-only mode of ADR 0029 with `--expiry-max`.
 
 ## MIDI Connector
 
@@ -655,7 +678,7 @@ section and ADR 0006 are different, ADR 0006 applies.
 
 The MIDI connector gives the producer the deck state of Mixxx. When the linked
 deck stops, the producer removes the drop file at once. Without the connector,
-the producer uses the expiry of ADR 0005.
+the producer uses the expiry of ADR 0029.
 
 ### Card Setup
 
@@ -754,7 +777,7 @@ time. See
 - `--connector-card <id>`: the card ID of the connector card. Default: `V4V`.
   The producer finds the card number from `/proc/asound/<id>`.
 - `--no-connector`: the producer does not open the MIDI device. It uses the
-  history-only mode of ADR 0005.
+  history-only mode of ADR 0029.
 
 ### Producer Mode In The Log
 
@@ -769,7 +792,7 @@ The producer writes these lines at the default log level `info`:
 - `connector mode`, at level `INFO`: the producer receives heartbeats from
   the mapping.
 - `history-only mode`, at level `WARN`: the producer uses the expiry of
-  ADR 0005. The `reason` field gives the cause:
+  ADR 0029. The `reason` field gives the cause:
   - `NoDevice`: the producer cannot open the raw MIDI device.
   - `NoHeartbeat`: no heartbeat arrived in the last 3 seconds.
   - `UnknownVersion`: the heartbeat gives a protocol version that the
@@ -819,7 +842,7 @@ state. Mixxx can have done the command, and the answer can be lost.
 
 ## Known Limit: A Track That Plays Again
 
-This section is advisory. ADR 0005 and ADR 0006 own the rules that it
+This section is advisory. ADR 0029 and ADR 0006 own the rules that it
 restates.
 
 Mixxx writes a track to its history only when more than N other tracks
@@ -949,7 +972,7 @@ The token file must exist, or the dry run stops. The dry run does not send
 the token.
 
 The dry run sends the dead block when no producer holds the producer lock
-(ADR 0005). It then ignores each drop file. To see the payload of a test drop
+(ADR 0029). It then ignores each drop file. To see the payload of a test drop
 file, hold the lock with `flock` while the dry run runs:
 
 ```bash

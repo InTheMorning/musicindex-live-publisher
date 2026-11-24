@@ -16,10 +16,10 @@ packet.
 - No one runs the publisher or the relay in production. A change needs no
   transition period for an older version.
 - The publisher, the producer, the dead block and the relay keepalive operate
-  and have tests (ADR 0005).
+  and have tests (ADR 0029).
 - The producer uses the Mixxx MIDI connector when the V4V card and the mapping
   are present (ADR 0006). The manual checks with Mixxx 2.5.6 passed. Without
-  the connector, the producer uses the history-only mode of ADR 0005.
+  the connector, the producer uses the history-only mode of ADR 0029.
 - The operator deferred the packaging pass. `docs/plans/packaging-pass.md`
   lists the open gates. ADR 0006 becomes `Implemented` after that pass.
   - `packaging/arch/PKGBUILD` builds the package
@@ -252,11 +252,14 @@ other without a failure.
 This service routes money. These rules are not style preferences.
 
 - **A stale destination sends a listener boost to the wrong artist.** When no
-  payable block plays, publish the dead block (ADR 0005). Never leave the last
+  payable block plays, publish the dead block (ADR 0029). Never leave the last
   track in place.
 - When the MIDI connector is available, a drop file exists only while its
   linked deck plays (ADR 0006).
-- The dead block is a constant. No configuration changes it.
+- The dead block pays nobody. No setting changes its model or its destination.
+  Only its title is a setting of each target, `dead_block_title` (ADR 0029).
+- The `title` of a payable track block is "artist - title" (ADR 0029). The
+  display state keeps the song as its `title`.
 - A `split` is a decimal string in the payload, never a number. `90.0` renders
   `"90"` and `0.49` renders `"0.49"`.
 - Each track gets a fresh `blockGuid`.

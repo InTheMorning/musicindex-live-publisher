@@ -90,7 +90,7 @@ For Mixxx, use the setup helper. It provisions the live item, writes the token
 and config, and starts the pipeline with the packaged units
 `musicindex-live-publisher@mixxx.service` and `mixxx-now-playing@mixxx.service`.
 The helper writes no unit file. The publisher uses a fixed dead block for idle or non-V4V playback
-(ADR 0005). No setup flag changes it:
+(ADR 0029). No setup flag changes it:
 
 ```bash
 setup-mixxx-musicindex
@@ -139,7 +139,7 @@ Edit `~/.config/musicindex-live-publisher/mixxx/config.toml`:
 - Keep
   `token_file = "~/.config/musicindex-live-publisher/mixxx/tokens/default.token"`.
 - Do not add a `[target.fallback]` table. The publisher uses the fixed dead
-  block (ADR 0005). No configuration changes it.
+  block (ADR 0029). Only its title is a setting, `dead_block_title`.
 
 Optional producer config:
 

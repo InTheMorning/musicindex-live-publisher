@@ -17,7 +17,7 @@ writes it again. Without the connector, the producer operates as it does now.
 - `docs/adr/0006-mixxx-midi-connector.md` (§How `mixxx-now-playing` Uses The
   Deck State, §When The Connector Is Not Available, §Entering And Leaving The
   Connector Mode, §Invariants)
-- `docs/adr/0005-producer-liveness-and-dead-block.md` (§Payment Timing
+- `docs/archive/adr/0005-producer-liveness-and-dead-block.md` (§Payment Timing
   Without The MIDI Connector)
 - `docs/tasks/mixxx-connector-task-002-connector-core.md`
 - `mixxx-now-playing/src/connector/`
@@ -191,7 +191,7 @@ Implement only this task. Do not redesign the architecture.
 
 Read:
 - docs/adr/0006-mixxx-midi-connector.md
-- docs/adr/0005-producer-liveness-and-dead-block.md
+- docs/archive/adr/0005-producer-liveness-and-dead-block.md
 - docs/tasks/mixxx-connector-task-003-link-and-poll-loop.md
 - mixxx-now-playing/src/connector/
 - mixxx-now-playing/src/main.rs

@@ -181,7 +181,7 @@ Negative and risks:
 ## References
 
 - `docs/adr/0004-publisher-control-cli.md`
-- `docs/adr/0005-producer-liveness-and-dead-block.md`
+- `docs/archive/adr/0005-producer-liveness-and-dead-block.md`
 - `docs/adr/0008-display-path.md`
 - `docs/adr/0009-hls-track-metadata.md`
 - `docs/tasks/audit-fix-task-006-stream-delay-compensation.md`

@@ -13,7 +13,7 @@ directory while it runs. Its expiry timer never exceeds a maximum, and
 
 ## Files To Inspect
 
-- `docs/adr/0005-producer-liveness-and-dead-block.md`
+- `docs/archive/adr/0005-producer-liveness-and-dead-block.md`
 - `docs/adr/0002-nowplaying-drop-file-contract.md`
 - `mixxx-now-playing/src/main.rs` (`run`, `Runtime::new`, `process_track`,
   `MetadataCleanup`)
@@ -41,7 +41,7 @@ directory while it runs. Its expiry timer never exceeds a maximum, and
 - `mixxx-now-playing/src/tags.rs`. The duration source stays
   `properties().duration()`.
 - The drop-file JSON fields and the schema string
-- `docs/adr/0005-producer-liveness-and-dead-block.md`
+- `docs/archive/adr/0005-producer-liveness-and-dead-block.md`
 
 ## Constraints
 
@@ -125,7 +125,7 @@ You are implementing one bounded task from a larger plan.
 Implement only this task. Do not redesign the architecture.
 
 Read:
-- docs/adr/0005-producer-liveness-and-dead-block.md
+- docs/archive/adr/0005-producer-liveness-and-dead-block.md
 - docs/tasks/relay-lease-task-001-producer-lock-and-expiry-max.md
 - docs/adr/0002-nowplaying-drop-file-contract.md
 - mixxx-now-playing/src/main.rs
@@ -151,7 +151,7 @@ Do not touch:
 - src/** (the publisher crate)
 - mixxx-now-playing/src/tags.rs
 - The drop-file JSON fields and schema string
-- docs/adr/0005-producer-liveness-and-dead-block.md
+- docs/archive/adr/0005-producer-liveness-and-dead-block.md
 
 Acceptance criteria:
 - A test proves that the producer lock blocks `try_lock_shared` from a second open file.

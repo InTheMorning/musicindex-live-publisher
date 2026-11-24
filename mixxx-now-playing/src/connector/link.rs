@@ -54,7 +54,7 @@ pub enum Row {
     V4v {
         /// The duration from the stream headers.
         header_duration: Option<Duration>,
-        /// The ADR 0005 expiry, which starts at the time of the row.
+        /// The ADR 0029 expiry, which starts at the time of the row.
         expiry: Expiry,
     },
     /// A track that is not V4V, or a V4V track with tags that the producer
@@ -63,7 +63,7 @@ pub enum Row {
         /// The duration from the stream headers. A non-V4V file uses this
         /// source too.
         header_duration: Option<Duration>,
-        /// The ADR 0005 expiry, which starts at the time of the row. The
+        /// The ADR 0029 expiry, which starts at the time of the row. The
         /// history-only mode uses it the same way as for `V4v`.
         expiry: Expiry,
     },
@@ -609,7 +609,7 @@ impl Coordinator {
         };
         row.links.link = Some(candidate);
         row.file_duration = duration;
-        // The ADR 0005 expiry applies again at the next outage. If it already
+        // The ADR 0029 expiry applies again at the next outage. If it already
         // ended, that outage removes the file at once.
         row.expired = false;
         self.present = true;
@@ -1979,7 +1979,7 @@ mod tests {
         );
         assert_eq!(coordinator.display_state(), shown("V", true));
 
-        // The ADR 0005 expiry removes the drop file. The display has no stop.
+        // The ADR 0029 expiry removes the drop file. The display has no stop.
         assert_eq!(
             coordinator.update(at(start, 10_000)),
             vec![Action::RemoveFile]

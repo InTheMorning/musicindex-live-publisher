@@ -305,6 +305,7 @@ fn publisher_target_with_stream_delay(stream_delay: Duration) -> PublisherTarget
         token_file: Path::new("/tmp/default.token").to_path_buf(),
         token: "secret-token".to_owned(),
         stream_delay,
+        dead_block_title: musicindex_live_publisher::DEFAULT_DEAD_BLOCK_TITLE.to_owned(),
         display_dir: None,
     }
 }
@@ -700,7 +701,11 @@ fn relay_keepalive_409_republishes_last_payload_with_same_block_guid() -> Result
 #[test]
 fn relay_takeover_foreign_dead_block_republishes_last_payload() -> Result<()> {
     let track = payload("Track");
-    let foreign_dead = dead_payload("event-guid", "foreign-dead-block");
+    let foreign_dead = dead_payload(
+        "event-guid",
+        "foreign-dead-block",
+        musicindex_live_publisher::DEFAULT_DEAD_BLOCK_TITLE,
+    );
     let server = StubServer::start(vec![
         accepted_with_interval(1, 1),
         metadata(relay_payload(&foreign_dead)?),
@@ -794,7 +799,11 @@ fn relay_dead_last_block_skips_metadata_read() -> Result<()> {
         Duration::from_secs(1),
     )?;
     publisher.set_producer(ProducerState::Running);
-    publisher.publish(dead_payload("event-guid", "dead-block"))?;
+    publisher.publish(dead_payload(
+        "event-guid",
+        "dead-block",
+        musicindex_live_publisher::DEFAULT_DEAD_BLOCK_TITLE,
+    ))?;
     server.wait_for_requests(1)?;
     thread::sleep(Duration::from_millis(1200));
     server.wait_for_requests(1)?;
@@ -935,7 +944,11 @@ fn relay_dead_block_is_retried_to_success_before_the_keepalive_stops() -> Result
 
     publisher.publish(payload("Track"))?;
     server.wait_for_requests(1)?;
-    publisher.publish(dead_payload("event-guid", "dead-block"))?;
+    publisher.publish(dead_payload(
+        "event-guid",
+        "dead-block",
+        musicindex_live_publisher::DEFAULT_DEAD_BLOCK_TITLE,
+    ))?;
     publisher.set_producer_for_target("event-guid", ProducerState::Missing)?;
 
     // The 503 answer and the retry.

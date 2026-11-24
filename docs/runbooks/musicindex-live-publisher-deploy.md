@@ -21,7 +21,7 @@ into `/usr/bin`.
   built `musicindex-live-relay` for rehearsal.
 
 The publisher uses a fixed dead block while idle or playing non-V4V audio
-(ADR 0005). No configuration changes it.
+(ADR 0029). Only its title is a setting, `dead_block_title`.
 
 ## Arch Package Install
 
@@ -43,7 +43,7 @@ After you install the binaries, run the setup helper. It provisions the
 MusicIndex live item and writes the one-time broadcaster token and the config.
 It then starts the packaged units `musicindex-live-publisher@mixxx.service` and
 `mixxx-now-playing@mixxx.service`. The helper writes no unit file. The
-publisher uses a fixed dead block for idle or non-V4V playback (ADR 0005). No setup flag changes it:
+publisher uses a fixed dead block for idle or non-V4V playback (ADR 0029). No setup flag changes it:
 
 ```bash
 setup-mixxx-musicindex
@@ -118,8 +118,8 @@ name = "default"
 event_id = "replace-with-provisioned-event-guid"
 token_file = "~/.config/musicindex-live-publisher/mixxx/tokens/default.token"
 
-# The publisher uses a fixed dead block while idle or non-V4V (ADR 0005).
-# No configuration changes it.
+# The publisher uses the dead block while idle or non-V4V (ADR 0029).
+# Only its title is a setting: dead_block_title.
 ```
 
 Replace `event_id` with the value printed by `provision` before starting the
@@ -296,7 +296,7 @@ the ended track keeps collecting boosts.
   The producer exits cleanly and `Restart=always` retries until Mixxx appears.
 - **`config must define at least one target`** — the config file has no
   `[[target]]` stanza. Add one.
-- **`ADR 0005: [target.fallback] is removed...`** — the config holds a
+- **`ADR 0029: [target.fallback] is removed...`** — the config holds a
   `[target.fallback]` table. Remove that table. The publisher uses the fixed
   dead block.
 

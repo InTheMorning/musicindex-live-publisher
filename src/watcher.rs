@@ -21,6 +21,7 @@ pub const DEFAULT_DEBOUNCE_WINDOW: Duration = Duration::from_millis(75);
 pub struct WatchTarget {
     pub name: String,
     pub event_guid: String,
+    pub dead_block_title: String,
 }
 
 /// Filesystem actions that can affect the currently published payload.
@@ -96,7 +97,7 @@ impl DropWatcher {
         }
     }
 
-    /// Computes the startup payload for each configured target (ADR 0005).
+    /// Computes the startup payload for each configured target (ADR 0029).
     ///
     /// A target's block is its track block only when the producer is
     /// running and a file for that target is present. Every other target's
@@ -114,7 +115,7 @@ impl DropWatcher {
     ) -> Result<Vec<LiveValuePayload>> {
         let track_payloads = match producer {
             ProducerState::Running => self.scan_track_payloads(watch_dir)?,
-            // ADR 0005: a missing producer means every target gets the dead
+            // ADR 0029: a missing producer means every target gets the dead
             // block, so scanning the directory would be wasted work.
             ProducerState::Missing => Vec::new(),
         };
@@ -133,7 +134,9 @@ impl DropWatcher {
             self.targets
                 .values()
                 .filter(|target| !present.contains(&target.event_guid))
-                .map(|target| dead_payload_with_log(&target.event_guid, observed_at)),
+                .map(|target| {
+                    dead_payload_with_log(&target.event_guid, &target.dead_block_title, observed_at)
+                }),
         );
         Ok(payloads)
     }
@@ -143,7 +146,7 @@ impl DropWatcher {
     /// This emits no dead block for a target with no file, and no dead
     /// block for an empty directory. It is the scan half of
     /// [`DropWatcher::startup_payloads`], and it is also what the watch loop
-    /// runs when the producer lock returns after being free: ADR 0005 keeps
+    /// runs when the producer lock returns after being free: ADR 0029 keeps
     /// the dead block already live for a target with no track payload, so a
     /// republish would only repeat it under a new `blockGuid`.
     ///
@@ -163,7 +166,7 @@ impl DropWatcher {
     /// Emits the dead block for each configured target and clears block
     /// identity state.
     ///
-    /// ADR 0005: when the producer lock frees, the publisher publishes the
+    /// ADR 0029: when the producer lock frees, the publisher publishes the
     /// dead block once for each target. A path's block identity must not
     /// survive this call: the next file that lands on a path the producer
     /// reused is a new occupant, not a rewrite of the block that was live
@@ -201,7 +204,13 @@ impl DropWatcher {
                 Ok(self
                     .targets
                     .get(&target_name)
-                    .map(|target| vec![dead_payload_with_log(&target.event_guid, observed_at)])
+                    .map(|target| {
+                        vec![dead_payload_with_log(
+                            &target.event_guid,
+                            &target.dead_block_title,
+                            observed_at,
+                        )]
+                    })
                     .unwrap_or_default())
             }
         }
@@ -240,7 +249,7 @@ impl DropWatcher {
             // Next track at a path the producer reuses: mint a fresh block.
             _ => fresh_guid(),
         };
-        // ADR 0024: routes need both GUIDs. ADR 0005: otherwise publish dead.
+        // ADR 0024: routes need both GUIDs. ADR 0029: otherwise publish dead.
         let payable = has_payable_routes(&dropfile);
         if !dropfile.value_routes.is_empty() && !payable {
             let missing_field = [
@@ -261,7 +270,7 @@ impl DropWatcher {
             );
         }
         let mut payload = if !payable {
-            dead_payload(&target.event_guid, &block_guid)
+            dead_payload(&target.event_guid, &block_guid, &target.dead_block_title)
         } else {
             payload_from_dropfile(&dropfile, &target.event_guid, &block_guid)
         };
@@ -302,7 +311,9 @@ impl DropWatcher {
         let observed_at = SystemTime::now();
         self.targets
             .values()
-            .map(|target| dead_payload_with_log(&target.event_guid, observed_at))
+            .map(|target| {
+                dead_payload_with_log(&target.event_guid, &target.dead_block_title, observed_at)
+            })
             .collect()
     }
 }
@@ -373,8 +384,12 @@ fn fresh_guid() -> String {
 /// Builds the dead block for `event_guid` with a fresh block GUID and the
 /// show log facts of a `clear` entry (ADR 0017, show log task 002): the
 /// drop file is gone, or was never there, at `observed_at`.
-fn dead_payload_with_log(event_guid: &str, observed_at: SystemTime) -> LiveValuePayload {
-    let mut payload = dead_payload(event_guid, &fresh_guid());
+fn dead_payload_with_log(
+    event_guid: &str,
+    title: &str,
+    observed_at: SystemTime,
+) -> LiveValuePayload {
+    let mut payload = dead_payload(event_guid, &fresh_guid(), title);
     payload.log = Some(LogFacts::clear(observed_at));
     payload
 }

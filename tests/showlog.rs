@@ -168,6 +168,7 @@ fn config(endpoint: &str) -> PublisherConfig {
             token_file: PathBuf::from("/tmp/default.token"),
             token: TOKEN.to_owned(),
             stream_delay: Duration::ZERO,
+            dead_block_title: musicindex_live_publisher::DEFAULT_DEAD_BLOCK_TITLE.to_owned(),
             display_dir: None,
         }],
         show_log_retention_days: 365,
@@ -179,6 +180,7 @@ fn watch_target() -> WatchTarget {
     WatchTarget {
         name: "default".to_owned(),
         event_guid: "event-guid".to_owned(),
+        dead_block_title: musicindex_live_publisher::DEFAULT_DEAD_BLOCK_TITLE.to_owned(),
     }
 }
 
@@ -333,7 +335,7 @@ fn a_non_payable_drop_file_gives_a_track_entry_with_the_dead_value() -> Result<(
         Instant::now(),
     )?;
     let payload = payloads.into_iter().next().expect("one payload");
-    // The payload is the dead block: ADR 0005 keeps neither the drop
+    // The payload is the dead block: ADR 0029 keeps neither the drop
     // file's title nor its GUIDs for a non-payable track.
     assert_eq!(payload.title, "No V4V track playing");
     let expected_value = serde_json::to_value(payload.value.clone())?;

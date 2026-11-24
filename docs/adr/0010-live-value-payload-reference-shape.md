@@ -4,6 +4,9 @@ Status: Accepted
 Date: 2026-10-06
 
 - Changes: ADR 0002 items: version 2 of the drop file.
+- Changed by: ADR 0029, 2026-11-24. The `title` of a payable track block is
+  "artist - title". The display state does not change. ADR 0029 replaces
+  ADR 0005 for the dead block and the timing.
 
 Accepted 2026-10-06 by the operator. Item 3 of §Before Acceptance, the app
 check, stays open as an item of the review checklist. Item 2 was done on
@@ -22,7 +25,7 @@ defines the `podcast:liveValue` payload, or when the model server changes its
 payload.
 
 This ADR owns the shape of the live value payload that the publisher sends,
-for a V4V track. ADR 0005 keeps the dead block. ADR 0002 keeps version 1 of the
+for a V4V track. ADR 0029 keeps the dead block. ADR 0002 keeps version 1 of the
 drop file. `musicindex-live-relay` passes the payload through without a change
 and owns no rule about its fields.
 
@@ -88,7 +91,8 @@ adds these fields:
 - `value` keeps the nested `model`, because the model server sends that form.
   A flat `type` and `method` adjacent to `destinations` would follow the
   revision, but no deployed server sends it.
-- `title` stays the song. `image` stays the artwork URL of the drop file.
+- `title` stays the song. ADR 0029 changed this item: `title` is "artist -
+  title". `image` stays the artwork URL of the drop file.
 - The model server also sends `link {text, url}`. This publisher does not send
   it, because no source in this chain gives a correct link for a track.
 
@@ -116,8 +120,8 @@ fields:
 
 ### What Does Not Change
 
-- The dead block of ADR 0005.
-- The timing. ADR 0005 owns it today. ADR 0011 proposes to move the delay to
+- The dead block of ADR 0029.
+- The timing. ADR 0029 and ADR 0011 own it. ADR 0011 proposes to move the delay to
   the relay. This ADR does not change it.
 - The separation of the two body forms at the relay. The payload never has
   exactly the keys `event_id` and `metadata`.
@@ -204,7 +208,7 @@ Negative and risks:
 ## References
 
 - `docs/adr/0002-nowplaying-drop-file-contract.md`
-- `docs/adr/0005-producer-liveness-and-dead-block.md`
+- `docs/adr/0029-producer-liveness-dead-block-and-remote-value-title.md`
 - `docs/adr/0008-display-path.md`
 - `docs/adr/0009-hls-track-metadata.md`
 - `musicindex-live-relay`: `docs/research/curiohoster-livevalue-socketio-examples.md`, §Capture Of 2026-10-06

@@ -13,6 +13,7 @@ fn target() -> WatchTarget {
     WatchTarget {
         name: "default".to_owned(),
         event_guid: "event-guid".to_owned(),
+        dead_block_title: musicindex_live_publisher::DEFAULT_DEAD_BLOCK_TITLE.to_owned(),
     }
 }
 
@@ -87,13 +88,13 @@ fn watcher_create_modify_remove_emits_track_then_dead_block() -> Result<()> {
         .as_str()
         .ok_or_else(|| anyhow!("blockGuid should be string"))?
         .to_owned();
-    assert_eq!(first["title"], "First Track");
+    assert_eq!(first["title"], "Alice - First Track");
     assert_eq!(first["value"]["destinations"][0]["split"], "90");
 
     write(&path, dropfile("Edited Track"))?;
     let second =
         one_payload(watcher.process_event(upsert(&path), start + Duration::from_millis(100))?)?;
-    assert_eq!(second["title"], "Edited Track");
+    assert_eq!(second["title"], "Alice - Edited Track");
     assert_eq!(second["blockGuid"], first_block);
 
     fs::remove_file(&path)?;
@@ -109,7 +110,7 @@ fn watcher_create_modify_remove_emits_track_then_dead_block() -> Result<()> {
     write(&path, dropfile("New Track"))?;
     let third =
         one_payload(watcher.process_event(upsert(&path), start + Duration::from_millis(300))?)?;
-    assert_eq!(third["title"], "New Track");
+    assert_eq!(third["title"], "Alice - New Track");
     assert_ne!(third["blockGuid"], first_block);
     Ok(())
 }
@@ -193,7 +194,7 @@ fn watcher_routes_with_both_guids_publish_routes() -> Result<()> {
     write(&path, dropfile("Track with both GUIDs"))?;
     let payload = one_payload(watcher.process_event(upsert(&path), Instant::now())?)?;
 
-    assert_eq!(payload["title"], "Track with both GUIDs");
+    assert_eq!(payload["title"], "Alice - Track with both GUIDs");
     assert_eq!(payload["value"]["destinations"][0]["address"], "03alice");
     Ok(())
 }
@@ -242,7 +243,7 @@ fn watcher_ignores_temp_file_and_rename_to_final_is_one_payload() -> Result<()> 
     let payload = one_payload(
         watcher.process_event(upsert(&final_path), start + Duration::from_millis(100))?,
     )?;
-    assert_eq!(payload["title"], "Renamed Track");
+    assert_eq!(payload["title"], "Alice - Renamed Track");
     Ok(())
 }
 
@@ -255,7 +256,7 @@ fn watcher_startup_running_with_existing_file_publishes_track() -> Result<()> {
     write(&path, dropfile("Already Playing"))?;
     let payload = one_payload(watcher.startup_payloads(temp.path(), ProducerState::Running)?)?;
 
-    assert_eq!(payload["title"], "Already Playing");
+    assert_eq!(payload["title"], "Alice - Already Playing");
     Ok(())
 }
 
@@ -294,6 +295,7 @@ fn watcher_startup_fills_a_target_with_no_file_with_the_dead_block() -> Result<(
     let other = WatchTarget {
         name: "other".to_owned(),
         event_guid: "event-guid-other".to_owned(),
+        dead_block_title: "HeyCitizen Test Stream".to_owned(),
     };
     let mut watcher =
         DropWatcher::new_targets(vec![target(), other.clone()], Duration::from_millis(75));
@@ -311,8 +313,8 @@ fn watcher_startup_fills_a_target_with_no_file_with_the_dead_block() -> Result<(
         .iter()
         .find(|payload| payload.event_guid == other.event_guid)
         .ok_or_else(|| anyhow!("expected a payload for the other target"))?;
-    assert_eq!(default_payload.title, "Only Default Plays");
-    assert_eq!(other_payload.title, "No V4V track playing");
+    assert_eq!(default_payload.title, "Alice - Only Default Plays");
+    assert_eq!(other_payload.title, "HeyCitizen Test Stream");
     Ok(())
 }
 
@@ -336,7 +338,7 @@ fn watcher_scan_track_payloads_gives_the_track_for_a_present_file() -> Result<()
     write(&path, dropfile("Rescanned Track"))?;
     let payload = one_payload(watcher.scan_track_payloads(temp.path())?)?;
 
-    assert_eq!(payload["title"], "Rescanned Track");
+    assert_eq!(payload["title"], "Alice - Rescanned Track");
     Ok(())
 }
 
@@ -345,6 +347,7 @@ fn watcher_producer_missing_payloads_gives_one_dead_block_for_each_target() -> R
     let other = WatchTarget {
         name: "other".to_owned(),
         event_guid: "event-guid-other".to_owned(),
+        dead_block_title: "HeyCitizen Test Stream".to_owned(),
     };
     let mut watcher =
         DropWatcher::new_targets(vec![target(), other.clone()], Duration::from_millis(75));
@@ -352,12 +355,11 @@ fn watcher_producer_missing_payloads_gives_one_dead_block_for_each_target() -> R
     let mut payloads = watcher.producer_missing_payloads();
     payloads.sort_by(|a, b| a.event_guid.cmp(&b.event_guid));
 
+    // Each target has the dead block title of its own setting (ADR 0029).
     assert_eq!(payloads.len(), 2);
-    assert!(
-        payloads
-            .iter()
-            .all(|payload| payload.title == "No V4V track playing")
-    );
+    assert_eq!(payloads[0].title, "No V4V track playing");
+    assert_eq!(payloads[1].title, "HeyCitizen Test Stream");
+    assert_eq!(payloads[0].value, payloads[1].value);
     assert_eq!(payloads[0].event_guid, "event-guid");
     assert_eq!(payloads[1].event_guid, other.event_guid);
     Ok(())
@@ -457,8 +459,8 @@ fn watcher_next_track_at_same_path_gets_a_new_block_guid() -> Result<()> {
     write(&path, dropfile_with_guid("Track Two", "guid-two"))?;
     let second = watcher.process_event(upsert(&path), Instant::now())?;
 
-    assert_eq!(first[0].title, "Track One");
-    assert_eq!(second[0].title, "Track Two");
+    assert_eq!(first[0].title, "Alice - Track One");
+    assert_eq!(second[0].title, "Alice - Track Two");
     assert_ne!(first[0].block_guid, second[0].block_guid);
     assert_eq!(first[0].event_guid, second[0].event_guid);
     Ok(())
@@ -592,7 +594,7 @@ fn watcher_a_remove_after_a_rewrite_inside_the_window_gives_the_dead_block() -> 
         upsert(&path),
         start + Duration::from_secs(60) + Duration::from_millis(10),
     )?)?;
-    assert_eq!(again["title"], "Old Track");
+    assert_eq!(again["title"], "Alice - Old Track");
 
     fs::remove_file(&path)?;
     let last = one_payload(watcher.process_event(

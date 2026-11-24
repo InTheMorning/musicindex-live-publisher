@@ -10,7 +10,10 @@ use std::{env, fs};
 use anyhow::{Context, Result, anyhow};
 use serde::{Deserialize, Serialize};
 
-use crate::WatchTarget;
+use crate::{DEFAULT_DEAD_BLOCK_TITLE, WatchTarget};
+
+/// Maximum length of a configured dead block title.
+pub const MAX_DEAD_BLOCK_TITLE_CHARS: usize = 256;
 
 /// Default service configuration path.
 pub const DEFAULT_CONFIG_PATH: &str = "/etc/musicindex-live-publisher/config.toml";
@@ -58,6 +61,7 @@ pub struct PublisherTarget {
     pub token_file: PathBuf,
     pub token: String,
     pub stream_delay: Duration,
+    pub dead_block_title: String,
     /// The display directory of the producer of this target (ADR 0008).
     /// `None` turns the display path off for this target.
     pub display_dir: Option<PathBuf>,
@@ -72,6 +76,7 @@ impl fmt::Debug for PublisherTarget {
             .field("token_file", &self.token_file)
             .field("token", &"<redacted>")
             .field("stream_delay", &self.stream_delay)
+            .field("dead_block_title", &self.dead_block_title)
             .field("display_dir", &self.display_dir)
             .finish()
     }
@@ -83,6 +88,7 @@ impl PublisherTarget {
         WatchTarget {
             name: self.name.clone(),
             event_guid: self.event_id.clone(),
+            dead_block_title: self.dead_block_title.clone(),
         }
     }
 }
@@ -176,8 +182,9 @@ struct RawTarget {
     event_id: String,
     token_file: PathBuf,
     stream_delay_secs: Option<f64>,
+    dead_block_title: Option<String>,
     display_dir: Option<PathBuf>,
-    /// Detects a removed `[target.fallback]` table (ADR 0005). The publisher
+    /// Detects a removed `[target.fallback]` table (ADR 0029). The publisher
     /// never reads its content.
     fallback: Option<toml::Value>,
 }
@@ -204,6 +211,7 @@ struct RawTargetSummary {
     event_id: String,
     token_file: PathBuf,
     stream_delay_secs: Option<f64>,
+    dead_block_title: Option<String>,
     display_dir: Option<PathBuf>,
     fallback: Option<toml::Value>,
 }
@@ -564,6 +572,7 @@ fn redacted_target_from_raw(
     validate_no_control_chars("target event_id", &target.event_id)?;
     validate_event_id(&target.name, &target.event_id)?;
     validate_stream_delay_secs(&target.name, target.stream_delay_secs)?;
+    resolve_dead_block_title(&target.name, target.dead_block_title.as_deref())?;
     reject_removed_fallback_table(&target.name, target.fallback.as_ref())?;
     Ok(RedactedPublisherTarget {
         name: target.name,
@@ -654,6 +663,8 @@ fn resolve_target(target: RawTarget, seen: &mut HashSet<String>) -> Result<Publi
     validate_event_id(&target.name, &target.event_id)?;
     reject_removed_fallback_table(&target.name, target.fallback.as_ref())?;
     let stream_delay = resolve_stream_delay(&target.name, target.stream_delay_secs)?;
+    let dead_block_title =
+        resolve_dead_block_title(&target.name, target.dead_block_title.as_deref())?;
 
     let token_file = resolve_token_file_path(
         &target.token_file,
@@ -668,8 +679,27 @@ fn resolve_target(target: RawTarget, seen: &mut HashSet<String>) -> Result<Publi
         token_file,
         token,
         stream_delay,
+        dead_block_title,
         display_dir: target.display_dir,
     })
+}
+
+fn resolve_dead_block_title(target_name: &str, title: Option<&str>) -> Result<String> {
+    let Some(title) = title else {
+        return Ok(DEFAULT_DEAD_BLOCK_TITLE.to_owned());
+    };
+    let title = title.trim();
+    if title.is_empty() {
+        return Err(anyhow!(
+            "target {target_name} dead_block_title must not be empty"
+        ));
+    }
+    if title.chars().count() > MAX_DEAD_BLOCK_TITLE_CHARS {
+        return Err(anyhow!(
+            "target {target_name} dead_block_title must not exceed {MAX_DEAD_BLOCK_TITLE_CHARS} characters"
+        ));
+    }
+    Ok(title.to_owned())
 }
 
 fn validate_target_config_edit(edit: &TargetConfigEdit) -> Result<()> {
@@ -1154,19 +1184,19 @@ fn resolve_token_file_path(
 /// Rejects a target stanza that still holds the removed `[target.fallback]`
 /// table.
 ///
-/// ADR 0005 replaces the configured fallback with the fixed dead block in
+/// ADR 0029 replaces the configured fallback with the dead block in
 /// `livevalue::dead_payload`. The publisher never reads a `fallback` table;
 /// its mere presence is a load error that names the target so the operator
 /// can find and delete it.
 ///
 /// # Errors
 ///
-/// Returns an error naming ADR 0005 and the target when `fallback` is
+/// Returns an error naming ADR 0029 and the target when `fallback` is
 /// `Some`.
 fn reject_removed_fallback_table(target_name: &str, fallback: Option<&toml::Value>) -> Result<()> {
     if fallback.is_some() {
         return Err(anyhow!(
-            "ADR 0005: [target.fallback] is removed. The publisher uses a fixed dead block. Delete this table from target {target_name}."
+            "ADR 0029: [target.fallback] is removed. The publisher uses the dead block. Delete this table from target {target_name}."
         ));
     }
     Ok(())

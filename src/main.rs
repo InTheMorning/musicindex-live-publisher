@@ -1091,7 +1091,7 @@ fn probe_due(drop_events: &[DropEvent], last_probe: Instant, now: Instant) -> bo
 }
 
 /// Probes the producer lock and, on a change, gives the items of the
-/// transition's block for each affected target (ADR 0005), for the caller to
+/// transition's block for each affected target (ADR 0029), for the caller to
 /// send through `emit_items` at once.
 ///
 /// A change from running to missing gives the dead block for each target and
@@ -1250,7 +1250,7 @@ fn remove_events(paths: Vec<PathBuf>) -> Vec<DropEvent> {
 /// producer is missing.
 ///
 /// See `missing_transitions_for_released` and `update_producer_state` for
-/// the rule this follows (ADR 0005, relay-lease-task-004). Each payload is
+/// the rule this follows (ADR 0029, relay-lease-task-004). Each payload is
 /// sent to its target's worker before that target's `Producer(Missing)`
 /// command: they share one channel, so this order is what the worker
 /// receives them in.
@@ -1391,7 +1391,11 @@ mod tests {
     use super::*;
 
     fn payload_for(event_guid: &str, block_guid: &str) -> LiveValuePayload {
-        musicindex_live_publisher::dead_payload(event_guid, block_guid)
+        musicindex_live_publisher::dead_payload(
+            event_guid,
+            block_guid,
+            musicindex_live_publisher::DEFAULT_DEAD_BLOCK_TITLE,
+        )
     }
 
     #[test]
@@ -1557,6 +1561,7 @@ mod tests {
             vec![musicindex_live_publisher::WatchTarget {
                 name: "default".to_owned(),
                 event_guid: "event".to_owned(),
+                dead_block_title: musicindex_live_publisher::DEFAULT_DEAD_BLOCK_TITLE.to_owned(),
             }],
             Duration::ZERO,
         );
@@ -1623,6 +1628,7 @@ mod tests {
             vec![musicindex_live_publisher::WatchTarget {
                 name: "default".to_owned(),
                 event_guid: "event-default".to_owned(),
+                dead_block_title: musicindex_live_publisher::DEFAULT_DEAD_BLOCK_TITLE.to_owned(),
             }],
             Duration::ZERO,
         );
@@ -1645,7 +1651,7 @@ mod tests {
         let EmitItem::Payload(payload) = &items[0] else {
             panic!("expected a payload item");
         };
-        assert_eq!(payload.title, "Track One");
+        assert_eq!(payload.title, "Alice - Track One");
         Ok(())
     }
 

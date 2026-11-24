@@ -78,7 +78,7 @@ pub enum DeckChangeKind {
 pub enum Mode {
     /// The connector gives the deck state.
     Connector,
-    /// The producer uses the history-only mode of ADR 0005.
+    /// The producer uses the history-only mode of ADR 0029.
     HistoryOnly(HistoryOnlyReason),
 }
 

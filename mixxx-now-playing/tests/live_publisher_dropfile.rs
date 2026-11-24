@@ -41,7 +41,7 @@ fn json_output_parses_as_live_publisher_dropfile_and_transforms() -> Result<()> 
     assert_eq!(dropfile.duration_secs, Some(187.326));
     assert_eq!(dropfile.album, Some("Test Album".to_string()));
     assert_eq!(dropfile.play_id, Some("42".to_string()));
-    assert_eq!(payload.title, "Some Track");
+    assert_eq!(payload.title, "Alice - Some Track");
     assert_eq!(payload.event_guid, "event-guid");
     assert_eq!(payload.feed_guid.as_deref(), Some("feed-guid"));
     assert_eq!(payload.item_guid.as_deref(), Some("track-guid"));

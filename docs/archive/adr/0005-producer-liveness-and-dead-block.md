@@ -1,6 +1,9 @@
 # ADR 0005: Producer Liveness, The Dead Block And The Relay Lease
 
-Status: Implemented
+> Archived: replaced by [ADR 0029](../../adr/0029-producer-liveness-dead-block-and-remote-value-title.md) on
+> 2026-11-24. ADR 0029 restates each live rule of this record.
+
+Status: Replaced by ADR 0029 - 2026-11-24. Implemented before that date.
 Date: 2026-09-27
 
 - Changes: ADR 0002 items: the producer lock, the source of `duration_secs`.

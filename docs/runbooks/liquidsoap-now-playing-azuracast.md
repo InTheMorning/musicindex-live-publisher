@@ -380,7 +380,7 @@ systemctl --user disable --now liquidsoap-now-playing@INSTANCE.service
 systemctl --user disable --now musicindex-live-publisher@INSTANCE.service
 ```
 
-When the producer stops, the publisher sends the dead block one time (ADR 0005). Make sure that the relay shows the
+When the producer stops, the publisher sends the dead block one time (ADR 0029). Make sure that the relay shows the
 destination `no-v4v-track@example.invalid` before you stop the publisher. To remove the station side, use the section
 "Remove The Changes" of the tutorial.
 

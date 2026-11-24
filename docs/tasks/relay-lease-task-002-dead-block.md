@@ -13,7 +13,7 @@ block, not a block with zero destinations.
 
 ## Files To Inspect
 
-- `docs/adr/0005-producer-liveness-and-dead-block.md` (§The Dead Block and
+- `docs/archive/adr/0005-producer-liveness-and-dead-block.md` (§The Dead Block and
   §Publisher Behavior)
 - `src/config.rs` (`DEFAULT_DEAD_FALLBACK_*`, `default_dead_fallback`,
   `default_dead_fallback_value`, `resolve_fallback`, `RawFallback`,
@@ -143,7 +143,7 @@ You are implementing one bounded task from a larger plan.
 Implement only this task. Do not redesign the architecture.
 
 Read:
-- docs/adr/0005-producer-liveness-and-dead-block.md
+- docs/archive/adr/0005-producer-liveness-and-dead-block.md
 - docs/tasks/relay-lease-task-002-dead-block.md
 - src/livevalue.rs
 - src/watcher.rs
