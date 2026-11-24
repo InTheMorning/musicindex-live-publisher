@@ -10,6 +10,8 @@
 - Changed by: ADR 0026, accepted 2026-11-22. The state file format 2 gets the optional field `song`.
 - Changed by: ADR 0027, accepted 2026-11-23. §The Chapter Route Lookup also applies to the two GUIDs of a song
   state.
+- Changed by: ADR 0028, Proposed on 2026-11-24. The state file format 2 gets the optional field `picture`, and the
+  state folder gets a picture file.
 - Uses: ADR 0024 §The Assembler Examines The Two GUIDs, without a change. ADR 0011 for the listener delay.
 - Uses: musicindex ADR 0075 R-VALUE-5 and the crate `musicindex-value` for the percentage of each recipient.
 - Depends on: musicindex ADR 0086 (Accepted, musicindex commit 27b4cab), One Feed Parser And One Tag Crate For Songs

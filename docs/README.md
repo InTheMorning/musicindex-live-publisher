@@ -108,6 +108,10 @@ the next priority. Confirm that logging works before the show.
 - [ADR 0027: The station producer asks the route service for a song file](adr/0027-the-station-producer-asks-the-route-service-for-a-song.md)
   — Accepted. A song state with the two GUIDs gets the routes of the route
   service, else the routes of the state. It changes ADR 0022 and ADR 0025
+- [ADR 0028: The station producer uses the embedded picture of the file as the artwork fallback](adr/0028-the-station-producer-uses-the-embedded-picture.md)
+  — Proposed. The slot text writes the front cover of an MP3 or FLAC file into
+  the state folder, and the producer uses it when the state has no image URL.
+  It changes ADR 0025 and ADR 0026
 
 ## Plans
 
