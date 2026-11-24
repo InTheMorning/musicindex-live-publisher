@@ -516,14 +516,10 @@ fn failed(
     }
 }
 fn item_path(folder: &str, guid: &str, mime: Option<&str>, url: &str) -> Result<PathBuf> {
-    if guid.is_empty()
-        || guid.starts_with('.')
-        || !guid
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))
-    {
-        return Err(anyhow!("item GUID is not safe for a file name"));
+    if guid.is_empty() {
+        return Err(anyhow!("item GUID is empty"));
     }
+    let stem = file_stem(guid);
     let extension = mime
         .and_then(mime_extension)
         .map(str::to_owned)
@@ -547,7 +543,23 @@ fn item_path(folder: &str, guid: &str, mime: Option<&str>, url: &str) -> Result<
             })
         })
         .ok_or_else(|| anyhow!("enclosure has no supported audio extension"))?;
-    Ok(PathBuf::from(folder).join(format!("{guid}.{extension}")))
+    Ok(PathBuf::from(folder).join(format!("{stem}.{extension}")))
+}
+/// The file name of an item without its extension: the item GUID when it is
+/// safe for a file name, else "sha256-" and the SHA-256 hex of the GUID. A
+/// safe GUID has only ASCII letters, digits, `-`, `_` and `.`, and does not
+/// start with `.` or with "sha256-". The tags and the manifest keep the GUID.
+fn file_stem(guid: &str) -> String {
+    let safe = !guid.starts_with('.')
+        && !guid.starts_with("sha256-")
+        && guid
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'));
+    if safe {
+        guid.to_owned()
+    } else {
+        format!("sha256-{:x}", Sha256::digest(guid.as_bytes()))
+    }
 }
 fn mime_extension(mime: &str) -> Option<&'static str> {
     match mime.trim().to_ascii_lowercase().as_str() {

@@ -1,4 +1,4 @@
-//! Resolve chapter song routes in one ordered worker.
+//! Resolve the routes of chapter songs and song files in one ordered worker.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -123,7 +123,7 @@ impl RouteLookups {
                 }
                 Err(error) => {
                     if self.warned.insert(pair.clone()) {
-                        tracing::warn!(feed_guid = %pair.0, item_guid = %pair.1, error = %format!("{error:#}"), "chapter route lookup failed");
+                        tracing::warn!(feed_guid = %pair.0, item_guid = %pair.1, error = %format!("{error:#}"), "route lookup failed");
                     }
                     self.retries.insert(pair, now + Duration::from_secs(30));
                 }

@@ -102,6 +102,12 @@ the next priority. Confirm that logging works before the show.
   — Accepted. The `state.json` format 2 gives the position in the file. Each chapter
   song gets a drop file with the merged routes. The readers read only the new
   `Podcast` frame names. It changes ADR 0022
+- [ADR 0026: The station producer writes the display state with the ICY line of the file](adr/0026-the-station-producer-writes-the-display-state.md)
+  — Accepted. `display.json` gives the artist and the title of each segment,
+  and `song_line` is the ICY title of the file
+- [ADR 0027: The station producer asks the route service for a song file](adr/0027-the-station-producer-asks-the-route-service-for-a-song.md)
+  — Accepted. A song state with the two GUIDs gets the routes of the route
+  service, else the routes of the state. It changes ADR 0022 and ADR 0025
 
 ## Plans
 

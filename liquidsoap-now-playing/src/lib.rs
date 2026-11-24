@@ -141,8 +141,12 @@ impl Producer {
         } else {
             Vec::new()
         };
-        let pairs = if parsed.jingle || parsed.format != state::STATE_FORMAT_2 {
+        let pairs = if parsed.jingle {
             Vec::new()
+        } else if chapters.is_empty() {
+            // ADR 0027 §The Song Route Lookup: a song state asks for its
+            // two state GUIDs.
+            song_pair(&parsed).into_iter().collect()
         } else {
             chapters
                 .iter()
@@ -342,6 +346,14 @@ fn render_state(
     let mut feed_guid = episode_feed;
     let mut track_guid = episode_item;
     let routes = match chapter {
+        // ADR 0027 §The Song Routes: the service result, else the state.
+        None if chapters.is_empty() => match song_pair(state) {
+            Some(pair) => match song_routes.get(&pair) {
+                Some(routes) if has_percentage(routes) => routes.clone(),
+                _ => usable_episode.to_vec(),
+            },
+            None => usable_episode.to_vec(),
+        },
         None => usable_episode.to_vec(),
         Some(chapter) if chapter.is_local() => {
             if episode_usable {
@@ -422,6 +434,14 @@ fn select_song_routes<'a>(
         Some(routes) if has_percentage(routes) => routes,
         _ => &chapter.value_routes,
     }
+}
+
+/// The two state GUIDs of a song state, or `None` (ADR 0027 §The Producer
+/// Selects The Lookup). The caller checks that the state has no chapter list.
+fn song_pair(state: &StateFile) -> Option<(String, String)> {
+    let feed = nonempty(state.feed_guid.as_deref())?;
+    let item = nonempty(state.track_guid.as_deref())?;
+    (!state.jingle && !state.live).then(|| (feed.to_owned(), item.to_owned()))
 }
 
 fn nonempty(value: Option<&str>) -> Option<&str> {
@@ -1330,7 +1350,7 @@ mod tests {
     }
 
     #[test]
-    fn producer_skips_route_requests_for_jingles_format_one_and_local_splits() -> Result<()> {
+    fn producer_skips_route_requests_for_jingles_live_one_guid_and_local_splits() -> Result<()> {
         let server = TestServer::start(|_| Reply::Answer {
             status: 200,
             body: route_body("unexpected"),
@@ -1343,11 +1363,8 @@ mod tests {
                 value["jingle"] = true.into();
                 value
             },
-            {
-                let mut value = chapter_patch(&chapters, 4);
-                value["format"] = state::STATE_FORMAT.into();
-                value
-            },
+            serde_json::json!({"live": true}),
+            serde_json::json!({"track_guid": ""}),
             {
                 let local = serde_json::json!([{
                     "start_ms":0,"end_ms":10000,"remote_percentage":90,
@@ -1362,6 +1379,150 @@ mod tests {
             producer.shutdown()?;
         }
         assert!(server.requests().is_empty());
+        Ok(())
+    }
+
+    // The song route tests of ADR 0027 §Verification.
+
+    const FILE_ROUTES: &str = r#"[{"address":"file","split":100}]"#;
+
+    fn song_patch(format: &str, routes: &str) -> serde_json::Value {
+        let mut patch = serde_json::json!({"value_routes": routes, "seq": 4});
+        if format == state::STATE_FORMAT_2 {
+            patch["format"] = format.into();
+            patch["chapters"] = "[]".into();
+        }
+        patch
+    }
+
+    #[test]
+    fn a_song_state_asks_for_the_two_state_guids() -> Result<()> {
+        for format in [state::STATE_FORMAT, state::STATE_FORMAT_2] {
+            let server = TestServer::start(|_| Reply::Answer {
+                status: 200,
+                body: route_body("service"),
+            })?;
+            let temp = TempDir::new()?;
+            let now = Instant::now();
+            let (mut producer, _) = start_service_producer(
+                &temp,
+                &server,
+                &song_patch(format, FILE_ROUTES),
+                now,
+                Duration::from_secs(1),
+            )?;
+            assert!(wait_for_requests(&server, 1), "{format}");
+            assert_eq!(
+                server.requests(),
+                ["/v1/feeds/feed/tracks/track?include=payment_routes"],
+                "{format}"
+            );
+            producer.shutdown()?;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn a_song_state_pays_the_service_routes_over_the_state_routes() -> Result<()> {
+        let server = TestServer::start(|_| Reply::Answer {
+            status: 200,
+            body: route_body("service"),
+        })?;
+        let temp = TempDir::new()?;
+        let now = Instant::now();
+        let (mut producer, _) = start_service_producer(
+            &temp,
+            &server,
+            &song_patch(state::STATE_FORMAT, FILE_ROUTES),
+            now,
+            Duration::from_secs(1),
+        )?;
+        let output = poll_for_routes(&mut producer, now + Duration::from_secs(1), "service")?;
+        assert_eq!(addresses(&output), ["service=100.0"]);
+        assert_eq!(output["value_routes_source"], "liquidsoap-state");
+        assert_eq!(output["feed_guid"], "feed");
+        assert_eq!(output["track_guid"], "track");
+        producer.shutdown()?;
+        Ok(())
+    }
+
+    #[test]
+    fn a_song_state_with_no_service_routes_pays_the_state_routes_or_nobody() -> Result<()> {
+        for (status, body) in [(404, "{}"), (200, r#"{"data":{"payment_routes":[]}}"#)] {
+            for (routes, expected) in [(FILE_ROUTES, vec!["file=100.0"]), ("", vec![])] {
+                let server = TestServer::start(move |_| Reply::Answer {
+                    status,
+                    body: body.to_owned(),
+                })?;
+                let temp = TempDir::new()?;
+                let now = Instant::now();
+                let patch = song_patch(state::STATE_FORMAT, routes);
+                let (mut producer, path) =
+                    start_service_producer(&temp, &server, &patch, now, Duration::from_secs(1))?;
+                assert!(wait_for_requests(&server, 1));
+                for step in 1..=10_u32 {
+                    fs::write(&path, patched(1.0 + f64::from(step), &patch)?)?;
+                    producer.poll(now + Duration::from_millis(600 * u64::from(step)))?;
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+                assert_eq!(server.requests().len(), 1);
+                let output: serde_json::Value =
+                    serde_json::from_slice(&fs::read(&producer.drop_path)?)?;
+                assert_eq!(addresses(&output), expected, "{status} {routes}");
+                producer.shutdown()?;
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn a_late_answer_for_a_song_keeps_the_play_id() -> Result<()> {
+        let server = TestServer::start(|_| {
+            std::thread::sleep(Duration::from_millis(150));
+            Reply::Answer {
+                status: 200,
+                body: route_body("service"),
+            }
+        })?;
+        let temp = TempDir::new()?;
+        let now = Instant::now();
+        let (mut producer, _) = start_service_producer(
+            &temp,
+            &server,
+            &song_patch(state::STATE_FORMAT, FILE_ROUTES),
+            now,
+            Duration::from_secs(1),
+        )?;
+        let before = poll_for_routes(&mut producer, now + Duration::from_secs(1), "file")?;
+        let after = poll_for_routes(&mut producer, now + Duration::from_secs(2), "service")?;
+        assert_eq!(before["play_id"], after["play_id"]);
+        producer.shutdown()?;
+        Ok(())
+    }
+
+    #[test]
+    fn an_episode_state_asks_only_for_its_chapter_songs() -> Result<()> {
+        let server = TestServer::start(|_| Reply::Answer {
+            status: 200,
+            body: route_body("service"),
+        })?;
+        let temp = TempDir::new()?;
+        let chapters = serde_json::json!([remote(0, 10_000, "song-feed", "song-item".into())]);
+        let now = Instant::now();
+        let (mut producer, _) = start_service_producer(
+            &temp,
+            &server,
+            &chapter_patch(&chapters, 4),
+            now,
+            Duration::from_secs(1),
+        )?;
+        assert!(wait_for_requests(&server, 1));
+        std::thread::sleep(Duration::from_millis(50));
+        assert_eq!(
+            server.requests(),
+            ["/v1/feeds/song-feed/tracks/song-item?include=payment_routes"]
+        );
+        producer.shutdown()?;
         Ok(())
     }
 

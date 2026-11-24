@@ -431,7 +431,7 @@ fn failed_download_leaves_no_file() {
 }
 
 #[test]
-fn bad_item_guid_is_refused() {
+fn unsafe_item_guid_gets_a_hash_file_name() {
     let server = TestServer::start();
     let folder = tempfile::tempdir().expect("temporary folder");
     let mut options = options(&folder);
@@ -442,18 +442,20 @@ fn bad_item_guid_is_refused() {
     options.songs = Some(write_local_feed(&folder, "music.xml", &feed));
 
     let result = run(&options, server.config()).expect("run import");
-    assert_eq!(result.error_count(), 1);
-    // The feed has the item, so the error comes from the file name check.
-    let error = manifest(&folder)["items"][0]["error"].clone();
-    assert!(
-        error.as_str().is_some_and(|text| text.contains("not safe")),
-        "{error}"
-    );
+    assert_eq!(result.error_count(), 0);
+    // sha256("../escape") in hex.
+    let name = "sha256-1ba7343c47dc442de7dec43a995deb9a7b62234ecca16d7c6f597b5155bd85b1.mp3";
+    let manifest = manifest(&folder);
+    assert_eq!(manifest["items"][0]["item_guid"], "../escape");
+    assert_eq!(manifest["items"][0]["path"], format!("songs/{name}"));
+    let path = options.out.join("songs").join(name);
+    let tags = read_podcast_tags(&path).expect("read output tags");
+    assert_eq!(tags.item_guid.as_deref(), Some("../escape"));
     assert!(!folder.path().join("escape.mp3").exists());
     assert_eq!(
         std::fs::read_dir(options.out.join("songs"))
             .unwrap()
             .count(),
-        0
+        1
     );
 }

@@ -275,6 +275,12 @@ station-import --out station-import-output --songs https://example.org/music.xml
 
 Read `manifest.json` first. Examine each item with an `error` value. Examine each entry in `unresolved_splits`.
 
+`station-import` cannot tag a WAV file, and it does not change the format of a file. A WAV song gets an
+`error` value in the manifest that starts with `cannot tag raw WAV`. The command does not write that song.
+
+An item GUID with characters that are not safe in a file name, for example a URL, gives the file name
+`sha256-` and the SHA-256 hex of the GUID. The tags and the manifest keep the item GUID.
+
 Then write the files:
 
 ```sh

@@ -134,8 +134,9 @@ no routes (musicindex ADR 0093 R-TAG-6 item 2). The manifest lists each one, so 
   `audio/wav` and `audio/x-wav` give `wav`.
 - Else the extension of the last path segment of the enclosure URL, when it is one of these six, in lowercase.
 - Else the entry has an error.
-- `ITEM_GUID` is used only when it holds only ASCII letters, digits, `-`, `_` and `.`, and does not start with `.`.
-  Else the entry has an error. This stops a path outside the output folder.
+- `ITEM_GUID` is used only when it holds only ASCII letters, digits, `-`, `_` and `.`, and does not start with `.` or
+  with `sha256-`. Else the file name is `sha256-` and the SHA-256 hex of the GUID. This stops a path outside the
+  output folder. The tags and the manifest keep the GUID. An empty GUID gives an error.
 - Two items with the same kind and item GUID: the second gets an error entry and no download.
 
 ### The manifest (R-STATION-4 items 3 and 4)
@@ -224,8 +225,8 @@ that serves fixed paths: the song feeds, the podcast feed, a MusicIndex answer f
    and the other items are still written. The function result reports one error, so `main` exits with status 1.
 6. `failed_download_leaves_no_file`: a song whose enclosure gives 404. The entry has an error and no file is at its
    path.
-7. `bad_item_guid_is_refused`: an item GUID with `/` or `..` gives an error entry and no file outside the output
-   folder.
+7. `unsafe_item_guid_gets_a_hash_file_name`: the item GUID `../escape` gives the file
+   `songs/sha256-HEX.mp3` and no file outside the output folder. The tags and the manifest keep `../escape`.
 8. Unit tests for the argument parser: the usage errors of §The Command Line, and the two selector forms.
 9. `manifest_hash_and_size_are_of_the_tagged_file`: for two songs and one episode, `sha256` and `bytes` of each
    entry are the values of the file at `path`. The hash is not the hash of the served file. The mode of each
@@ -274,3 +275,8 @@ bash -n scripts/make-station-bundle.sh
 
 Give the files changed, the test names, the output of the checks, and each API of musicindex-fetch or
 musicindex-tags that was missing or that did not work as this file states.
+
+Operator choice (orchestrator, 2026-11-23, after test station step 18 of musicindex-research commit 53bf07f): an item
+GUID that is not safe for a file name gets the file name `sha256-` and the SHA-256 hex of the GUID, for example a URL
+item GUID of a song feed. The tags and the manifest keep the GUID. The runbook says that the import cannot tag a WAV
+file. The import does not convert a WAV file to FLAC.

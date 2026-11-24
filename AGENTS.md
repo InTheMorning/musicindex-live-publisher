@@ -149,6 +149,10 @@ packet.
   is in `now-playing-drop/src/display.rs`. The station checks 1 to 3 of its
   §Verification are open, and need a person. Its four Open Questions stay
   open.
+- ADR 0027 is `Accepted`, and its code is complete (task 011). The station
+  producer asks the route service for a song state with the two state GUIDs,
+  and the service routes win over the routes of the state. The station check
+  of its §Verification is open, and needs a person.
 - The binary `station-import` (crate `station-import/`, task 001 of the
   station import) is complete. It makes a folder of song and episode files
   with their GUID and chapter tags and `manifest.json`, for the AzuraCast SFTP
