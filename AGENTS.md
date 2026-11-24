@@ -171,7 +171,9 @@ packet.
   `TXXX:Podcast Image` of each file, and a file that has that frame keeps it
   (musicindex ADR 0096 R-IMAGE-3). Open Point 1 of that ADR (keep the old
   frame or use the feed value) has no operator answer. The code keeps the old
-  frame. It has no upload code.
+  frame. It has no upload code. The feed value replaces each standard frame
+  of the map of ADR 0030, for example `TIT2`, `TPE1` and `TALB`. A frame with
+  no feed value keeps the value of the file.
 - This item needs a new ADR before work starts: a track identity source that
   is earlier than the Mixxx history row.
 - Studio client task 001 is not started. The publisher will start and end a

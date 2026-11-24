@@ -113,6 +113,9 @@ the next priority. Confirm that logging works before the show.
   relay keepalive and the expiry limit without the MIDI connector. The dead
   block title and image are settings of each target, and a track block has the title
   "artist - title". It changes ADR 0010
+- [ADR 0030: station-import writes the feed value in each standard frame](adr/0030-station-import-writes-the-feed-value-in-each-standard-frame.md)
+  — Accepted. The feed value replaces `TIT2`, `TPE1`, `TALB`, `TPE2`, `TRCK` and
+  `TDRC` of a station file. A frame with no feed value keeps the file value
 
 ## Plans
 

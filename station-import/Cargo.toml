@@ -10,6 +10,7 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = "1"
+chrono = { version = "0.4", default-features = false, features = ["std"] }
 musicindex-fetch = { git = "https://github.com/InTheMorning/musicindex-lib", rev = "7eb995e4cb95f8e8d72054b6c6990b5e5b7bcac5" }
 musicindex-convert = { git = "https://github.com/InTheMorning/musicindex-lib", rev = "7eb995e4cb95f8e8d72054b6c6990b5e5b7bcac5" }
 musicindex-tags = { git = "https://github.com/InTheMorning/musicindex-lib", rev = "7eb995e4cb95f8e8d72054b6c6990b5e5b7bcac5" }

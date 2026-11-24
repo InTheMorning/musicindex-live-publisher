@@ -14,8 +14,8 @@ use musicindex_fetch::{
 };
 use musicindex_tags::format::AudioFormat;
 use musicindex_tags::{
-    EpisodeTags, Id3v24Edit, NoReferences, SongTags, SplitTarget, read_audio_tags,
-    read_podcast_tags, write_episode_tags, write_song_tags,
+    EpisodeTags, Id3v24Edit, NoReferences, SongTags, SplitTarget, read_podcast_tags,
+    write_episode_tags, write_song_tags,
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -474,18 +474,22 @@ fn import_song(
     item.path = Some(path.to_string_lossy().into_owned());
     let destination = options.out.join(&path);
     // The reader keeps the song feed from the resolve, so this read sends no request.
-    let album = reader
-        .read(&resolved.feed_url)
-        .ok()
-        .and_then(|document| document.values.title.clone());
-    let edits = display_field_edits(
-        &destination,
-        &DisplayFields {
-            title: resolved.title.as_deref(),
-            artist: display_artist(resolved.artist.as_deref(), resolved.author.as_deref()),
-            album: album.as_deref(),
-        },
-    );
+    let document = reader.read(&resolved.feed_url).ok();
+    let channel = document.as_ref().map(|document| &document.values);
+    let song = channel.and_then(|values| {
+        values
+            .tracks
+            .iter()
+            .find(|track| track.track_guid.as_deref().map(str::trim) == Some(&resolved.item_guid))
+    });
+    let edits = feed_frame_edits(&FeedFrames {
+        title: resolved.title.as_deref(),
+        artist: display_artist(resolved.artist.as_deref(), resolved.author.as_deref()),
+        album: channel.and_then(|values| values.title.as_deref()),
+        album_artist: resolved.author.as_deref(),
+        track_number: song.and_then(|song| song.track_number),
+        date: song.and_then(|song| song.pub_date),
+    });
     match write_song_tags(
         &destination,
         &SongTags {
@@ -643,14 +647,14 @@ fn import_episode(
     };
     item.path = Some(path.to_string_lossy().into_owned());
     let destination = options.out.join(&path);
-    let edits = display_field_edits(
-        &destination,
-        &DisplayFields {
-            title: track.title.as_deref(),
-            artist: display_artist(track.author_name.as_deref(), values.author_name.as_deref()),
-            album: values.title.as_deref(),
-        },
-    );
+    let edits = feed_frame_edits(&FeedFrames {
+        title: track.title.as_deref(),
+        artist: display_artist(track.author_name.as_deref(), values.author_name.as_deref()),
+        album: values.title.as_deref(),
+        album_artist: values.author_name.as_deref(),
+        track_number: track.track_number,
+        date: track.pub_date,
+    });
     let routes = musicindex_fetch::value_routes(&track.value_blocks, &track.payment_routes)
         .or_else(|| {
             musicindex_fetch::value_routes(&values.feed_value_blocks, &values.feed_payment_routes)
@@ -833,41 +837,53 @@ fn display_artist<'a>(
         .or(channel_author.filter(present))
 }
 
-/// The display values of an item: the title, the artist and the album.
-struct DisplayFields<'a> {
+/// The feed values of the standard frames of an item (publisher ADR 0030).
+struct FeedFrames<'a> {
+    /// `TIT2`: the item title.
     title: Option<&'a str>,
+    /// `TPE1`: the value of [`display_artist`].
     artist: Option<&'a str>,
+    /// `TALB`: the channel title.
     album: Option<&'a str>,
+    /// `TPE2`: the channel `itunes:author`.
+    album_artist: Option<&'a str>,
+    /// `TRCK`: the item `itunes:episode`, else `podcast:episode`.
+    track_number: Option<i64>,
+    /// `TDRC`: the item `pubDate`, in seconds after the Unix epoch.
+    date: Option<i64>,
 }
 
-/// The edits of the title, artist and album frames of the downloaded file.
+/// The edits of the standard frames that have a feed value.
 ///
-/// The title is the item title. It replaces a title that the file has, because
-/// the file title can be a work name of the artist (orchestrator choice of
-/// 2026-11-24, task 001 criterion 10). The artist is the value of
-/// [`display_artist`], and the album is the channel title. The file keeps an
-/// artist or an album that it has (orchestrator choice of 2026-11-23). When the
-/// tag read fails, the function gives only the title edit.
-fn display_field_edits(path: &Path, fields: &DisplayFields<'_>) -> Vec<Id3v24Edit> {
-    let tags = read_audio_tags(path).ok();
-    let title = nonempty(fields.title).map(|value| ("TIT2", value));
-    let missing = tags.into_iter().flat_map(|tags| {
-        [
-            ("TPE1", tags.artist, fields.artist),
-            ("TALB", tags.album, fields.album),
-        ]
-        .into_iter()
-        .filter(|(_, present, _)| nonempty(present.as_deref()).is_none())
-        .filter_map(|(frame_label, _, value)| nonempty(value).map(|value| (frame_label, value)))
-    });
-    title
-        .into_iter()
-        .chain(missing)
-        .map(|(frame_label, value)| Id3v24Edit {
+/// Each edit replaces the frame of the file (publisher ADR 0030). A frame with
+/// no feed value gets no edit, so the file keeps its value. A track number
+/// that is not more than zero gives no edit. The date is the UTC day of
+/// `pubDate`, in the form `YYYY-MM-DD`.
+fn feed_frame_edits(frames: &FeedFrames<'_>) -> Vec<Id3v24Edit> {
+    let track_number = frames
+        .track_number
+        .filter(|number| *number > 0)
+        .map(|number| number.to_string());
+    let date = frames
+        .date
+        .and_then(|seconds| chrono::DateTime::from_timestamp(seconds, 0))
+        .map(|date| date.format("%Y-%m-%d").to_string());
+    [
+        ("TIT2", nonempty(frames.title)),
+        ("TPE1", nonempty(frames.artist)),
+        ("TALB", nonempty(frames.album)),
+        ("TPE2", nonempty(frames.album_artist)),
+        ("TRCK", track_number.as_deref()),
+        ("TDRC", date.as_deref()),
+    ]
+    .into_iter()
+    .filter_map(|(frame_label, value)| {
+        value.map(|value| Id3v24Edit {
             frame_label: frame_label.to_owned(),
-            value: value.to_owned(),
+            value: value.trim().to_owned(),
         })
-        .collect()
+    })
+    .collect()
 }
 
 /// The image URL to write in `TXXX:Podcast Image`.

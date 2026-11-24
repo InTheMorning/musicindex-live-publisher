@@ -9,7 +9,7 @@ use std::time::Duration;
 use musicindex_convert::{ConverterObservation, ConverterProbe, ExecutableSource, ProbeOutcome};
 use musicindex_fetch::ReaderConfig;
 use musicindex_tags::{
-    NoReferences, SongTags, read_audio_tags, read_podcast_tags, write_song_tags,
+    Id3v24Edit, NoReferences, SongTags, read_audio_tags, read_podcast_tags, write_song_tags,
 };
 use serde_json::Value;
 use sha2::Digest;
@@ -115,7 +115,7 @@ fn routes(
     untagged_audio: Vec<u8>,
 ) -> HashMap<String, (u16, &'static str, Vec<u8>)> {
     let song_feed = format!(
-        r#"<?xml version="1.0"?><rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd" xmlns:podcast="https://podcastindex.org/namespace/1.0"><channel><title>Songs</title><itunes:author>Channel Band</itunes:author><podcast:guid>song-feed</podcast:guid><item><guid>song-item</guid><title>Song</title><itunes:author>Item Band</itunes:author><itunes:image href="{base_url}/art/song.jpg"/><enclosure url="{base_url}/audio/tagged.mp3" type="audio/mpeg" length="1"/></item><item><guid>song-item-2</guid><title>Second Song</title><enclosure url="{base_url}/audio/untagged.flac" type="audio/flac" length="1"/></item><item><guid>song-item-3</guid><title>Framed Song</title><itunes:image href="{base_url}/art/new.jpg"/><enclosure url="{base_url}/audio/framed.mp3" type="audio/mpeg" length="1"/></item></channel></rss>"#
+        r#"<?xml version="1.0"?><rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd" xmlns:podcast="https://podcastindex.org/namespace/1.0"><channel><title>Songs</title><itunes:author>Channel Band</itunes:author><podcast:guid>song-feed</podcast:guid><item><guid>song-item</guid><title>Song</title><itunes:author>Item Band</itunes:author><itunes:image href="{base_url}/art/song.jpg"/><enclosure url="{base_url}/audio/tagged.mp3" type="audio/mpeg" length="1"/></item><item><guid>song-item-2</guid><title>Second Song</title><itunes:episode>2</itunes:episode><pubDate>Mon, 21 Oct 2024 23:30:00 GMT</pubDate><enclosure url="{base_url}/audio/untagged.flac" type="audio/flac" length="1"/></item><item><guid>song-item-3</guid><title>Framed Song</title><itunes:episode>3</itunes:episode><pubDate>Sun, 20 Oct 2024 12:00:00 GMT</pubDate><itunes:image href="{base_url}/art/new.jpg"/><enclosure url="{base_url}/audio/framed.mp3" type="audio/mpeg" length="1"/></item></channel></rss>"#
     );
     let failed_song_feed = format!(
         r#"<?xml version="1.0"?><rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0"><channel><podcast:guid>failed-feed</podcast:guid><item><guid>failed-song</guid><title>Missing Audio</title><enclosure url="{base_url}/audio/missing.mp3" type="audio/mpeg" length="1"/></item></channel></rss>"#
@@ -190,7 +190,8 @@ fn routes(
     map
 }
 
-/// The MP3 fixture with the frame `TXXX:Podcast Image` before the import.
+/// The MP3 fixture with the frame `TXXX:Podcast Image` before the import. It
+/// also has its own album, track number, date and genre.
 fn framed_audio(tagged_audio: &[u8]) -> Vec<u8> {
     let folder = tempfile::tempdir().expect("temporary folder");
     let path = folder.path().join("framed.mp3");
@@ -202,11 +203,34 @@ fn framed_audio(tagged_audio: &[u8]) -> Vec<u8> {
             item_guid: "old-item".into(),
             image: Some(OLD_IMAGE.into()),
         },
-        &[],
+        &[
+            file_edit("TALB", "File Album"),
+            file_edit("TPE2", "File Album Artist"),
+            file_edit("TRCK", "9"),
+            file_edit("TDRC", "1999-01-01"),
+            file_edit("TCON", "File Genre"),
+        ],
         &NoReferences,
     )
-    .expect("write the old image frame");
+    .expect("write the old frames");
     std::fs::read(&path).expect("read framed audio")
+}
+
+fn file_edit(frame_label: &str, value: &str) -> Id3v24Edit {
+    Id3v24Edit {
+        frame_label: frame_label.into(),
+        value: value.into(),
+    }
+}
+
+/// The value of the first frame with the ID `frame_id` in the file at `path`.
+fn frame_value(path: &std::path::Path, frame_id: &str) -> Option<String> {
+    read_audio_tags(path)
+        .expect("read tags")
+        .fields
+        .into_iter()
+        .find(|field| field.frame_id == frame_id)
+        .map(|field| field.value)
 }
 
 const OLD_IMAGE: &str = "https://old.example/cover.jpg";
@@ -411,10 +435,15 @@ fn file_with_no_title_gets_the_item_title_artist_and_album() {
     let options = import_songs(&server, &folder);
 
     // The FLAC fixture has no tag. The song has no item author.
-    let tags = read_audio_tags(&options.out.join("songs/song-item-2.flac")).expect("read tags");
+    let path = options.out.join("songs/song-item-2.flac");
+    let tags = read_audio_tags(&path).expect("read tags");
     assert_eq!(tags.title.as_deref(), Some("Second Song"));
     assert_eq!(tags.artist.as_deref(), Some("Channel Band"));
     assert_eq!(tags.album.as_deref(), Some("Songs"));
+    // Publisher ADR 0030: the FLAC file also gets the track number and the
+    // UTC day of `pubDate`.
+    assert_eq!(frame_value(&path, "TRCK").as_deref(), Some("2"));
+    assert_eq!(frame_value(&path, "TDRC").as_deref(), Some("2024-10-21"));
 }
 
 // musicindex ADR 0096 R-IMAGE-3 items 1 and 3.
@@ -455,8 +484,8 @@ fn episode_file_gets_the_channel_image_url() {
     );
 }
 
-// Task 001 criterion 10: the episode file gets the item title, and each chapter
-// has the title of its song item.
+// Publisher ADR 0030: the episode file gets the item title and the episode
+// number. Each chapter has the title of its song item.
 #[test]
 fn episode_file_with_a_different_title_gets_the_item_title() {
     let server = TestServer::start();
@@ -471,6 +500,8 @@ fn episode_file_with_a_different_title_gets_the_item_title() {
     // The MP3 fixture has the TIT2 "Fixture Title".
     let tags = read_audio_tags(&path).expect("read tags");
     assert_eq!(tags.title.as_deref(), Some("Episode 8"));
+    assert_eq!(tags.album.as_deref(), Some("Episodes"));
+    assert_eq!(frame_value(&path, "TRCK").as_deref(), Some("8"));
     let chapters = read_podcast_tags(&path)
         .expect("read episode tags")
         .chapters()
@@ -501,18 +532,50 @@ fn file_with_an_image_frame_keeps_it() {
     assert_eq!(tags.item_guid.as_deref(), Some("song-item-3"));
 }
 
+// Publisher ADR 0030: the feed value replaces each standard frame of the file.
 #[test]
-fn file_with_a_different_title_gets_the_item_title_and_keeps_its_artist() {
+fn file_with_a_different_title_gets_the_item_title_and_artist() {
     let server = TestServer::start();
     let folder = tempfile::tempdir().expect("temporary folder");
     let options = import_songs(&server, &folder);
 
-    // The MP3 fixture has the TIT2 "Fixture Title", a TPE1 and no TALB. The
-    // item title is "Song".
+    // The MP3 fixture has the TIT2 "Fixture Title", the TPE1 "Fixture Artist"
+    // and no TALB.
     let tags = read_audio_tags(&options.out.join("songs/song-item.mp3")).expect("read tags");
     assert_eq!(tags.title.as_deref(), Some("Song"));
-    assert_eq!(tags.artist.as_deref(), Some("Fixture Artist"));
+    assert_eq!(tags.artist.as_deref(), Some("Item Band"));
     assert_eq!(tags.album.as_deref(), Some("Songs"));
+}
+
+// Publisher ADR 0030: each frame with a feed value gets the feed value. A frame
+// with no feed value keeps the value of the file.
+#[test]
+fn file_frames_get_the_feed_values_and_a_frame_with_no_feed_value_stays() {
+    let server = TestServer::start();
+    let folder = tempfile::tempdir().expect("temporary folder");
+    let mut options = options(&folder);
+    options.songs = Some(write_local_feed(
+        &folder,
+        "music.xml",
+        &format!(
+            r#"<?xml version="1.0"?><rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0"><channel><title>Station list</title><podcast:remoteItem medium="music" feedGuid="song-feed" feedUrl="{}/song-feed.xml" itemGuid="song-item-3"/></channel></rss>"#,
+            server.base_url
+        ),
+    ));
+
+    let result = run(&options, server.config()).expect("run import");
+    assert_eq!(result.error_count(), 0);
+    let path = options.out.join("songs/song-item-3.mp3");
+    let value = |frame_id: &str| frame_value(&path, frame_id);
+    assert_eq!(value("TIT2").as_deref(), Some("Framed Song"));
+    // The item has no author, so the artist is the channel author.
+    assert_eq!(value("TPE1").as_deref(), Some("Channel Band"));
+    assert_eq!(value("TALB").as_deref(), Some("Songs"));
+    assert_eq!(value("TPE2").as_deref(), Some("Channel Band"));
+    assert_eq!(value("TRCK").as_deref(), Some("3"));
+    assert_eq!(value("TDRC").as_deref(), Some("2024-10-20"));
+    // The feed has no genre.
+    assert_eq!(value("TCON").as_deref(), Some("File Genre"));
 }
 
 #[test]
