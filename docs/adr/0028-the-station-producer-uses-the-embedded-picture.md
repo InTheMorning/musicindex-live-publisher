@@ -2,6 +2,9 @@
 
 - Status: Accepted on 2026-11-24 by the operator, as at commit ca460a2. The orchestrator session relayed the decision.
   The two Open Questions stay open. The check of §Before Implementation is open.
+- Revised 2026-11-24, after acceptance: the FLAC reader is `file.metadata.flac_native`, not `file.metadata.flac`. A
+  read of the Liquidsoap source showed that `file.metadata.flac` gives only the Vorbis comments. The slot text also
+  separates the joined picture blocks. This is a defect correction. No decision was reversed.
 - Date: 2026-11-24
 - Changes: ADR 0026 §What The Producer Writes In `display.json`, the `artwork` row of the track table and the item
   "The producer writes no embedded image". ADR 0026 §One Display Writer, the sentence that keeps `prepare_image` and
@@ -42,11 +45,18 @@ in `musicindex-research/sources/broadcast-audio/streaming/liquidsoap`:
    `picture_type` and `mime` (`src/libs/file.liq`, lines 279-330 at `v2.4.6`).
 3. `metadata.cover` and `file.cover` take the first picture. They do not select by the picture type
    (`src/libs/metadata.liq`, lines 101-183). The slot text thus does not use them.
-4. `file.metadata.flac` is defined only when Liquidsoap can read FLAC tags. Else it gives an empty list
-   (`src/libs/file.liq`, line 271).
+4. `file.metadata.flac` is the reader of the libflac decoder. It gives only the Vorbis comments of the file, not the
+   picture blocks (`src/core/optionals/flac/liq_flac_decoder.ml`, lines 152-176).
+5. `file.metadata.flac_native` is the native FLAC reader (`src/core/base/decoder/flac_metadata_plug.ml`). Liquidsoap
+   makes one `file.metadata.NAME` function for each metadata reader (`src/core/builtins/builtins_files.ml`, lines
+   498-530). The parser gives each picture block as a `metadata_block_picture` value, in file order
+   (`ocaml-metadata/src/metadataFLAC.ml`, lines 36-46, commit `942b555`).
+6. `flac_native` joins the values of one key with the separator `", "` (`flac_metadata_plug.ml`, lines 36-40 and
+   60-66). A file with two pictures thus gives one value: block 1, `", "`, block 2. Each block holds its own lengths,
+   so the slot text can separate the blocks.
 
-Inference: `file.metadata.flac(fname)` gives each picture block of a FLAC file as a `metadata_block_picture` value.
-The check of §Before Implementation examines it on the test station.
+Inference: the AzuraCast build of Liquidsoap has `file.metadata.flac_native`. The check of §Before Implementation
+examines it on the test station.
 
 Terms:
 
@@ -89,8 +99,9 @@ The slot text selects the picture and writes the bytes. It does not change, redu
 
 - It reads the file at the metadata key `filename` of the current track.
 - An MP3 file: it reads `file.metadata.id3v2(filename)` and parses each `apic` value with `string.apic.parse`.
-- A FLAC file: it reads `file.metadata.flac(filename)` and decodes each `metadata_block_picture` value with
-  `file.metadata.flac.cover.decode`.
+- A FLAC file: it reads `file.metadata.flac_native(filename)`. It separates the `metadata_block_picture` value into
+  its picture blocks by the lengths in each block, and skips the separator `", "` between two blocks. It decodes each
+  block with `file.metadata.flac.cover.decode`.
 - It takes the front cover (`picture_type` 3). If the file has none, it takes the first picture (ADR 0008 §The
   Embedded Image).
 - It writes no picture of more than 64 MiB (67,108,864 bytes). The track then has an empty `picture`.
@@ -152,8 +163,9 @@ On the test station, a person or an agent with access runs the slot text functio
 
 1. `file.metadata.id3v2` on `Songs/8ee8ceec-c0bc-41ed-a80d-5f9aa10aa10c.mp3` gives an `apic` value, and
    `string.apic.parse` gives `image/jpeg` and its `picture_type`.
-2. `file.metadata.flac` on a FLAC file with a picture gives a `metadata_block_picture` value. This check proves the
-   inference of §Context. If it fails, the implementation stops and reports. The FLAC part then needs a new decision.
+2. `file.metadata.flac_native` on a FLAC file with a picture gives a `metadata_block_picture` value. This check proves
+   the inference of §Context. If it fails, the implementation stops and reports. The FLAC part then needs a new
+   decision.
 
 ## Verification
 
