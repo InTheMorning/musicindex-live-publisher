@@ -478,7 +478,7 @@ fn import_song(
         .read(&resolved.feed_url)
         .ok()
         .and_then(|document| document.values.title.clone());
-    let edits = missing_field_edits(
+    let edits = display_field_edits(
         &destination,
         &DisplayFields {
             title: resolved.title.as_deref(),
@@ -643,7 +643,7 @@ fn import_episode(
     };
     item.path = Some(path.to_string_lossy().into_owned());
     let destination = options.out.join(&path);
-    let edits = missing_field_edits(
+    let edits = display_field_edits(
         &destination,
         &DisplayFields {
             title: track.title.as_deref(),
@@ -840,31 +840,34 @@ struct DisplayFields<'a> {
     album: Option<&'a str>,
 }
 
-/// The edits of the title, artist and album frames that the downloaded file
-/// does not have.
+/// The edits of the title, artist and album frames of the downloaded file.
 ///
-/// The title is the item title. The artist is the value of [`display_artist`].
-/// The album is the channel title. A value that the file has stays
-/// (orchestrator choice of 2026-11-23, task 001). When the tag read fails, the
-/// function gives no edit, so that it replaces no value.
-fn missing_field_edits(path: &Path, fields: &DisplayFields<'_>) -> Vec<Id3v24Edit> {
-    let Ok(tags) = read_audio_tags(path) else {
-        return Vec::new();
-    };
-    [
-        ("TIT2", tags.title, fields.title),
-        ("TPE1", tags.artist, fields.artist),
-        ("TALB", tags.album, fields.album),
-    ]
-    .into_iter()
-    .filter(|(_, present, _)| nonempty(present.as_deref()).is_none())
-    .filter_map(|(frame_label, _, value)| {
-        nonempty(value).map(|value| Id3v24Edit {
+/// The title is the item title. It replaces a title that the file has, because
+/// the file title can be a work name of the artist (orchestrator choice of
+/// 2026-11-24, task 001 criterion 10). The artist is the value of
+/// [`display_artist`], and the album is the channel title. The file keeps an
+/// artist or an album that it has (orchestrator choice of 2026-11-23). When the
+/// tag read fails, the function gives only the title edit.
+fn display_field_edits(path: &Path, fields: &DisplayFields<'_>) -> Vec<Id3v24Edit> {
+    let tags = read_audio_tags(path).ok();
+    let title = nonempty(fields.title).map(|value| ("TIT2", value));
+    let missing = tags.into_iter().flat_map(|tags| {
+        [
+            ("TPE1", tags.artist, fields.artist),
+            ("TALB", tags.album, fields.album),
+        ]
+        .into_iter()
+        .filter(|(_, present, _)| nonempty(present.as_deref()).is_none())
+        .filter_map(|(frame_label, _, value)| nonempty(value).map(|value| (frame_label, value)))
+    });
+    title
+        .into_iter()
+        .chain(missing)
+        .map(|(frame_label, value)| Id3v24Edit {
             frame_label: frame_label.to_owned(),
             value: value.to_owned(),
         })
-    })
-    .collect()
+        .collect()
 }
 
 /// The image URL to write in `TXXX:Podcast Image`.

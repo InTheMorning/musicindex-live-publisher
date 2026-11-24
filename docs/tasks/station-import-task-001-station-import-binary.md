@@ -237,18 +237,25 @@ Operator choice (orchestrator, 2026-11-23, ADR 0092 R-STATION-4 item 3): the man
 second hash field. The audio files get the mode 0644, so that a copy that keeps the mode is readable in the
 AzuraCast container.
 
-10. `file_with_no_title_gets_the_item_title_artist_and_album` and `file_with_a_title_keeps_it`: a downloaded file
-    with no `TIT2`, `TPE1` or `TALB` gets the item title, the artist and the channel title. A value that the file
-    has stays.
+10. `file_with_no_title_gets_the_item_title_artist_and_album`,
+    `file_with_a_different_title_gets_the_item_title_and_keeps_its_artist` and
+    `episode_file_with_a_different_title_gets_the_item_title`: a downloaded file gets the item title as `TIT2`, also
+    when it has a different `TIT2`. A file with no `TPE1` or `TALB` gets the artist and the channel title. An artist
+    or an album that the file has stays. Each chapter has the title of its song item.
 11. `chapter_artist_is_the_item_author_else_the_channel_author`: a chapter song with an item `itunes:author` gets it
     as the chapter `artist`. A chapter song with no item author gets the channel `itunes:author`. `author` does not
     change. The unit tests `display_artist_*` in `src/lib.rs` also show that an artist that is not empty stays as
     it is.
 
-Operator choice (orchestrator, 2026-11-23, title frames; ADR 0092 does not name them): station-import writes a
-title, artist or album frame only when the downloaded file has no value for it. The title is the item title. The
-artist is the item `itunes:author`, else the channel `itunes:author`. The album is the channel title. This applies
-to songs and episodes. The edits go through `write_song_tags` and `write_episode_tags`.
+Operator choice (orchestrator, 2026-11-23, title frames; ADR 0092 does not name them): station-import writes an
+artist or album frame only when the downloaded file has no value for it. The artist is the item `itunes:author`,
+else the channel `itunes:author`. The album is the channel title. This applies to songs and episodes. The edits go
+through `write_song_tags` and `write_episode_tags`.
+
+Operator choice (orchestrator, 2026-11-24, the title frame; the operator has not answered): station-import always
+writes the item title as `TIT2` when the title is not empty. It replaces a `TIT2` that the file has. On the test
+station, a file had the `TIT2` "Ts in face 20OCT2024 XXX_16Bit_Aria_Master_(MTC) (1)", and the item title was
+"Tiddies In My Face (Single)". This applies to songs and episodes. A chapter title already comes from the song item.
 
 Operator choice (orchestrator, 2026-11-23, chapter artist; musicindex ADR 0093 R-TAG-4 item 4 says that the caller
 gives it): when a chapter song has no artist, station-import sets the chapter `artist` with the same artist rule,

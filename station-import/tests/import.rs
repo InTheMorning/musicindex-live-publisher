@@ -455,6 +455,30 @@ fn episode_file_gets_the_channel_image_url() {
     );
 }
 
+// Task 001 criterion 10: the episode file gets the item title, and each chapter
+// has the title of its song item.
+#[test]
+fn episode_file_with_a_different_title_gets_the_item_title() {
+    let server = TestServer::start();
+    let folder = tempfile::tempdir().expect("temporary folder");
+    let mut options = options(&folder);
+    options.episode_feed = Some(format!("{}/episode-feed.xml", server.base_url));
+    options.episodes = vec!["episode-guid-2".into()];
+
+    let result = run(&options, server.config()).expect("run import");
+    assert_eq!(result.error_count(), 0);
+    let path = options.out.join("episodes/episode-guid-2.mp3");
+    // The MP3 fixture has the TIT2 "Fixture Title".
+    let tags = read_audio_tags(&path).expect("read tags");
+    assert_eq!(tags.title.as_deref(), Some("Episode 8"));
+    let chapters = read_podcast_tags(&path)
+        .expect("read episode tags")
+        .chapters()
+        .expect("read chapters");
+    let titles: Vec<_> = chapters.iter().map(|c| c.title.as_deref()).collect();
+    assert_eq!(titles, [Some("Song"), Some("Second Song")]);
+}
+
 // musicindex ADR 0096 R-IMAGE-3 item 2 and Open Point 1: an old frame stays.
 #[test]
 fn file_with_an_image_frame_keeps_it() {
@@ -478,14 +502,15 @@ fn file_with_an_image_frame_keeps_it() {
 }
 
 #[test]
-fn file_with_a_title_keeps_it() {
+fn file_with_a_different_title_gets_the_item_title_and_keeps_its_artist() {
     let server = TestServer::start();
     let folder = tempfile::tempdir().expect("temporary folder");
     let options = import_songs(&server, &folder);
 
-    // The MP3 fixture has TIT2 and TPE1, and no TALB.
+    // The MP3 fixture has the TIT2 "Fixture Title", a TPE1 and no TALB. The
+    // item title is "Song".
     let tags = read_audio_tags(&options.out.join("songs/song-item.mp3")).expect("read tags");
-    assert_eq!(tags.title.as_deref(), Some("Fixture Title"));
+    assert_eq!(tags.title.as_deref(), Some("Song"));
     assert_eq!(tags.artist.as_deref(), Some("Fixture Artist"));
     assert_eq!(tags.album.as_deref(), Some("Songs"));
 }
