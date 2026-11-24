@@ -1,7 +1,7 @@
 # Liquidsoap Task 012: The Station Producer Uses The Picture File As The Artwork Fallback
 
-Status: Implemented - 2026-11-24, reviewed. The operator accepted ADR 0028 on 2026-11-24. Station checks 11 to 14
-are open.
+Status: Complete - 2026-11-24. The operator accepted ADR 0028 on 2026-11-24. Station checks 11 to 14 passed on
+2026-11-24.
 
 Criteria 1 to 10 are mechanical. Criteria 11 to 14 are station checks for a person. The main session writes the slot
 text in `liquidsoap/musicindex-state.liq`. This task does not change that file.
@@ -111,6 +111,21 @@ Station checks, for a person (ADR 0028 §Verification), after the operator insta
 13. A file with no picture plays. The artwork is `null`, and the state folder holds no picture file of an earlier
     track.
 14. A jingle plays after the file of check 11. The display state has the image artwork of that file.
+
+Result, 2026-11-24 02:12 to 02:25 UTC, from the orchestrator session on the test station: checks 11 to 14 passed. The
+station had the binaries of bundle 9203797 and the slot text of commit 8165038. Bundle 9203797 with its own slot text
+did not start Liquidsoap (a parse error). Commit 8165038 corrected it and added the test `slot_text`.
+
+- 11: `picture-4` was a JPEG of 700 x 700 pixels. The relay artwork (seq 58) had the `sha256` of `picture-4`.
+- 12: a copy of a station FLAC file with a PNG front cover. The relay artwork (seq 66) had the `sha256` of the PNG.
+  The slot text removed the picture file of the earlier track.
+- 13: the same FLAC file with no picture. The state had an empty `picture`, the folder had no picture file, and the
+  relay artwork (seq 68) was `null`.
+- 14: a jingle after a song with `picture-7`. The state had `jingle` true and kept `picture-7`. The relay (seq 64)
+  kept the artwork.
+
+Not examined: an `APIC` frame with no image data, and the 64 MiB limit on the station. The orchestrator examined the
+relay display state, not the app.
 
 ## Rules For The Delegate
 

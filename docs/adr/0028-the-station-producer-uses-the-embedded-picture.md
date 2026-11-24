@@ -220,6 +220,9 @@ text, because CI has no Liquidsoap:
    of an earlier track.
 4. A jingle plays after file 1. The display state has the image artwork of file 1.
 
+Result, 2026-11-24: checks 1 to 4 passed on the relay display state. Task 012 gives the details. The app was not
+examined.
+
 ## Open Questions
 
 1. **Memory on the test host.** `prepare_image` can use 64 MB to decode one image (ADR 0008 §The Embedded Image). The
