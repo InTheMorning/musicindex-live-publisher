@@ -184,8 +184,6 @@ packet.
 - Open: at a jingle, CitizenRadio does not show the station lines (station log
   step 36). The relay output is correct. The orchestrator has the handoff for
   the CitizenRadio session.
-- Open: the manual check of ADR 0033 in v4vmusic.com, Podcast Guru and
-  CitizenRadio.
 - This item needs a new ADR before work starts: a track identity source that
   is earlier than the Mixxx history row.
 - Studio client task 001 is not started. The publisher will start and end a
