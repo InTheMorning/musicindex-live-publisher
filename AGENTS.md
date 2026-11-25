@@ -194,7 +194,7 @@ packet.
   The tests are at the end of `tests/display.rs`. Relay ADR 0011 keeps each
   image that a pending listener update names, and the relay runs it. Item 2 of
   its §Before Acceptance is partly done: v4vmusic.com and Podcast Guru show the
-  image. The Split Kit, the check for no new track and the boost check are open.
+  image. The check for no new track and the boost check are open.
 - ADR 0035 has the status `Proposed`. It is the consolidated station producer
   record. It restates each live rule of ADR 0022 and ADR 0025 to ADR 0028, and
   adds the chapter image of musicindex ADR 0099: the chapter `image_url`

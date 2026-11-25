@@ -100,10 +100,10 @@ These rules apply while this decision is current.
 1. **The relay retention.** Done 2026-11-25: `musicindex-live-relay` ADR 0011, commit `e4ac9c7`. The relay on
    `api.musicindex.org` has it since the operator deploy of 2026-11-25 (Mixxx VPS log step S2).
 2. **The second send in the apps.** On the test station, send a payload with no `image`, then the same `blockGuid`
-   with an `image`. v4vmusic.com and The Split Kit must show the image. They must not show a new track, and a boost
+   with an `image`. Two podcast apps that the operator uses must show the image. They must not show a new track, and a boost
    must pay the same block. A person does this check, because the apps are not in a test. Partly done 2026-11-25
    (station log step 43): the payload had the relay copy URL, and v4vmusic.com and Podcast Guru showed the image.
-   Open: The Split Kit, no new track, and a boost to the same block.
+   Open: no new track, and a boost to the same block.
 3. **The public endpoint.** Make sure that the `endpoint` of each station target is the public HTTPS URL of the
    relay, not a local address. An app must load the relay URL. Done 2026-11-25 for the test station, station log
    step 39. The one target has `https://api.musicindex.org`. From outside the station, an artwork GET of a hash that
