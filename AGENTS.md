@@ -176,6 +176,10 @@ packet.
   no feed value keeps the value of the file.
 - This repository owns the testing and the operation of the HeyCitizen test
   station (ADR 0032). The station log is `docs/runbooks/test-station-log.md`.
+  The Mixxx VPS `bastone.heycitizen.xyz` is a different host. It runs the
+  stack of `musicindex-stream-test` with pure Liquidsoap. That folder has no
+  Git repository, so `docs/runbooks/mixxx-vps-log.md` records each change
+  that a decision needs on that VPS, and each change that is done.
   The publisher session installs its bundles there and does the agent checks.
   A fault in another repository goes to the orchestrator as a handoff with the
   step number of the log. The SSH key is in `.local-keys/`. Never commit it.

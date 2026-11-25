@@ -91,7 +91,11 @@ These settings apply to each output of the Liquidsoap instance.
 
 ### The VPS Stack
 
-`radio.liq` of `musicindex-stream-test` gets the settings of §The Liquidsoap Settings. The VPS stack reads the Icecast
+The VPS stack is the Mixxx VPS `bastone.heycitizen.xyz`. It runs pure Liquidsoap in Docker, with no AzuraCast, and is
+a different host from the test station. `docs/runbooks/mixxx-vps-log.md` records each change that it needs.
+
+`radio.liq` of `musicindex-stream-test` gets the settings of §The Liquidsoap Settings. The VPS uses Liquidsoap 2.4.1.
+The facts of §Context come from 2.4.6, so the VPS moves to 2.4.6 before the first test. The VPS stack reads the Icecast
 stream of `butt`, so it has no media file. The picture for a Mixxx song must come from the relay display state, and
 the tagger of ADR 0009 does that. Until the tagger exists, the first test of §Before Acceptance uses a fixed test
 picture at each ICY title change.
