@@ -1,6 +1,6 @@
 //! MusicIndex relay HTTP client and retry workers.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::fmt;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -18,7 +18,7 @@ use serde_json::Value;
 
 use crate::livevalue::is_dead_block;
 use crate::{
-    ArtworkImage, DisplayEntry, DisplayState, LiveValuePayload, Pairing, ProducerState,
+    Artwork, ArtworkImage, DisplayEntry, DisplayState, LiveValuePayload, Pairing, ProducerState,
     PublishResult, PublisherConfig, PublisherTarget, ShowLog, ShowLogEntry,
 };
 
@@ -551,6 +551,65 @@ enum WorkerCommand {
     Publish(Box<LiveValuePayload>),
     /// A producer liveness change.
     Producer(ProducerState),
+    /// The display worker has an image URL for one play (ADR 0034
+    /// §The Payload Image Sequence, rules 2 and 3). The payload worker
+    /// sends the payload of that play one more time with this `image`.
+    PayloadImage { play_id: String, image: String },
+}
+
+/// Gives the payload image of a display state that the relay accepted
+/// (ADR 0034 §The Payload Image Sequence, rules 2 and 3).
+///
+/// Rule 2 is the artwork URL of the state, when it is an `http` or `https`
+/// URL. Rule 3 is the relay URL of the embedded image. `send_display` only
+/// returns a state with an embedded image after the relay accepted its
+/// upload. The relay URL is the form that relay ADR 0011 requires: no text
+/// follows the hash. A state with no `play_id` gives no image.
+fn payload_image(target: &RelayTarget, state: &DisplayState) -> Option<(String, String)> {
+    let track = state.track.as_ref()?;
+    let play_id = track.play_id.clone()?;
+    let image = match track.artwork.as_ref()? {
+        Artwork::Url(url) => reqwest::Url::parse(url)
+            .ok()
+            .filter(|parsed| matches!(parsed.scheme(), "http" | "https"))
+            .map(|_| url.clone())?,
+        Artwork::Image(image) => build_url(
+            &target.endpoint,
+            &[
+                "v1",
+                "liveitems",
+                &target.event_id,
+                "artwork",
+                image.sha256(),
+            ],
+        )
+        .ok()?
+        .to_string(),
+    };
+    Some((play_id, image))
+}
+
+/// Tells if `image` is a relay URL of the event of `target` (ADR 0034
+/// rule 3).
+fn is_relay_copy(target: &RelayTarget, image: &str) -> bool {
+    build_url(
+        &target.endpoint,
+        &["v1", "liveitems", &target.event_id, "artwork"],
+    )
+    .is_ok_and(|prefix| image.starts_with(&format!("{prefix}/")))
+}
+
+/// Tells if the payload worker sends `last` one more time with the image of
+/// `play_id` (ADR 0034 §The Second Send).
+///
+/// `last` must be the payload of that play, with no drop file image, and
+/// not the dead block. `sent_for` is the play of the last second send: the
+/// second send occurs one time for each play.
+fn second_send_applies(last: &LiveValuePayload, play_id: &str, sent_for: Option<&str>) -> bool {
+    last.play_id.as_deref() == Some(play_id)
+        && last.image.is_none()
+        && !is_dead_block(&last.value)
+        && sent_for != Some(play_id)
 }
 
 /// Maps one display answer to its outcome.
@@ -566,7 +625,8 @@ fn display_outcome(
         }
     };
     let status = response.status();
-    if status == StatusCode::OK {
+    // ADR 0034 rule 3: an upload is accepted with `200` or `201`.
+    if status == StatusCode::OK || status == StatusCode::CREATED {
         return DisplayOutcome::Accepted;
     }
     let reason = format!("relay returned HTTP {status}");
@@ -610,6 +670,10 @@ enum DisplayCommand {
         event_guid: String,
         block_guid: String,
     },
+    /// The `RelayPublisher` is dropped. The display worker stops and drops
+    /// its payload senders. Each payload worker holds a display sender, so
+    /// without this command no worker sees a closed channel.
+    Stop,
 }
 
 /// Coordinates per-target relay workers.
@@ -669,11 +733,18 @@ impl RelayPublisher {
         let client = RelayClient::new(DEFAULT_REQUEST_TIMEOUT)?;
         let mut senders = HashMap::new();
         let fatal = Arc::new(Mutex::new(None));
-        let display = start_display_worker(config, &client, initial_backoff, max_backoff);
-
+        // The display worker sends a payload image to the payload worker of
+        // its target (ADR 0034), so the payload channels exist first.
+        let mut receivers = Vec::new();
         for target in &config.targets {
-            let relay_target = RelayTarget::from_config(&config.endpoint, target);
             let (sender, receiver) = mpsc::channel();
+            senders.insert(target.event_id.clone(), sender);
+            receivers.push((target, receiver));
+        }
+        let display = start_display_worker(config, &client, &senders, initial_backoff, max_backoff);
+
+        for (target, receiver) in receivers {
+            let relay_target = RelayTarget::from_config(&config.endpoint, target);
             // Only a target with a display path tells the display worker
             // about a republish after a keepalive `409`.
             let display = display
@@ -702,7 +773,6 @@ impl RelayPublisher {
                     }
                 })
                 .context("spawn relay publish worker")?;
-            senders.insert(target.event_id.clone(), sender);
         }
 
         Ok(Self {
@@ -802,6 +872,14 @@ impl RelayPublisher {
         sender
             .send(WorkerCommand::Producer(state))
             .map_err(|_| anyhow!("relay publish worker for event_id {event_id} stopped"))
+    }
+}
+
+impl Drop for RelayPublisher {
+    fn drop(&mut self) {
+        if let Some(display) = self.display.as_ref() {
+            let _ignored = display.send(DisplayCommand::Stop);
+        }
     }
 }
 
@@ -940,6 +1018,13 @@ fn run_publish(
                     Ok(WorkerCommand::Producer(state)) => {
                         *producer_state = state;
                     }
+                    // The payload of this play is not accepted yet, so the
+                    // image goes into the next attempt (ADR 0034).
+                    Ok(WorkerCommand::PayloadImage { play_id, image }) => {
+                        if second_send_applies(&payload, &play_id, None) {
+                            payload.image = Some(image);
+                        }
+                    }
                     Err(mpsc::RecvTimeoutError::Timeout) => {
                         backoff = next_backoff(backoff, ctx.max_backoff);
                     }
@@ -1041,6 +1126,7 @@ fn run_keepalive(
     ctx: &WorkerContext<'_>,
     producer_state: &mut ProducerState,
     last_accepted: Option<&LiveValuePayload>,
+    waiting: &mut VecDeque<WorkerCommand>,
 ) -> KeepaliveAttempt {
     let target = ctx.target;
     let mut backoff = ctx.initial_backoff;
@@ -1159,6 +1245,11 @@ fn run_keepalive(
                         }
                         backoff = next_backoff(backoff, ctx.max_backoff);
                     }
+                    // The worker loop handles the image after the keepalive
+                    // (ADR 0034 §The Second Send).
+                    Ok(command @ WorkerCommand::PayloadImage { .. }) => {
+                        waiting.push_back(command);
+                    }
                     Err(mpsc::RecvTimeoutError::Timeout) => {
                         backoff = next_backoff(backoff, ctx.max_backoff);
                     }
@@ -1185,7 +1276,7 @@ fn republish_last_accepted(
     reason: &'static str,
 ) -> KeepaliveAttempt {
     let target = ctx.target;
-    let Some(payload) = last_accepted.cloned() else {
+    let Some(mut payload) = last_accepted.cloned() else {
         tracing::warn!(
             target = %target.name,
             event_id = %target.event_id,
@@ -1201,6 +1292,17 @@ fn republish_last_accepted(
         reason,
         "republishing the last accepted payload"
     );
+    // A lease end, or a foreign block, removed the images of the event in
+    // the relay. The relay URL names an image that the relay no longer
+    // holds, until the display resend uploads it again (ADR 0034 §The
+    // Second Send).
+    if payload
+        .image
+        .as_deref()
+        .is_some_and(|image| is_relay_copy(target, image))
+    {
+        payload.image = None;
+    }
     match run_publish(ctx, payload, producer_state) {
         PublishAttempt::Accepted {
             payload,
@@ -1282,65 +1384,131 @@ fn publish_worker(inputs: PublishWorkerInputs, fatal: &Mutex<Option<String>>) {
     // safe default until that first command arrives: it holds off any
     // keepalive rather than send one with no producer confirmed live.
     let mut producer_state = ProducerState::Missing;
+    // The play of the last second send (ADR 0034 §The Second Send).
+    let mut image_sent_for: Option<String> = None;
+    // Commands that the second send check took from the channel. They go
+    // before the channel, in their order.
+    let mut waiting: VecDeque<WorkerCommand> = VecDeque::new();
 
     loop {
         // A new payload always goes before a keepalive: waiting here with
         // `recv_timeout` lets a `Publish` or `Producer` command preempt the
         // keepalive deadline, and handling it resets that deadline, because
         // a publish renews the lease on its own.
-        let command = match keepalive_wait(keepalive_interval, producer_state) {
-            Some(wait) => match receiver.recv_timeout(wait) {
-                Ok(command) => command,
-                Err(mpsc::RecvTimeoutError::Timeout) => {
-                    match run_keepalive(&ctx, &mut producer_state, last_accepted.as_ref()) {
-                        KeepaliveAttempt::Renewed { interval } => {
-                            keepalive_interval = interval;
+        let command = if let Some(command) = waiting.pop_front() {
+            command
+        } else {
+            match keepalive_wait(keepalive_interval, producer_state) {
+                Some(wait) => match receiver.recv_timeout(wait) {
+                    Ok(command) => command,
+                    Err(mpsc::RecvTimeoutError::Timeout) => {
+                        match run_keepalive(
+                            &ctx,
+                            &mut producer_state,
+                            last_accepted.as_ref(),
+                            &mut waiting,
+                        ) {
+                            KeepaliveAttempt::Renewed { interval } => {
+                                keepalive_interval = interval;
+                            }
+                            KeepaliveAttempt::Republished { payload, interval } => {
+                                // A republish with no relay URL lets the
+                                // display resend give a new second send.
+                                if payload.image.is_none()
+                                    && payload.play_id.is_some()
+                                    && payload.play_id == image_sent_for
+                                {
+                                    image_sent_for = None;
+                                }
+                                last_accepted = Some(*payload);
+                                keepalive_interval = interval;
+                            }
+                            KeepaliveAttempt::Idle => {
+                                keepalive_interval = None;
+                            }
+                            KeepaliveAttempt::Paused => {}
+                            KeepaliveAttempt::Stop => return,
                         }
-                        KeepaliveAttempt::Republished { payload, interval } => {
-                            last_accepted = Some(*payload);
-                            keepalive_interval = interval;
-                        }
-                        KeepaliveAttempt::Idle => {
-                            keepalive_interval = None;
-                        }
-                        KeepaliveAttempt::Paused => {}
-                        KeepaliveAttempt::Stop => return,
+                        continue;
                     }
-                    continue;
-                }
-                Err(mpsc::RecvTimeoutError::Disconnected) => return,
-            },
-            None => match receiver.recv() {
-                Ok(command) => command,
-                Err(_) => return,
-            },
+                    Err(mpsc::RecvTimeoutError::Disconnected) => return,
+                },
+                None => match receiver.recv() {
+                    Ok(command) => command,
+                    Err(_) => return,
+                },
+            }
         };
 
-        match command {
-            WorkerCommand::Producer(state) => producer_state = state,
-            WorkerCommand::Publish(payload) => {
-                match run_publish(&ctx, *payload, &mut producer_state) {
+        let attempt = match command {
+            WorkerCommand::Producer(state) => {
+                producer_state = state;
+                continue;
+            }
+            WorkerCommand::Publish(payload) => run_publish(&ctx, *payload, &mut producer_state),
+            WorkerCommand::PayloadImage { play_id, image } => {
+                // Only while this play is the newest payload of the target:
+                // a newer payload in the channel cancels the second send.
+                while let Ok(command) = receiver.try_recv() {
+                    waiting.push_back(command);
+                }
+                let newer = waiting
+                    .iter()
+                    .any(|command| matches!(command, WorkerCommand::Publish(_)));
+                let Some(last) = last_accepted.as_ref().filter(|last| {
+                    !newer && second_send_applies(last, &play_id, image_sent_for.as_deref())
+                }) else {
+                    continue;
+                };
+                tracing::info!(
+                    target = %target.name,
+                    event_id = %target.event_id,
+                    %play_id,
+                    "sending the payload of this play again with its image"
+                );
+                let mut second = last.clone();
+                second.image = Some(image);
+                // The second send adds no show log line (ADR 0034). The
+                // accepted payload gets its facts back for a republish.
+                let facts = second.log.take();
+                image_sent_for = Some(play_id);
+                match run_publish(&ctx, second, &mut producer_state) {
                     PublishAttempt::Accepted {
-                        payload,
-                        keepalive_interval: interval,
+                        mut payload,
+                        keepalive_interval,
                     } => {
-                        // Notify the display worker about the new payload's pairing info
-                        // so it can pair display states with their payloads (ADR 0012).
-                        if let Some(display) = ctx.display {
-                            let _ignored = display.send(DisplayCommand::UpdatePayloadPairing {
-                                event_id: target.event_id.clone(),
-                                play_id: payload.play_id.clone(),
-                                event_guid: payload.event_guid.clone(),
-                                block_guid: payload.block_guid.clone(),
-                            });
+                        if payload.log.is_none() && payload.play_id == last.play_id {
+                            payload.log = facts;
                         }
-                        last_accepted = Some(*payload);
-                        keepalive_interval = interval;
+                        PublishAttempt::Accepted {
+                            payload,
+                            keepalive_interval,
+                        }
                     }
-                    PublishAttempt::Dropped => {}
-                    PublishAttempt::Stop => return,
+                    other => other,
                 }
             }
+        };
+        match attempt {
+            PublishAttempt::Accepted {
+                payload,
+                keepalive_interval: interval,
+            } => {
+                // Notify the display worker about the new payload's pairing info
+                // so it can pair display states with their payloads (ADR 0012).
+                if let Some(display) = ctx.display {
+                    let _ignored = display.send(DisplayCommand::UpdatePayloadPairing {
+                        event_id: target.event_id.clone(),
+                        play_id: payload.play_id.clone(),
+                        event_guid: payload.event_guid.clone(),
+                        block_guid: payload.block_guid.clone(),
+                    });
+                }
+                last_accepted = Some(*payload);
+                keepalive_interval = interval;
+            }
+            PublishAttempt::Dropped => {}
+            PublishAttempt::Stop => return,
         }
     }
 }
@@ -1352,6 +1520,7 @@ fn publish_worker(inputs: PublishWorkerInputs, fatal: &Mutex<Option<String>>) {
 fn start_display_worker(
     config: &PublisherConfig,
     client: &RelayClient,
+    payload_senders: &HashMap<String, mpsc::Sender<WorkerCommand>>,
     initial_backoff: Duration,
     max_backoff: Duration,
 ) -> Option<mpsc::Sender<DisplayCommand>> {
@@ -1364,6 +1533,7 @@ fn start_display_worker(
                 target.event_id.clone(),
                 DisplaySlot::new(
                     RelayTarget::from_config(&config.endpoint, target),
+                    payload_senders.get(&target.event_id).cloned(),
                     initial_backoff,
                 ),
             )
@@ -1415,10 +1585,17 @@ struct DisplaySlot {
     /// The pairing of the newest track payload (ADR 0012): play_id, event_guid,
     /// and block_guid. None for dead blocks or tracks with no drop file.
     current_pairing: Option<Pairing>,
+    /// The payload worker of this target. It gets the image of each
+    /// accepted display state (ADR 0034 §The Second Send).
+    payload: Option<mpsc::Sender<WorkerCommand>>,
 }
 
 impl DisplaySlot {
-    fn new(target: RelayTarget, initial_backoff: Duration) -> Self {
+    fn new(
+        target: RelayTarget,
+        payload: Option<mpsc::Sender<WorkerCommand>>,
+        initial_backoff: Duration,
+    ) -> Self {
         Self {
             target,
             pending: None,
@@ -1429,6 +1606,7 @@ impl DisplaySlot {
             backoff: initial_backoff,
             retry_at: None,
             current_pairing: None,
+            payload,
         }
     }
 
@@ -1439,7 +1617,9 @@ impl DisplaySlot {
 
 /// How one display attempt ended.
 enum DisplayStep {
-    Done,
+    /// The relay accepted this state. It has an embedded image only when
+    /// the relay also accepted the upload of that image.
+    Done(DisplayState),
     Retry(String),
     Disable(String),
     Drop(String),
@@ -1463,6 +1643,7 @@ impl DisplayWorker {
             // the latest state of its target.
             loop {
                 match receiver.try_recv() {
+                    Ok(DisplayCommand::Stop) => return,
                     Ok(command) => self.apply(command),
                     Err(mpsc::TryRecvError::Empty) => break,
                     Err(mpsc::TryRecvError::Disconnected) => return,
@@ -1488,13 +1669,14 @@ impl DisplayWorker {
                 .min();
             let command = match next_retry {
                 Some(at) => match receiver.recv_timeout(at.saturating_duration_since(now)) {
+                    Ok(DisplayCommand::Stop) => return,
                     Ok(command) => command,
                     Err(mpsc::RecvTimeoutError::Timeout) => continue,
                     Err(mpsc::RecvTimeoutError::Disconnected) => return,
                 },
                 None => match receiver.recv() {
+                    Ok(DisplayCommand::Stop) | Err(_) => return,
                     Ok(command) => command,
-                    Err(_) => return,
                 },
             };
             self.apply(command);
@@ -1503,6 +1685,8 @@ impl DisplayWorker {
 
     fn apply(&mut self, command: DisplayCommand) {
         match command {
+            // `run` returns at `Stop` before it calls `apply`.
+            DisplayCommand::Stop => {}
             DisplayCommand::Publish(entry) => {
                 let Some(slot) = self.slots.get_mut(&entry.event_id) else {
                     tracing::warn!(
@@ -1590,12 +1774,19 @@ impl DisplayWorker {
         };
         let target = slot.target.clone();
         match send_display(&self.client, slot, &state) {
-            DisplayStep::Done => {
+            DisplayStep::Done(sent) => {
                 tracing::info!(
                     target = %target.name,
                     event_id = %target.event_id,
                     "published display state"
                 );
+                // ADR 0034: the payload worker decides if the play gets a
+                // second send. The send never blocks.
+                if let Some(payload) = slot.payload.as_ref()
+                    && let Some((play_id, image)) = payload_image(&target, &sent)
+                {
+                    let _ignored = payload.send(WorkerCommand::PayloadImage { play_id, image });
+                }
                 slot.pending = None;
                 slot.last_sent = Some(state);
                 slot.retry_at = None;
@@ -1679,7 +1870,7 @@ fn send_display(client: &RelayClient, slot: &mut DisplaySlot, state: &DisplaySta
                     .current_pairing
                     .as_ref()
                     .is_some_and(|pairing| state.pairs_with(pairing));
-                return DisplayStep::Done;
+                return DisplayStep::Done(state);
             }
             Ok(DisplayOutcome::ArtworkMissing) => {
                 let Some(image) = state.image() else {

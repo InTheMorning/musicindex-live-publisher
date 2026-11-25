@@ -236,7 +236,8 @@ pub fn payload_from_dropfile(
 
     LiveValuePayload {
         title: track_payload_title(&dropfile.artist, &dropfile.title),
-        image: dropfile.image.clone(),
+        // ADR 0034 rule 1: an empty `image` is no image.
+        image: dropfile.image.clone().filter(|image| !image.is_empty()),
         description: String::new(),
         kind: "music".to_owned(),
         start_time: 0,
@@ -443,6 +444,14 @@ mod tests {
         assert_eq!(split, "90");
         assert!(!split.is_number());
         Ok(())
+    }
+
+    #[test]
+    fn an_empty_drop_file_image_gives_no_payload_image() {
+        let mut track = dropfile();
+        track.image = Some(String::new());
+        let payload = payload_from_dropfile(&track, "event", "block");
+        assert_eq!(payload.image, None);
     }
 
     #[test]

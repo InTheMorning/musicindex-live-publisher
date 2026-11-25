@@ -70,6 +70,8 @@ same play can arrive later.
 - The publisher makes the second send one time for each play, and only while that play is the newest payload of the
   target.
 - The second send adds no line to the show log (ADR 0017). The show log keeps the reference to the art.
+- A lease end, or a foreign block, removes the images of the event in the relay. The republish of the last payload
+  then has no relay URL. When the display resend uploads the picture again, the play gets one more second send.
 
 ### The Relay Retention
 
@@ -108,7 +110,11 @@ These rules apply while this decision is current.
 
 ## Verification After Implementation
 
-Mechanical:
+Mechanical. The tests are in the section "The payload image" at the end of `tests/display.rs`.
+
+A payload image that arrives while the payload of the same play waits for a retry goes into that retry. A payload image
+that arrives during a keepalive retry goes out after that retry. A payload that the main loop sends after the worker
+examines its channel goes out immediately after the second send. The publisher cannot prevent this sequence.
 
 - A test for each rule of §The Payload Image Sequence: a drop file URL wins, a display URL, a relay copy, and no
   image.
@@ -117,6 +123,7 @@ Mechanical:
 - A test that the second send keeps `eventGuid`, `blockGuid` and `value`, and that it occurs one time for each play.
 - A test that the second send does not occur when a newer payload of the target exists.
 - A test that the second send adds no show log line.
+- A test that a republish after a lease end has no relay URL, and that a new second send follows the new upload.
 - A test that the relay URL is the top-level `image` of the payload, in the form of relay ADR 0011. No text follows
   the hash. If `image` moves, the relay stops the retention, and no relay test finds it.
 
