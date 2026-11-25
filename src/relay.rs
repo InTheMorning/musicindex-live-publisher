@@ -28,6 +28,9 @@ pub const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 pub const DEFAULT_INITIAL_BACKOFF: Duration = Duration::from_millis(250);
 /// Maximum retry delay after repeated relay failures.
 pub const DEFAULT_MAX_BACKOFF: Duration = Duration::from_secs(30);
+/// The longest time that the first send of a play waits for the picture of
+/// that play (ADR 0034 §The First Send Waits For The Picture).
+pub const PAYLOAD_IMAGE_WAIT: Duration = Duration::from_secs(2);
 
 /// A configured relay publish target.
 #[derive(Clone, PartialEq)]
@@ -551,10 +554,15 @@ enum WorkerCommand {
     Publish(Box<LiveValuePayload>),
     /// A producer liveness change.
     Producer(ProducerState),
-    /// The display worker has an image URL for one play (ADR 0034
-    /// §The Payload Image Sequence, rules 2 and 3). The payload worker
-    /// sends the payload of that play one more time with this `image`.
-    PayloadImage { play_id: String, image: String },
+    /// The display worker ended its work on the display state of one play
+    /// (ADR 0034). `image` is the URL of rule 2 or rule 3 of §The Payload
+    /// Image Sequence, or `None` when the play has no such image. A payload
+    /// that waits for this play goes out now. With an image, a payload that
+    /// went out with no image gets a second send.
+    PayloadImage {
+        play_id: String,
+        image: Option<String>,
+    },
 }
 
 /// Gives the payload image of a display state that the relay accepted
@@ -564,16 +572,17 @@ enum WorkerCommand {
 /// URL. Rule 3 is the relay URL of the embedded image. `send_display` only
 /// returns a state with an embedded image after the relay accepted its
 /// upload. The relay URL is the form that relay ADR 0011 requires: no text
-/// follows the hash. A state with no `play_id` gives no image.
-fn payload_image(target: &RelayTarget, state: &DisplayState) -> Option<(String, String)> {
+/// follows the hash. A state with no `play_id` gives `None`. A state of a
+/// play with no such image gives the play with no image.
+fn payload_image(target: &RelayTarget, state: &DisplayState) -> Option<(String, Option<String>)> {
     let track = state.track.as_ref()?;
     let play_id = track.play_id.clone()?;
-    let image = match track.artwork.as_ref()? {
-        Artwork::Url(url) => reqwest::Url::parse(url)
+    let image = match track.artwork.as_ref() {
+        Some(Artwork::Url(url)) => reqwest::Url::parse(url)
             .ok()
             .filter(|parsed| matches!(parsed.scheme(), "http" | "https"))
-            .map(|_| url.clone())?,
-        Artwork::Image(image) => build_url(
+            .map(|_| url.clone()),
+        Some(Artwork::Image(image)) => build_url(
             &target.endpoint,
             &[
                 "v1",
@@ -583,10 +592,35 @@ fn payload_image(target: &RelayTarget, state: &DisplayState) -> Option<(String, 
                 image.sha256(),
             ],
         )
-        .ok()?
-        .to_string(),
+        .ok()
+        .map(|url| url.to_string()),
+        None => None,
     };
     Some((play_id, image))
+}
+
+/// Tells the payload worker of `slot` that the display worker ended its
+/// work on `state` (ADR 0034). The send never blocks.
+fn release_play(slot: &DisplaySlot, state: &DisplayState, image: Option<String>) {
+    let Some(payload) = slot.payload.as_ref() else {
+        return;
+    };
+    let Some(play_id) = state.track.as_ref().and_then(|track| track.play_id.clone()) else {
+        return;
+    };
+    let _ignored = payload.send(WorkerCommand::PayloadImage { play_id, image });
+}
+
+/// Tells if the first send of `payload` waits for the picture of its play
+/// (ADR 0034 §The First Send Waits For The Picture).
+///
+/// Only a track payload with no drop file image waits, and only on a
+/// target with a display path. The dead block never waits.
+fn first_send_waits(payload: &LiveValuePayload, has_display: bool) -> bool {
+    has_display
+        && payload.play_id.is_some()
+        && payload.image.is_none()
+        && !is_dead_block(&payload.value)
 }
 
 /// Tells if `image` is a relay URL of the event of `target` (ADR 0034
@@ -730,6 +764,30 @@ impl RelayPublisher {
         max_backoff: Duration,
         show_log: Option<Arc<ShowLog>>,
     ) -> Result<Self> {
+        Self::start_with_payload_image_wait(
+            config,
+            initial_backoff,
+            max_backoff,
+            show_log,
+            PAYLOAD_IMAGE_WAIT,
+        )
+    }
+
+    /// Starts relay workers with a show log and an explicit longest wait of
+    /// the first send for the picture of its play (ADR 0034 §The First Send
+    /// Waits For The Picture). The service uses [`PAYLOAD_IMAGE_WAIT`]. A
+    /// test uses a shorter wait.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the relay HTTP client cannot be initialized.
+    pub fn start_with_payload_image_wait(
+        config: &PublisherConfig,
+        initial_backoff: Duration,
+        max_backoff: Duration,
+        show_log: Option<Arc<ShowLog>>,
+        image_wait: Duration,
+    ) -> Result<Self> {
         let client = RelayClient::new(DEFAULT_REQUEST_TIMEOUT)?;
         let mut senders = HashMap::new();
         let fatal = Arc::new(Mutex::new(None));
@@ -767,6 +825,7 @@ impl RelayPublisher {
                                 max_backoff,
                                 display,
                                 show_log,
+                                image_wait,
                             },
                             &fatal,
                         )
@@ -901,6 +960,9 @@ struct WorkerContext<'a> {
     /// The show log of this worker's instance, when the service runs with
     /// `--state-dir` (ADR 0017, show log task 002). `None` writes no entry.
     show_log: Option<&'a ShowLog>,
+    /// The longest wait of a first send for the picture of its play
+    /// (ADR 0034 §The First Send Waits For The Picture).
+    image_wait: Duration,
 }
 
 /// Outcome of retrying one payload until it settles.
@@ -1020,11 +1082,15 @@ fn run_publish(
                     }
                     // The payload of this play is not accepted yet, so the
                     // image goes into the next attempt (ADR 0034).
-                    Ok(WorkerCommand::PayloadImage { play_id, image }) => {
+                    Ok(WorkerCommand::PayloadImage {
+                        play_id,
+                        image: Some(image),
+                    }) => {
                         if second_send_applies(&payload, &play_id, None) {
                             payload.image = Some(image);
                         }
                     }
+                    Ok(WorkerCommand::PayloadImage { image: None, .. }) => {}
                     Err(mpsc::RecvTimeoutError::Timeout) => {
                         backoff = next_backoff(backoff, ctx.max_backoff);
                     }
@@ -1355,6 +1421,77 @@ struct PublishWorkerInputs {
     max_backoff: Duration,
     display: Option<mpsc::Sender<DisplayCommand>>,
     show_log: Option<Arc<ShowLog>>,
+    image_wait: Duration,
+}
+
+/// Holds the first send of `payload` until the display worker releases its
+/// play, for at most `ctx.image_wait` (ADR 0034 §The First Send Waits For
+/// The Picture). Gives the payload to send, with the image of rule 2 or
+/// rule 3 when the release had one. Gives `None` when the channel closed.
+///
+/// - A payload that does not wait goes out at once.
+/// - A release of this play that came before the payload gives its image at
+///   once.
+/// - A newer `Publish` replaces the held payload, as a newer payload
+///   replaces a payload in a retry. The newer payload gets its own wait.
+/// - At the end of the wait, the payload goes out with no image. The second
+///   send then gives the image.
+fn wait_for_image(
+    ctx: &WorkerContext<'_>,
+    mut payload: LiveValuePayload,
+    producer_state: &mut ProducerState,
+    waiting: &mut VecDeque<WorkerCommand>,
+    released: &mut Option<(String, Option<String>)>,
+) -> Option<LiveValuePayload> {
+    let has_display = ctx.display.is_some();
+    'payload: loop {
+        if !first_send_waits(&payload, has_display) {
+            return Some(payload);
+        }
+        if let Some((play_id, image)) = released.as_ref()
+            && payload.play_id.as_deref() == Some(play_id.as_str())
+        {
+            payload.image.clone_from(image);
+            return Some(payload);
+        }
+        let deadline = Instant::now() + ctx.image_wait;
+        loop {
+            let command = if let Some(command) = waiting.pop_front() {
+                command
+            } else {
+                match ctx
+                    .receiver
+                    .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+                {
+                    Ok(command) => command,
+                    Err(mpsc::RecvTimeoutError::Timeout) => {
+                        tracing::info!(
+                            target = %ctx.target.name,
+                            event_id = %ctx.target.event_id,
+                            wait_ms = ctx.image_wait.as_millis(),
+                            "the picture of this play is not ready; sending the payload with no image"
+                        );
+                        return Some(payload);
+                    }
+                    Err(mpsc::RecvTimeoutError::Disconnected) => return None,
+                }
+            };
+            match command {
+                WorkerCommand::Publish(newer) => {
+                    payload = *newer;
+                    continue 'payload;
+                }
+                WorkerCommand::Producer(state) => *producer_state = state,
+                WorkerCommand::PayloadImage { play_id, image } => {
+                    let this_play = payload.play_id.as_deref() == Some(play_id.as_str());
+                    *released = Some((play_id, image));
+                    if this_play {
+                        continue 'payload;
+                    }
+                }
+            }
+        }
+    }
 }
 
 fn publish_worker(inputs: PublishWorkerInputs, fatal: &Mutex<Option<String>>) {
@@ -1366,6 +1503,7 @@ fn publish_worker(inputs: PublishWorkerInputs, fatal: &Mutex<Option<String>>) {
         max_backoff,
         display,
         show_log,
+        image_wait,
     } = inputs;
     let ctx = WorkerContext {
         client: &client,
@@ -1376,6 +1514,7 @@ fn publish_worker(inputs: PublishWorkerInputs, fatal: &Mutex<Option<String>>) {
         fatal,
         display: display.as_ref(),
         show_log: show_log.as_deref(),
+        image_wait,
     };
     let mut last_accepted: Option<LiveValuePayload> = None;
     let mut keepalive_interval: Option<Duration> = None;
@@ -1389,6 +1528,9 @@ fn publish_worker(inputs: PublishWorkerInputs, fatal: &Mutex<Option<String>>) {
     // Commands that the second send check took from the channel. They go
     // before the channel, in their order.
     let mut waiting: VecDeque<WorkerCommand> = VecDeque::new();
+    // The latest play that the display worker released, with its image
+    // (ADR 0034). A display state can end before its payload arrives.
+    let mut released: Option<(String, Option<String>)> = None;
 
     loop {
         // A new payload always goes before a keepalive: waiting here with
@@ -1445,8 +1587,28 @@ fn publish_worker(inputs: PublishWorkerInputs, fatal: &Mutex<Option<String>>) {
                 producer_state = state;
                 continue;
             }
-            WorkerCommand::Publish(payload) => run_publish(&ctx, *payload, &mut producer_state),
+            WorkerCommand::Publish(payload) => {
+                let Some(payload) = wait_for_image(
+                    &ctx,
+                    *payload,
+                    &mut producer_state,
+                    &mut waiting,
+                    &mut released,
+                ) else {
+                    return;
+                };
+                if payload.image.is_some() && payload.play_id.is_some() {
+                    // The first send has the image of its play. The play
+                    // gets no second send.
+                    image_sent_for.clone_from(&payload.play_id);
+                }
+                run_publish(&ctx, payload, &mut producer_state)
+            }
             WorkerCommand::PayloadImage { play_id, image } => {
+                released = Some((play_id.clone(), image.clone()));
+                let Some(image) = image else {
+                    continue;
+                };
                 // Only while this play is the newest payload of the target:
                 // a newer payload in the channel cancels the second send.
                 while let Ok(command) = receiver.try_recv() {
@@ -1700,6 +1862,7 @@ impl DisplayWorker {
                         target = %slot.target.name,
                         "display path is off; dropping the display state"
                     );
+                    release_play(slot, &entry.state, None);
                     return;
                 }
                 // Only the latest state waits. A retry time stays, so a new
@@ -1780,12 +1943,10 @@ impl DisplayWorker {
                     event_id = %target.event_id,
                     "published display state"
                 );
-                // ADR 0034: the payload worker decides if the play gets a
-                // second send. The send never blocks.
-                if let Some(payload) = slot.payload.as_ref()
-                    && let Some((play_id, image)) = payload_image(&target, &sent)
-                {
-                    let _ignored = payload.send(WorkerCommand::PayloadImage { play_id, image });
+                // ADR 0034: a payload that waits for this play goes out, and
+                // the payload worker decides if the play gets a second send.
+                if let Some((_, image)) = payload_image(&target, &sent) {
+                    release_play(slot, &sent, image);
                 }
                 slot.pending = None;
                 slot.last_sent = Some(state);
@@ -1811,6 +1972,7 @@ impl DisplayWorker {
                     %reason,
                     "the relay has no display path for this event; display path off until the next start"
                 );
+                release_play(slot, &state, None);
                 slot.disabled = true;
                 slot.pending = None;
                 slot.retry_at = None;
@@ -1822,6 +1984,7 @@ impl DisplayWorker {
                     %reason,
                     "relay refused the display state; dropping it"
                 );
+                release_play(slot, &state, None);
                 slot.pending = None;
                 slot.retry_at = None;
                 slot.backoff = initial_backoff;

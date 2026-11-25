@@ -395,11 +395,16 @@ fn display_config(endpoint: &str) -> PublisherConfig {
     }
 }
 
+/// Starts a publisher with a short wait of the first send for the picture
+/// (ADR 0034 §The First Send Waits For The Picture), so that a payload with
+/// no picture goes out soon.
 fn start(stub: &Stub) -> Result<RelayPublisher> {
-    RelayPublisher::start_with_backoff(
+    RelayPublisher::start_with_payload_image_wait(
         &display_config(&stub.endpoint),
         Duration::from_millis(20),
         Duration::from_millis(80),
+        None,
+        Duration::from_millis(300),
     )
 }
 
@@ -1840,8 +1845,25 @@ fn a_display_state_with_no_album_goes_out_with_no_album_key() -> Result<()> {
 
 // The payload image (ADR 0034 §Verification After Implementation).
 
+/// The longest wait of the first send in the tests of [`waiting_start`].
+/// It is longer than [`WAIT`], so a payload that falls back to the timeout
+/// makes the test fail.
+const LONG_IMAGE_WAIT: Duration = Duration::from_secs(5);
+
+/// Starts a publisher whose first send waits [`LONG_IMAGE_WAIT`] for the
+/// picture of its play.
+fn waiting_start(stub: &Stub) -> Result<RelayPublisher> {
+    RelayPublisher::start_with_payload_image_wait(
+        &display_config(&stub.endpoint),
+        Duration::from_millis(20),
+        Duration::from_millis(80),
+        None,
+        LONG_IMAGE_WAIT,
+    )
+}
+
 /// A payable payload of one play. A payload with no destination is a dead
-/// block, and a dead block never gets a second send.
+/// block, and a dead block never waits and never gets a second send.
 fn payable_payload(play_id: &str, block_guid: &str) -> LiveValuePayload {
     let mut payload = paired_payload(play_id, block_guid);
     payload.value.destinations = vec![LiveValueDestination {
@@ -1856,24 +1878,29 @@ fn payable_payload(play_id: &str, block_guid: &str) -> LiveValuePayload {
     payload
 }
 
-/// Publishes the payload of `play-1`, then its display state, and waits
-/// until the stub is quiet. Gives the metadata bodies.
-fn payload_then_display(
+fn metadata_bodies(stub: &Stub) -> Vec<Value> {
+    stub.of(Route::Metadata)
+        .iter()
+        .map(Recorded::json)
+        .collect()
+}
+
+/// Publishes the payload of `play-1` and its display state at the same
+/// time, as the watcher does, and waits until the stub is quiet. Gives the
+/// metadata bodies.
+fn payload_with_display(
     stub: &Stub,
     publisher: &RelayPublisher,
     payload: LiveValuePayload,
     artwork: Option<Artwork>,
 ) -> Result<Vec<Value>> {
+    let block_guid = payload.block_guid.clone();
     publisher.publish(payload)?;
-    stub.wait_for(Route::Metadata, 1)?;
     publisher.publish_display(entry(paired_track("Artist - Track", "play-1", artwork)));
-    stub.wait_for(Route::Display, 1)?;
+    stub.wait_for(Route::Metadata, 1)?;
+    wait_for_paired_display(stub, &block_guid)?;
     stub.expect_quiet(Duration::from_millis(300))?;
-    Ok(stub
-        .of(Route::Metadata)
-        .iter()
-        .map(Recorded::json)
-        .collect())
+    Ok(metadata_bodies(stub))
 }
 
 fn relay_image_url(endpoint: &str, image: &ArtworkImage) -> String {
@@ -1884,24 +1911,26 @@ fn relay_image_url(endpoint: &str, image: &ArtworkImage) -> String {
 }
 
 #[test]
-fn a_relay_copy_gives_a_second_send_with_the_relay_url() -> Result<()> {
+fn the_first_send_waits_for_the_upload_and_names_the_relay_url() -> Result<()> {
     let stub = Stub::start(Vec::new(), false)?;
-    let publisher = start(&stub)?;
+    let publisher = waiting_start(&stub)?;
     let image = jpeg("cover");
 
-    let sent = payload_then_display(
+    let sent = payload_with_display(
         &stub,
         &publisher,
         payable_payload("play-1", "block-1"),
         Some(Artwork::Image(image.clone())),
     )?;
 
-    assert_eq!(sent.len(), 2, "one second send: {sent:?}");
-    assert!(sent[0].get("image").is_none());
-    assert_eq!(sent[1]["image"], relay_image_url(&stub.endpoint, &image));
-    for key in ["eventGuid", "blockGuid", "value", "title"] {
-        assert_eq!(sent[0][key], sent[1][key], "{key}");
-    }
+    assert_eq!(sent.len(), 1, "no second send: {sent:?}");
+    assert_eq!(sent[0]["image"], relay_image_url(&stub.endpoint, &image));
+    let routes = stub.routes();
+    assert_eq!(
+        routes[..3],
+        [Route::Artwork, Route::Display, Route::Metadata],
+        "the payload goes after the display state: {routes:?}"
+    );
     Ok(())
 }
 
@@ -1910,19 +1939,19 @@ fn the_relay_url_is_the_top_level_image_in_the_form_of_relay_adr_0011() -> Resul
     // Relay ADR 0011 keeps an image only when the top-level `image` ends
     // with this path. If `image` moves, no relay test finds it.
     let stub = Stub::start(Vec::new(), false)?;
-    let publisher = start(&stub)?;
+    let publisher = waiting_start(&stub)?;
     let image = jpeg("cover");
 
-    let sent = payload_then_display(
+    let sent = payload_with_display(
         &stub,
         &publisher,
         payable_payload("play-1", "block-1"),
         Some(Artwork::Image(image.clone())),
     )?;
 
-    let url = sent[1]["image"]
+    let url = sent[0]["image"]
         .as_str()
-        .ok_or_else(|| anyhow!("no top-level image: {}", sent[1]))?;
+        .ok_or_else(|| anyhow!("no top-level image: {}", sent[0]))?;
     let suffix = format!("/v1/liveitems/event-guid/artwork/{}", image.sha256());
     assert!(url.ends_with(&suffix), "{url}");
     let hash = &url[url.len() - 64..];
@@ -1941,90 +1970,119 @@ fn an_upload_with_201_gives_the_relay_url() -> Result<()> {
         vec![(Route::Artwork, reply(201, json!({ "stored": true })))],
         false,
     )?;
-    let publisher = start(&stub)?;
+    let publisher = waiting_start(&stub)?;
     let image = jpeg("cover");
 
-    let sent = payload_then_display(
+    let sent = payload_with_display(
         &stub,
         &publisher,
         payable_payload("play-1", "block-1"),
         Some(Artwork::Image(image.clone())),
     )?;
 
-    assert_eq!(sent.len(), 2, "{sent:?}");
-    assert_eq!(sent[1]["image"], relay_image_url(&stub.endpoint, &image));
+    assert_eq!(sent.len(), 1, "{sent:?}");
+    assert_eq!(sent[0]["image"], relay_image_url(&stub.endpoint, &image));
     Ok(())
 }
 
 #[test]
-fn a_display_url_gives_a_second_send_with_that_url() -> Result<()> {
+fn a_display_url_goes_into_the_first_send() -> Result<()> {
     let stub = Stub::start(Vec::new(), false)?;
-    let publisher = start(&stub)?;
+    let publisher = waiting_start(&stub)?;
 
-    let sent = payload_then_display(
+    let sent = payload_with_display(
         &stub,
         &publisher,
         payable_payload("play-1", "block-1"),
         Some(Artwork::Url("https://img.example/a.jpg".to_owned())),
     )?;
 
-    assert_eq!(sent.len(), 2, "{sent:?}");
-    assert_eq!(sent[1]["image"], "https://img.example/a.jpg");
+    assert_eq!(sent.len(), 1, "{sent:?}");
+    assert_eq!(sent[0]["image"], "https://img.example/a.jpg");
     assert_eq!(stub.of(Route::Artwork).len(), 0);
     Ok(())
 }
 
 #[test]
-fn a_drop_file_image_wins_and_gives_no_second_send() -> Result<()> {
+fn a_drop_file_image_wins_and_does_not_wait() -> Result<()> {
     let stub = Stub::start(Vec::new(), false)?;
-    let publisher = start(&stub)?;
+    let publisher = waiting_start(&stub)?;
     let mut payload = payable_payload("play-1", "block-1");
     payload.image = Some("https://feed.example/art.png".to_owned());
 
-    let sent = payload_then_display(
-        &stub,
-        &publisher,
-        payload,
+    publisher.publish(payload)?;
+    stub.wait_for(Route::Metadata, 1)?;
+    assert_eq!(stub.of(Route::Display).len(), 0, "it did not wait");
+    publisher.publish_display(entry(paired_track(
+        "Artist - Track",
+        "play-1",
         Some(Artwork::Image(jpeg("cover"))),
-    )?;
+    )));
+    wait_for_paired_display(&stub, "block-1")?;
+    stub.expect_quiet(Duration::from_millis(300))?;
 
+    let sent = metadata_bodies(&stub);
     assert_eq!(sent.len(), 1, "{sent:?}");
     assert_eq!(sent[0]["image"], "https://feed.example/art.png");
     Ok(())
 }
 
 #[test]
-fn no_artwork_gives_no_image_and_no_second_send() -> Result<()> {
+fn a_dead_block_does_not_wait() -> Result<()> {
     let stub = Stub::start(Vec::new(), false)?;
-    let publisher = start(&stub)?;
+    let publisher = waiting_start(&stub)?;
 
-    let sent = payload_then_display(
+    publisher.publish(paired_payload("play-1", "block-1"))?;
+    stub.wait_for(Route::Metadata, 1)?;
+
+    assert_eq!(stub.of(Route::Display).len(), 0, "it did not wait");
+    Ok(())
+}
+
+#[test]
+fn no_artwork_releases_the_first_send_at_once() -> Result<()> {
+    let stub = Stub::start(Vec::new(), false)?;
+    let publisher = waiting_start(&stub)?;
+    let started = Instant::now();
+
+    let sent = payload_with_display(
         &stub,
         &publisher,
         payable_payload("play-1", "block-1"),
         None,
     )?;
 
+    assert!(
+        started.elapsed() < LONG_IMAGE_WAIT,
+        "the payload waited for the timeout"
+    );
     assert_eq!(sent.len(), 1, "{sent:?}");
     assert!(sent[0].get("image").is_none());
     Ok(())
 }
 
 #[test]
-fn a_refused_upload_gives_no_relay_url() -> Result<()> {
+fn a_refused_upload_releases_the_first_send_with_no_image() -> Result<()> {
+    // The relay refuses the same image each time. The paired display state
+    // sends the upload again.
     let stub = Stub::start(
-        vec![(Route::Artwork, error_reply(400, "invalid_artwork"))],
+        vec![(Route::Artwork, error_reply(400, "invalid_artwork")); 3],
         false,
     )?;
-    let publisher = start(&stub)?;
+    let publisher = waiting_start(&stub)?;
+    let started = Instant::now();
 
-    let sent = payload_then_display(
+    let sent = payload_with_display(
         &stub,
         &publisher,
         payable_payload("play-1", "block-1"),
         Some(Artwork::Image(jpeg("cover"))),
     )?;
 
+    assert!(
+        started.elapsed() < LONG_IMAGE_WAIT,
+        "the payload waited for the timeout"
+    );
     assert_eq!(sent.len(), 1, "{sent:?}");
     assert!(sent[0].get("image").is_none());
     let display = stub.of(Route::Display)[0].json();
@@ -2033,14 +2091,16 @@ fn a_refused_upload_gives_no_relay_url() -> Result<()> {
 }
 
 #[test]
-fn a_target_without_a_display_path_gives_no_relay_url() -> Result<()> {
+fn a_target_without_a_display_path_does_not_wait() -> Result<()> {
     let stub = Stub::start(Vec::new(), false)?;
     let mut config = display_config(&stub.endpoint);
     config.targets[0].display_dir = None;
-    let publisher = RelayPublisher::start_with_backoff(
+    let publisher = RelayPublisher::start_with_payload_image_wait(
         &config,
         Duration::from_millis(20),
         Duration::from_millis(80),
+        None,
+        LONG_IMAGE_WAIT,
     )?;
 
     publisher.publish(payable_payload("play-1", "block-1"))?;
@@ -2058,12 +2118,12 @@ fn a_target_without_a_display_path_gives_no_relay_url() -> Result<()> {
 }
 
 #[test]
-fn the_second_send_occurs_one_time_for_each_play() -> Result<()> {
+fn a_display_state_before_the_payload_gives_one_send_with_the_image() -> Result<()> {
     // The display state goes out before the payload, then one more time
     // with `value`. Each accepted display state names the image, but the
-    // play gets one second send only.
+    // play gets one send only.
     let stub = Stub::start(Vec::new(), false)?;
-    let publisher = start(&stub)?;
+    let publisher = waiting_start(&stub)?;
     let image = jpeg("cover");
     let state = paired_track(
         "Artist - Track",
@@ -2073,20 +2133,82 @@ fn the_second_send_occurs_one_time_for_each_play() -> Result<()> {
 
     publisher.publish_display(entry(state.clone()));
     stub.wait_for(Route::Display, 1)?;
+    // The stub records a request before it replies. This gives the display
+    // worker time to complete and release the play before the payload.
+    thread::sleep(Duration::from_millis(100));
+    let started = Instant::now();
     publisher.publish(payable_payload("play-1", "block-1"))?;
+    stub.wait_for(Route::Metadata, 1)?;
+    assert!(
+        started.elapsed() < Duration::from_secs(1),
+        "the payload waited after the release"
+    );
     wait_for_paired_display(&stub, "block-1")?;
     publisher.publish_display(entry(state));
     stub.wait_for(Route::Display, 3)?;
     stub.expect_quiet(Duration::from_millis(300))?;
 
-    let sent: Vec<Value> = stub
-        .of(Route::Metadata)
-        .iter()
-        .map(Recorded::json)
-        .collect();
-    assert_eq!(sent.len(), 2, "{sent:?}");
+    let sent = metadata_bodies(&stub);
+    assert_eq!(sent.len(), 1, "{sent:?}");
+    assert_eq!(sent[0]["image"], relay_image_url(&stub.endpoint, &image));
+    assert_eq!(sent[0]["blockGuid"], "block-1");
+    Ok(())
+}
+
+#[test]
+fn a_newer_payload_replaces_a_waiting_payload() -> Result<()> {
+    let stub = Stub::start(Vec::new(), false)?;
+    let publisher = waiting_start(&stub)?;
+
+    publisher.publish(payable_payload("play-1", "block-1"))?;
+    publisher.publish(payable_payload("play-2", "block-2"))?;
+    publisher.publish_display(entry(paired_track(
+        "Artist - Track",
+        "play-2",
+        Some(Artwork::Url("https://img.example/b.jpg".to_owned())),
+    )));
+    stub.wait_for(Route::Metadata, 1)?;
+    wait_for_paired_display(&stub, "block-2")?;
+    stub.expect_quiet(Duration::from_millis(300))?;
+
+    let sent = metadata_bodies(&stub);
+    assert_eq!(sent.len(), 1, "{sent:?}");
+    assert_eq!(sent[0]["blockGuid"], "block-2");
+    assert_eq!(sent[0]["image"], "https://img.example/b.jpg");
+    Ok(())
+}
+
+#[test]
+fn a_slow_upload_gives_a_first_send_with_no_image_and_a_second_send() -> Result<()> {
+    let stub = Stub::start(Vec::new(), true)?;
+    let publisher = start(&stub)?;
+    let image = jpeg("cover");
+
+    let started = Instant::now();
+    publisher.publish(payable_payload("play-1", "block-1"))?;
+    publisher.publish_display(entry(paired_track(
+        "Artist - Track",
+        "play-1",
+        Some(Artwork::Image(image.clone())),
+    )));
+    stub.wait_for(Route::Metadata, 1)?;
+    let waited = started.elapsed();
+    assert!(
+        waited >= Duration::from_millis(250) && waited < Duration::from_millis(1500),
+        "the first send goes at the end of the 300 ms wait: {waited:?}"
+    );
+    assert!(stub.of(Route::Metadata)[0].json().get("image").is_none());
+    stub.release();
+    stub.wait_for(Route::Metadata, 2)?;
+    wait_for_paired_display(&stub, "block-1")?;
+    stub.expect_quiet(Duration::from_millis(300))?;
+
+    let sent = metadata_bodies(&stub);
+    assert_eq!(sent.len(), 2, "one second send: {sent:?}");
     assert_eq!(sent[1]["image"], relay_image_url(&stub.endpoint, &image));
-    assert_eq!(sent[1]["blockGuid"], "block-1");
+    for key in ["eventGuid", "blockGuid", "value", "title"] {
+        assert_eq!(sent[0][key], sent[1][key], "{key}");
+    }
     Ok(())
 }
 
@@ -2096,6 +2218,7 @@ fn a_newer_payload_stops_the_second_send() -> Result<()> {
     let publisher = start(&stub)?;
 
     publisher.publish(payable_payload("play-1", "block-1"))?;
+    stub.wait_for(Route::Metadata, 1)?;
     publisher.publish(payable_payload("play-2", "block-2"))?;
     stub.wait_for(Route::Metadata, 2)?;
     publisher.publish_display(entry(paired_track(
@@ -2121,11 +2244,12 @@ fn the_second_send_adds_no_show_log_line() -> Result<()> {
     let state_dir = TempDir::new()?;
     let log_dir = state_dir.path().join("showlog");
     let log = Arc::new(ShowLog::open(&log_dir, 365)?);
-    let publisher = RelayPublisher::start_with_show_log(
+    let publisher = RelayPublisher::start_with_payload_image_wait(
         &display_config(&stub.endpoint),
         Duration::from_millis(20),
         Duration::from_millis(80),
         Some(log),
+        Duration::from_millis(100),
     )?;
     let mut payload = payable_payload("play-1", "block-1");
     let mut facts = LogFacts::clear(SystemTime::now());
@@ -2134,13 +2258,15 @@ fn the_second_send_adds_no_show_log_line() -> Result<()> {
     facts.play_id = Some("play-1".to_owned());
     payload.log = Some(facts);
 
-    let sent = payload_then_display(
-        &stub,
-        &publisher,
-        payload,
+    publisher.publish(payload)?;
+    stub.wait_for(Route::Metadata, 1)?;
+    publisher.publish_display(entry(paired_track(
+        "Artist - Track",
+        "play-1",
         Some(Artwork::Url("https://img.example/a.jpg".to_owned())),
-    )?;
-    assert_eq!(sent.len(), 2, "{sent:?}");
+    )));
+    stub.wait_for(Route::Metadata, 2)?;
+    stub.expect_quiet(Duration::from_millis(300))?;
 
     let mut lines = 0;
     for file in fs::read_dir(&log_dir)? {
@@ -2151,45 +2277,38 @@ fn the_second_send_adds_no_show_log_line() -> Result<()> {
 }
 
 #[test]
-fn after_a_keepalive_409_the_republish_has_no_relay_url_and_a_new_second_send_follows() -> Result<()>
-{
+fn after_a_keepalive_409_the_republish_has_no_relay_url_and_a_second_send_follows() -> Result<()> {
     // The lease end removed the images in the relay. The republish must not
     // name the deleted image. After the new upload, the play gets the relay
     // URL again.
     let stub = Stub::start(
         vec![
-            (Route::Metadata, accepted_with_interval(1, 60)),
-            (Route::Metadata, accepted_with_interval(2, 1)),
+            (Route::Metadata, accepted_with_interval(1, 1)),
             (Route::Keepalive, error_reply(409, "lease_expired")),
-            (Route::Metadata, accepted_with_interval(3, 60)),
+            (Route::Metadata, accepted_with_interval(2, 60)),
         ],
         false,
     )?;
-    let publisher = start(&stub)?;
+    let publisher = waiting_start(&stub)?;
     publisher.set_producer(ProducerState::Running);
     let image = jpeg("cover");
 
     publisher.publish(payable_payload("play-1", "block-1"))?;
-    stub.wait_for(Route::Metadata, 1)?;
     publisher.publish_display(entry(paired_track(
         "Artist - Track",
         "play-1",
         Some(Artwork::Image(image.clone())),
     )));
     stub.wait_for(Route::Keepalive, 1)?;
-    stub.wait_for(Route::Metadata, 4)?;
+    stub.wait_for(Route::Metadata, 3)?;
     stub.expect_quiet(Duration::from_millis(300))?;
 
-    let sent: Vec<Value> = stub
-        .of(Route::Metadata)
-        .iter()
-        .map(Recorded::json)
-        .collect();
+    let sent = metadata_bodies(&stub);
     let url = relay_image_url(&stub.endpoint, &image);
-    assert_eq!(sent.len(), 4, "{sent:?}");
-    assert_eq!(sent[1]["image"], url, "the second send");
-    assert!(sent[2].get("image").is_none(), "the republish: {}", sent[2]);
-    assert_eq!(sent[3]["image"], url, "the new second send");
+    assert_eq!(sent.len(), 3, "{sent:?}");
+    assert_eq!(sent[0]["image"], url, "the first send");
+    assert!(sent[1].get("image").is_none(), "the republish: {}", sent[1]);
+    assert_eq!(sent[2]["image"], url, "the new second send");
     assert!(sent.iter().all(|body| body["blockGuid"] == "block-1"));
     assert_eq!(stub.of(Route::Artwork).len(), 2);
     Ok(())

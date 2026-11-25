@@ -5,6 +5,7 @@ Date: 2026-10-06
 
 - Changes: ADR 0005 items: three rules of §Invariants.
 - Changes: ADR 0008 items: the stream delay invariant, the schedule rules in §The Publisher.
+- Changed by: ADR 0034
 
 Accepted 2026-10-06 by the operator, as written. Item 1 of §Before
 Acceptance is done: relay ADR 0004 is accepted. Items 2 and 3, the `v4vmm`

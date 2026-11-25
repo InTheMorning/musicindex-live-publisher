@@ -3,6 +3,8 @@
 - Status: Proposed
 - Date: 2026-11-25
 - Changes: ADR 0010, the item "`image` stays the artwork URL of the drop file".
+- Changes: ADR 0011 §Send At Once, item 1. A track block waits at most 2 seconds for the picture of its play
+  (§The First Send Waits For The Picture).
 - Uses: ADR 0008 §The Embedded Image and ADR 0028 §The Artwork Sequence, without a change. ADR 0012 for the pairing
   of a display state with its payload by `play_id`. ADR 0011 for the listener delay.
 - Uses: `musicindex-live-relay` ADR 0003, the routes `PUT` and `GET /v1/liveitems/{event_id}/artwork/{sha256}`.
@@ -14,6 +16,9 @@
 - Operator choice, 2026-11-25: the payload art comes from the chapter image, then from the image of the file. "As an
   extra fallback, consider hosting the album art on the relay as we do for non-v4v tracks." This record is that
   extra fallback. The chapter image needs a musicindex record and a consolidated station producer record first.
+- Operator choice, 2026-11-25: the first send of a play waits at most 2 seconds for the picture, then goes out with
+  the relay URL. If the picture is not available, the first send has no image, and the second send stays as the fallback.
+  The cause: v4vmusic.com and Podcast Guru do not show the image of a second send (station log step 44).
 
 ## Context
 
@@ -25,6 +30,15 @@ changes `image` at each track (`musicindex-research`, report "Live RSS metadata 
 The publisher copies `image` from the drop file (`src/livevalue.rs`, `payload_from_dropfile`). A producer writes it
 only from an image URL: the `Image` tag in Mixxx, or the `image` of the station state. On 2026-11-24, 19 of the 68
 station files had an embedded picture, and no file had an image URL (ADR 0028 §Context).
+
+The apps read `image` in different procedures (station log step 44, 2026-11-25):
+
+- v4vmusic.com reads `image` only from the first send of a block. It ignores the image of a second send with the same
+  `blockGuid` until the page loads again.
+- Podcast Guru does not change its picture during a live stream.
+- CitizenRadio reads the `artwork` of the relay display state, not the payload `image`.
+
+Thus a second send does not put the picture in these apps. The picture must be in the first send.
 
 The display path already sends the embedded picture to the relay (ADR 0008, ADR 0028). For a target with
 `display_dir`, the publisher uploads the image with `PUT /v1/liveitems/{event_id}/artwork/{sha256}`, then sends the
@@ -60,10 +74,26 @@ The publisher sets `image` of a track payload by the first rule that applies:
 - The dead block does not change. Its image is the setting `dead_block_image` (ADR 0029, ADR 0033).
 - The publisher never puts image bytes or a `data:` URL in the payload.
 
+### The First Send Waits For The Picture
+
+The first send of a track payload waits until the display worker of its target completes its work on the same play. The
+longest wait is 2 seconds (`PAYLOAD_IMAGE_WAIT` in `src/relay.rs`).
+
+- The wait applies only when all of these conditions occur: the target has `display_dir`, the payload has a
+  `play_id`, the drop file gives no image, and the payload is not a dead block.
+- The display worker completes its work on a play when the relay accepted the display state, or when it drops or disables
+  the display path. It then immediately gives rule 2, rule 3 or no image to the payload worker.
+- When the display worker completed its work on the play before the payload arrived, the payload goes out immediately.
+- A newer payload during the wait replaces the waiting payload. The newer payload starts a new wait.
+- At the end of the wait, the payload goes out with no image. The publisher writes a log line.
+- A payload that arrives while the worker retries a publish or a keepalive does not wait. The second send is its
+  fallback.
+- The sequence is thus the upload, the display state, then the payload. Relay ADR 0011 keeps the image from the time
+  that it accepts the payload (§The Relay Retention).
+
 ### The Second Send
 
-The publisher sends each payload at once, with no wait for the display state (ADR 0011). The display state of the
-same play can arrive later.
+The second send is the fallback when the picture was not available at the end of the wait.
 
 - When rule 2 or rule 3 gives an image after the first send of a payload, the publisher sends that payload one more
   time. The second send has the same `eventGuid`, the same `blockGuid` and the same `value`. Only `image` is new.
@@ -93,6 +123,7 @@ These rules apply while this decision is current.
 
 - A payload `image` is an `http` or `https` URL, or the payload has no `image`.
 - The second send never changes `blockGuid`, `eventGuid` or `value`.
+- A track payload does not wait more than `PAYLOAD_IMAGE_WAIT` for its picture.
 - A drop file image URL always wins over the display state and the relay copy.
 
 ## Before Acceptance
@@ -119,14 +150,18 @@ A payload image that arrives while the payload of the same play waits for a retr
 that arrives during a keepalive retry goes out after that retry. A payload that the main loop sends after the worker
 examines its channel goes out immediately after the second send. The publisher cannot prevent this sequence.
 
-- A test for each rule of §The Payload Image Sequence: a drop file URL wins, a display URL, a relay copy, and no
-  image.
-- A test that a target without `display_dir` gives no relay URL.
-- A test that a refused upload gives no relay URL.
-- A test that the second send keeps `eventGuid`, `blockGuid` and `value`, and that it occurs one time for each play.
+- A test for each rule of §The Payload Image Sequence in the first send: a drop file URL wins, a display URL, a relay
+  copy, and no image.
+- A test that the first send goes after the upload and the display state.
+- A test that a drop file URL, a dead block and a target without `display_dir` do not wait.
+- A test that no artwork and a refused upload release the first send before the end of the wait.
+- A test that a display state before the payload gives one send with the image.
+- A test that a newer payload replaces a waiting payload.
+- A test that a slow upload gives a first send with no image, then a second send. The second send keeps `eventGuid`,
+  `blockGuid` and `value`.
 - A test that the second send does not occur when a newer payload of the target exists.
 - A test that the second send adds no show log line.
-- A test that a republish after a lease end has no relay URL, and that a new second send follows the new upload.
+- A test that a republish after a lease end has no relay URL, and that a second send follows the new upload.
 - A test that the relay URL is the top-level `image` of the payload, in the form of relay ADR 0011. No text follows
   the hash. If `image` moves, the relay stops the retention, and no relay test finds it.
 
@@ -134,13 +169,19 @@ Visual. A person must examine these items in an app. Report each one as open unt
 
 - On the test station, a song with only an embedded picture shows that picture in v4vmusic.com.
 - At the next song, the app shows the picture of the next song, not the old one.
+- After a jingle, a replay of the same song shows the picture of the song in v4vmusic.com, with no page reload.
 
 ## Alternatives Considered
 
-### Wait For The Display State Before The First Send
+### Wait For The Display State Before The First Send, With No Limit
 
-Rejected. The payment block then arrives late by the time of the picture read and the upload. A boost in that time
-pays the last track. ADR 0011 sends each block at once.
+Rejected. A slow upload or a relay fault then holds the payment block for an unknown time. A boost in that time pays
+the last track. §The First Send Waits For The Picture selects a wait with a limit of 2 seconds.
+
+### Only The Second Send
+
+Rejected 2026-11-25. Before that date, the first send never waited, and the second send gave the image. v4vmusic.com
+and Podcast Guru do not show the image of a second send (§Context).
 
 ### Image Bytes Or A `data:` URL In The Payload
 
@@ -154,6 +195,8 @@ Not selected. It needs a new service and a new token. The relay already holds th
 ## Consequences
 
 - A podcast app shows the embedded picture of a station song with no image URL.
+- The payment block of a play with a picture arrives late by the time of the upload, at most 2 seconds. A boost in
+  that time pays the last track. The upload usually takes less than one second.
 - A relay restart removes the relay copies. A payload from before the restart then names an image that is missing.
   The next track gives a new relay copy.
 - The relay serves the image to each app. That adds load on the relay at each track change.

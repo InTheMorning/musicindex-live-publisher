@@ -189,9 +189,14 @@ packet.
   step 36). The relay output is correct. The orchestrator has the handoff for
   the CitizenRadio session.
 - ADR 0034 has the status `Proposed`. `src/relay.rs` implements it: when the
-  drop file has no image URL, the payload worker sends the payload of the play
-  one more time with the display URL or the relay URL of the uploaded picture.
-  The tests are at the end of `tests/display.rs`. Relay ADR 0011 keeps each
+  drop file has no image URL, the first send of a play waits at most 2 seconds
+  for the display URL or the relay URL of the uploaded picture. If the picture
+  is not available, the payload worker sends the payload one more time when
+  the picture is available. The tests are at the end of `tests/display.rs`.
+  Open, from the review of 2026-11-25, in the code from before the wait: a
+  publish retry reads the channel and not the queue of the second send check,
+  so an older queued payload can go after a newer one. A permanent refusal
+  of a newer payload leaves the older play open to a second send. Relay ADR 0011 keeps each
   image that a pending listener update names, and the relay runs it. Item 2 of
   its §Before Acceptance is partly done: v4vmusic.com and Podcast Guru show the
   image, and a boost pays the song. The check for no new track is open.
