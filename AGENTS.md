@@ -196,10 +196,11 @@ packet.
   acceptance, the five earlier records stay current. The producer reads the
   chapter `image_url`. The `station-import` change that writes the field waits
   until the operator pushes musicindex-lib commit `1d55a67`.
-- Open: the picture in the HLS stream. The operator chose on 2026-11-25: the
-  HLS stream of the station and of the VPS stack carries the picture one time
-  for each song. This needs a revision of ADR 0009, which forbids image data in
-  an ID3 frame.
+- ADR 0036 has the status `Proposed`, and no implementation exists. The HLS
+  stream carries the picture one time for each song. Liquidsoap removes cover
+  keys from the HLS metadata by default, so the script must change
+  `settings.encoder.metadata.cover`. The first test is on the VPS stack with a
+  fixed picture (§Before Acceptance item 1).
 - This item needs a new ADR before work starts: a track identity source that
   is earlier than the Mixxx history row.
 - Studio client task 001 is not started. The publisher will start and end a

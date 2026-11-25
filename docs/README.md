@@ -130,6 +130,10 @@ the next priority. Confirm that logging works before the show.
   — Proposed. One record for the station producer. It restates each live rule
   of ADR 0022 and ADR 0025 to ADR 0028, and adds the chapter image. At
   acceptance it supersedes those five records
+- [ADR 0036: The HLS stream carries the picture one time for each song](adr/0036-the-hls-stream-carries-the-picture-one-time-for-each-song.md)
+  — Proposed. An `APIC` frame goes into the first segment of each song, on
+  the station and on the VPS stack. It needs a change of the Liquidsoap cover
+  keys. It changes ADR 0009 and ADR 0035
 
 ## Plans
 

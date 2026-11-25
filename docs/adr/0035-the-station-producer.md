@@ -3,6 +3,8 @@
 - Status: Proposed. Until the operator accepts this record, ADR 0022 and ADR 0025 to ADR 0028 stay current, and the
   code follows them. At acceptance, the five records move to `docs/archive/adr/` in the same commit.
 - Date: 2026-11-25
+- Changed by: ADR 0036, proposed 2026-11-25. The slot text also gives the picture to the HLS output, one time for each
+  song.
 - Supersedes: ADR 0022 (`docs/adr/0022-liquidsoap-producer.md`).
 - Supersedes: ADR 0025 (`docs/adr/0025-the-station-producer-pays-each-chapter-song.md`).
 - Supersedes: ADR 0026 (`docs/adr/0026-the-station-producer-writes-the-display-state.md`).
