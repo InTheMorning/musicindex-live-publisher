@@ -101,7 +101,10 @@ These rules apply while this decision is current.
    with an `image`. v4vmusic.com and The Split Kit must show the image. They must not show a new track, and a boost
    must pay the same block. A person does this check, because the apps are not in a test.
 3. **The public endpoint.** Make sure that the `endpoint` of each station target is the public HTTPS URL of the
-   relay, not a local address. An app must load the relay URL.
+   relay, not a local address. An app must load the relay URL. Done 2026-11-25 for the test station, station log
+   step 39. The one target has `https://api.musicindex.org`. From outside the station, an artwork GET of a hash that
+   the relay does not hold gives `404 artwork_not_found`. A GET with 200 was not possible: each station file has an
+   image URL, so the relay held no uploaded picture of the event.
 
 ## Verification After Implementation
 
