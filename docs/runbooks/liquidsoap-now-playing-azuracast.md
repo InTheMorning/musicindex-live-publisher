@@ -6,8 +6,8 @@ This runbook installs `liquidsoap-now-playing` and the publisher on a radio host
 with lingering owns the two units (ADR 0022). Lingering is a systemd function: the user services of the account
 operate with no login.
 
-The station side comes first. The tutorial in `musicindex-research`,
-`research_notes/azuracast/musicindex-producer-tutorial.md`, Part 1 steps 1 to 7, gives it. The slot text of step 5 is
+The station side comes first. The tutorial `docs/runbooks/musicindex-producer-tutorial.md`, Part 1 steps 1
+to 7, gives it. The slot text of step 5 is
 `liquidsoap/musicindex-state.liq` in this repository. The package installs it as
 `/usr/share/doc/musicindex-live-publisher/liquidsoap/musicindex-state.liq`.
 

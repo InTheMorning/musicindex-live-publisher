@@ -195,4 +195,4 @@ Rejected. A restart each few seconds during a DJ set fills the journal, and the 
 
 - ADR 0005, ADR 0014, ADR 0016, ADR 0021 and ADR 0023 of this repository
 - `musicindex-research`: `research_notes/azuracast/track-events-for-a-producer.md`
-- `musicindex-research`: `research_notes/azuracast/musicindex-producer-tutorial.md`
+- `docs/runbooks/musicindex-producer-tutorial.md`

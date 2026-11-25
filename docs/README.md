@@ -360,6 +360,10 @@ one before it.
 - [MusicIndex live publisher deployment](runbooks/musicindex-live-publisher-deploy.md)
 - [MusicIndex live publisher Arch package](runbooks/musicindex-live-publisher-arch-package.md)
 - [MusicIndex live publisher configuration](runbooks/musicindex-live-publisher-configuration.md)
+- [MusicIndex producer tutorial](runbooks/musicindex-producer-tutorial.md) — the
+  station side of the station producer, for an AzuraCast station
+- [Test station log](runbooks/test-station-log.md) — each step on the
+  HeyCitizen test station, with its result
 
 ## Archive
 

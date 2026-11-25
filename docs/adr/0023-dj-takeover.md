@@ -126,4 +126,4 @@ Rejected. The last station track stays payable while the DJ audio plays.
 
 - ADR 0005, ADR 0006, ADR 0016 and ADR 0022 of this repository
 - `musicindex-live-relay`: `docs/adr/0002-live-lease.md`, `docs/adr/0004-listener-timeline-delay.md`
-- `musicindex-research`: `research_notes/azuracast/musicindex-producer-tutorial.md`, §DJ Takeover
+- `docs/runbooks/musicindex-producer-tutorial.md`, §DJ Takeover
