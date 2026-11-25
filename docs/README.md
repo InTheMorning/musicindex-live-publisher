@@ -122,6 +122,10 @@ the next priority. Confirm that logging works before the show.
 - [ADR 0033: The dead block has one destination that a payment cannot reach](adr/0033-the-dead-block-has-one-unreachable-destination.md)
   — Accepted. The dead block has one destination at
   `no-v4v-track@example.invalid`. It supersedes ADR 0031
+- [ADR 0034: The payload image falls back to the relay copy of the picture](adr/0034-the-payload-image-falls-back-to-the-relay-copy-of-the-picture.md)
+  — Proposed. When the drop file has no image URL, the payload `image` is the
+  display URL or the relay URL of the picture of the same play. It
+  needs a relay record for the retention. It changes ADR 0010
 
 ## Plans
 

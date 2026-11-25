@@ -184,6 +184,17 @@ packet.
 - Open: at a jingle, CitizenRadio does not show the station lines (station log
   step 36). The relay output is correct. The orchestrator has the handoff for
   the CitizenRadio session.
+- ADR 0034 has the status `Proposed`, and no implementation exists. When the
+  drop file has no image URL, the payload `image` is the relay URL of the
+  picture that the display path uploaded. It waits for a relay record that
+  keeps each image that a pending listener update names.
+- Open: the art of a chapter song and the picture in the HLS stream. The
+  operator chose on 2026-11-25: the chapter image first, then the image of the
+  file, then the relay copy (ADR 0034). The HLS stream of the station and of
+  the VPS stack carries the picture one time for each song. The chapter image
+  needs a musicindex record for the chapter field. ADR 0022 and ADR 0025 have
+  three "Changed by" lines, so the station changes need one consolidated
+  station producer record first.
 - This item needs a new ADR before work starts: a track identity source that
   is earlier than the Mixxx history row.
 - Studio client task 001 is not started. The publisher will start and end a
