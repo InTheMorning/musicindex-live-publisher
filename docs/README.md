@@ -126,6 +126,10 @@ the next priority. Confirm that logging works before the show.
   — Proposed. When the drop file has no image URL, the payload `image` is the
   display URL or the relay URL of the picture of the same play. It
   needs a relay record for the retention. It changes ADR 0010
+- [ADR 0035: The station producer](adr/0035-the-station-producer.md)
+  — Proposed. One record for the station producer. It restates each live rule
+  of ADR 0022 and ADR 0025 to ADR 0028, and adds the chapter image. At
+  acceptance it supersedes those five records
 
 ## Plans
 

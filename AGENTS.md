@@ -188,13 +188,17 @@ packet.
   drop file has no image URL, the payload `image` is the relay URL of the
   picture that the display path uploaded. It waits for a relay record that
   keeps each image that a pending listener update names.
-- Open: the art of a chapter song and the picture in the HLS stream. The
-  operator chose on 2026-11-25: the chapter image first, then the image of the
-  file, then the relay copy (ADR 0034). The HLS stream of the station and of
-  the VPS stack carries the picture one time for each song. The chapter image
-  needs a musicindex record for the chapter field. ADR 0022 and ADR 0025 have
-  three "Changed by" lines, so the station changes need one consolidated
-  station producer record first.
+- ADR 0035 has the status `Proposed`. It is the consolidated station producer
+  record. It restates each live rule of ADR 0022 and ADR 0025 to ADR 0028, and
+  adds the chapter image of musicindex ADR 0099: the chapter `image_url`
+  first, then the image of the file, then the relay copy (ADR 0034). Until
+  acceptance, the five earlier records stay current. The producer reads the
+  chapter `image_url`. The `station-import` change that writes the field waits
+  until the operator pushes musicindex-lib commit `1d55a67`.
+- Open: the picture in the HLS stream. The operator chose on 2026-11-25: the
+  HLS stream of the station and of the VPS stack carries the picture one time
+  for each song. This needs a revision of ADR 0009, which forbids image data in
+  an ID3 frame.
 - This item needs a new ADR before work starts: a track identity source that
   is earlier than the Mixxx history row.
 - Studio client task 001 is not started. The publisher will start and end a
