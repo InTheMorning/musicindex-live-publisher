@@ -185,6 +185,9 @@ packet.
   step number of the log. The SSH key is in `.local-keys/`. Never commit it.
 - Open: the producer tutorial and the AzuraCast runbook have some of the same
   steps. A merge of the two is not done (ADR 0032).
+- Deferred by the operator on 2026-11-25: an animated GIF that is embedded in
+  an audio file. ADR 0008 refuses it, and the relay accepts only JPEG and PNG.
+  A GIF that a feed gives as a URL goes to the apps as that URL.
 - Open: at a jingle, CitizenRadio does not show the station lines (station log
   step 36). The relay output is correct. The orchestrator has the handoff for
   the CitizenRadio session.
