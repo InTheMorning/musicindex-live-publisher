@@ -103,7 +103,7 @@ These rules apply while this decision is current.
    with an `image`. Two podcast apps that the operator uses must show the image. They must not show a new track, and a boost
    must pay the same block. A person does this check, because the apps are not in a test. Partly done 2026-11-25
    (station log step 43): the payload had the relay copy URL, and v4vmusic.com and Podcast Guru showed the image.
-   A boost of 1,000 sats from v4vmusic.com went to the node key of the song (`02ebb6cc…`), with the custom record
+   A boost of 100 sats from v4vmusic.com went to the node key of the song (`02ebb6cc…`), with the custom record
    of the block. Open: a person sees that the apps show no new track at the second send.
 3. **The public endpoint.** Make sure that the `endpoint` of each station target is the public HTTPS URL of the
    relay, not a local address. An app must load the relay URL. Done 2026-11-25 for the test station, station log
