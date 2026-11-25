@@ -1,6 +1,9 @@
 # ADR 0031: The Dead Block Has No Destination
 
-- Status: Accepted on 2026-11-24 by the operator. The orchestrator session relayed the decision.
+> Archived: superseded by [ADR 0033](../../adr/0033-the-dead-block-has-one-unreachable-destination.md) on
+> 2026-11-25. The v4vmusic.com client rejects a block with no destination.
+
+- Status: Superseded by ADR 0033 on 2026-11-25. Accepted on 2026-11-24 by the operator. The orchestrator session relayed the decision.
 - Date: 2026-11-24
 - Changes: ADR 0029 §The Dead Block (the destination item), §Publisher Behavior (the item "The publisher never
   publishes a block with zero destinations") and §Invariants (the same invariant).

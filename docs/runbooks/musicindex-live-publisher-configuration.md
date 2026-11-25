@@ -288,8 +288,9 @@ publisher does not perform that resolution:
 }
 ```
 
-The dead block (ADR 0029, ADR 0031) has no destination. No configuration adds
-one.
+The dead block (ADR 0029, ADR 0033) uses the same fixed `lnaddress` shape, at
+the address `no-v4v-track@example.invalid`. No configuration changes the
+address.
 
 Direct LNURL-pay URLs or bech32 LNURL strings are not a documented Podcasting
 `valueRecipient` type in the current namespace docs. This publisher will not
@@ -328,15 +329,22 @@ The dead block of a target with no `dead_block_title`:
   "title": "No V4V track playing",
   "value": {
     "model": { "type": "lightning", "method": "lnaddress" },
-    "destinations": []
+    "destinations": [
+      {
+        "name": "No V4V payment route",
+        "type": "lnaddress",
+        "address": "no-v4v-track@example.invalid",
+        "split": "100"
+      }
+    ]
   }
 }
 ```
 
-That block gives the stream no payment route when no V4V track plays. The
-field `destinations` is always present as `[]`, because a client can throw
-when it is missing (ADR 0031). The model is a constant. No configuration
-changes the model or adds a destination.
+That block gives the stream no usable payment route when no V4V track plays.
+The model and the destination are constants. No configuration changes them.
+Do not remove the destination. The v4vmusic.com client rejects a block with no
+destination and keeps the last song payable (ADR 0033).
 
 The setting `dead_block_title` changes only the title. A podcast app that
 shows only the `title` field then shows the station name during a jingle.

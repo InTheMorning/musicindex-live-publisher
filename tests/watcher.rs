@@ -102,7 +102,7 @@ fn watcher_create_modify_remove_emits_track_then_dead_block() -> Result<()> {
         one_payload(watcher.process_event(remove(&path), start + Duration::from_millis(200))?)?;
     assert_eq!(dead_block["title"], "No V4V track playing");
     assert_eq!(dead_block["eventGuid"], "event-guid");
-    assert_eq!(dead_block["value"]["destinations"], json!([]));
+    assert_eq!(dead_block["value"]["destinations"][0]["split"], "100");
     assert!(dead_block.get("feedGuid").is_none());
     assert!(dead_block.get("itemGuid").is_none());
     assert_ne!(dead_block["blockGuid"], first_block);
@@ -148,7 +148,11 @@ fn watcher_empty_value_routes_publishes_dead_block() -> Result<()> {
     assert_eq!(payload["title"], "No V4V track playing");
     assert_eq!(
         payload["value"]["destinations"].as_array().map(Vec::len),
-        Some(0)
+        Some(1)
+    );
+    assert_eq!(
+        payload["value"]["destinations"][0]["address"],
+        "no-v4v-track@example.invalid"
     );
     assert!(payload.get("feedGuid").is_none());
     assert!(payload.get("itemGuid").is_none());
@@ -174,8 +178,7 @@ fn watcher_routes_without_both_nonempty_guids_publish_dead_block() -> Result<()>
 
         assert_eq!(payload["title"], "No V4V track playing", "field: {field}");
         assert_eq!(
-            payload["value"]["destinations"],
-            json!([]),
+            payload["value"]["destinations"][0]["address"], "no-v4v-track@example.invalid",
             "field: {field}"
         );
     }
@@ -265,7 +268,10 @@ fn watcher_startup_running_with_empty_directory_publishes_dead_block() -> Result
     let payload = one_payload(watcher.startup_payloads(temp.path(), ProducerState::Running)?)?;
 
     assert_eq!(payload["title"], "No V4V track playing");
-    assert_eq!(payload["value"]["destinations"], json!([]));
+    assert_eq!(
+        payload["value"]["destinations"][0]["name"],
+        "No V4V payment route"
+    );
     Ok(())
 }
 

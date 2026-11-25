@@ -1108,10 +1108,10 @@ fn dead_block_image_is_read_and_trimmed() -> Result<()> {
     Ok(())
 }
 
-// ADR 0031: the dead block has `destinations: []`. The title and the image
-// settings of a target cannot add a destination.
+// ADR 0033: the dead block has one destination that a payment cannot reach.
+// The title and the image settings of a target cannot change it.
 #[test]
-fn dead_block_of_a_configured_target_has_no_destination() -> Result<()> {
+fn dead_block_of_a_configured_target_has_the_unreachable_destination() -> Result<()> {
     let temp = TempDir::new()?;
     let watch_dir = temp.path().join("watch");
     let token = write_token(temp.path(), "default.token", "secret-token")?;
@@ -1124,7 +1124,15 @@ fn dead_block_of_a_configured_target_has_no_destination() -> Result<()> {
     let payload = musicindex_live_publisher::dead_payload("e", "b", &config.targets[0].dead_block);
     let value = serde_json::to_value(&payload)?;
     assert_eq!(value["title"], "Station");
-    assert_eq!(value["value"]["destinations"], json!([]));
+    assert_eq!(
+        value["value"]["destinations"],
+        json!([{
+            "type": "lnaddress",
+            "name": "No V4V payment route",
+            "address": "no-v4v-track@example.invalid",
+            "split": "100"
+        }])
+    );
     assert_eq!(value["value"]["model"]["type"], "lightning");
     assert_eq!(value["value"]["model"]["method"], "lnaddress");
     Ok(())

@@ -116,12 +116,12 @@ the next priority. Confirm that logging works before the show.
 - [ADR 0030: station-import writes the feed value in each standard frame](adr/0030-station-import-writes-the-feed-value-in-each-standard-frame.md)
   — Accepted. The feed value replaces `TIT2`, `TPE1`, `TALB`, `TPE2`, `TRCK` and
   `TDRC` of a station file. A frame with no feed value keeps the file value
-- [ADR 0031: The dead block has no destination](adr/0031-the-dead-block-has-no-destination.md)
-  — Accepted. The dead block has `value.destinations` as `[]`. It changes ADR
-  0029
 - [ADR 0032: The publisher repository owns the test station operation](adr/0032-the-publisher-repository-owns-the-test-station.md)
   — Accepted. The station steps, the station log and the station runbooks are
   in this repository. A fault in another repository goes to the orchestrator
+- [ADR 0033: The dead block has one destination that a payment cannot reach](adr/0033-the-dead-block-has-one-unreachable-destination.md)
+  — Accepted. The dead block has one destination at
+  `no-v4v-track@example.invalid`. It supersedes ADR 0031
 
 ## Plans
 
@@ -376,6 +376,8 @@ Superseded decisions and their packets. Read them for research only.
   — Superseded by ADR 0017 on 2026-10-19
 - [ADR 0005: Producer liveness, the dead block and the relay lease](archive/adr/0005-producer-liveness-and-dead-block.md)
   — Replaced by ADR 0029 on 2026-11-24
+- [ADR 0031: The dead block has no destination](archive/adr/0031-the-dead-block-has-no-destination.md)
+  — Superseded by ADR 0033 on 2026-11-25
 - [Show log task 001 — Show log writer](archive/tasks/show-log-task-001-log-writer.md)
   — never started
 - [Show log task 002 — Read contract and documentation](archive/tasks/show-log-task-002-read-contract-and-docs.md)

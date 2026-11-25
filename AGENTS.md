@@ -181,9 +181,11 @@ packet.
   step number of the log. The SSH key is in `.local-keys/`. Never commit it.
 - Open: the producer tutorial and the AzuraCast runbook have some of the same
   steps. A merge of the two is not done (ADR 0032).
-- Open: the operator reported on 2026-11-25 that the value block and the
-  metadata do not change for a jingle. The cause is not known (station log
-  step 35).
+- Open: at a jingle, CitizenRadio does not show the station lines (station log
+  step 36). The relay output is correct. The orchestrator has the handoff for
+  the CitizenRadio session.
+- Open: the manual check of ADR 0033 in v4vmusic.com, Podcast Guru and
+  CitizenRadio.
 - This item needs a new ADR before work starts: a track identity source that
   is earlier than the Mixxx history row.
 - Studio client task 001 is not started. The publisher will start and end a
@@ -268,9 +270,11 @@ This service routes money. These rules are not style preferences.
   track in place.
 - When the MIDI connector is available, a drop file exists only while its
   linked deck plays (ADR 0006).
-- The dead block pays nobody. It has `value.destinations` as `[]`, and the
-  field is always present (ADR 0031). No setting changes its model or adds a
-  destination. Only its title and its image are settings of each target,
+- The dead block pays nobody. It has one destination at
+  `no-v4v-track@example.invalid`, and a payment to it fails (ADR 0033). Never
+  send it with no destination: the v4vmusic.com client rejects that block and
+  keeps the last song payable. No setting changes its model or its destination.
+  Only its title and its image are settings of each target,
   `dead_block_title` and `dead_block_image` (ADR 0029).
 - The `title` of a payable track block is "artist - title" (ADR 0029). The
   display state keeps the song as its `title`.

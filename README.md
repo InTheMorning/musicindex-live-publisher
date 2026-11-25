@@ -100,8 +100,9 @@ Fields:
   `--state-dir`.
 
 When no payable block plays, the publisher publishes the dead block (ADR
-0029). The dead block has no destination, so it pays nobody (ADR 0031). No
-configuration adds a destination.
+0029). The dead block pays the fixed `lnaddress` recipient
+`no-v4v-track@example.invalid`, and a payment to it fails (ADR 0033). No
+configuration changes it.
 
 ## Show Log
 

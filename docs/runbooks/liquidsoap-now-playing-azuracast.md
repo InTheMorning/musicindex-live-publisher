@@ -381,7 +381,7 @@ systemctl --user disable --now musicindex-live-publisher@INSTANCE.service
 ```
 
 When the producer stops, the publisher sends the dead block one time (ADR 0029). Make sure that the relay shows the
-dead block with `destinations: []` (ADR 0031) before you stop the publisher. To remove the station side, use the section
+destination `no-v4v-track@example.invalid` (ADR 0033) before you stop the publisher. To remove the station side, use the section
 "Remove The Changes" of the tutorial.
 
 ## Failure Modes
