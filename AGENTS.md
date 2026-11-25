@@ -174,6 +174,16 @@ packet.
   frame. It has no upload code. The feed value replaces each standard frame
   of the map of ADR 0030, for example `TIT2`, `TPE1` and `TALB`. A frame with
   no feed value keeps the value of the file.
+- This repository owns the testing and the operation of the HeyCitizen test
+  station (ADR 0032). The station log is `docs/runbooks/test-station-log.md`.
+  The publisher session installs its bundles there and does the agent checks.
+  A fault in another repository goes to the orchestrator as a handoff with the
+  step number of the log. The SSH key is in `.local-keys/`. Never commit it.
+- Open: the producer tutorial and the AzuraCast runbook have some of the same
+  steps. A merge of the two is not done (ADR 0032).
+- Open: the operator reported on 2026-11-25 that the value block and the
+  metadata do not change for a jingle. The cause is not known (station log
+  step 35).
 - This item needs a new ADR before work starts: a track identity source that
   is earlier than the Mixxx history row.
 - Studio client task 001 is not started. The publisher will start and end a
@@ -321,6 +331,8 @@ This service routes money. These rules are not style preferences.
 |---|---|
 | HitIt | Writes the MusicIndex tags this chain reads. Registers events. Starts and stops these services. Sends no payloads. |
 | `musicindex-live-relay` | The relay. Receives the payloads this service sends. |
+| musicindex-research | The orchestrator session. It gets each handoff for CitizenRadio, the relay and the other sessions (ADR 0032). |
+| HeyCitizen test station | `radio.heycitizen.xyz`, AzuraCast. This repository operates it (ADR 0032). A new station repository comes only with an alternative to AzuraCast. |
 
 Do not add a build dependency on either one. Every contract is a file format,
 an HTTP call, or a command-line interface.

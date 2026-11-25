@@ -119,6 +119,9 @@ the next priority. Confirm that logging works before the show.
 - [ADR 0031: The dead block has no destination](adr/0031-the-dead-block-has-no-destination.md)
   — Accepted. The dead block has `value.destinations` as `[]`. It changes ADR
   0029
+- [ADR 0032: The publisher repository owns the test station operation](adr/0032-the-publisher-repository-owns-the-test-station.md)
+  — Accepted. The station steps, the station log and the station runbooks are
+  in this repository. A fault in another repository goes to the orchestrator
 
 ## Plans
 
