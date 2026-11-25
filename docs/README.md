@@ -124,8 +124,8 @@ the next priority. Confirm that logging works before the show.
   `no-v4v-track@example.invalid`. It supersedes ADR 0031
 - [ADR 0034: The payload image falls back to the relay copy of the picture](adr/0034-the-payload-image-falls-back-to-the-relay-copy-of-the-picture.md)
   — Proposed. When the drop file has no image URL, the payload `image` is the
-  display URL or the relay URL of the picture of the same play. It
-  needs a relay record for the retention. It changes ADR 0010
+  display URL or the relay URL of the picture of the same play. Relay
+  ADR 0011 keeps the image. It changes ADR 0010
 - [ADR 0035: The station producer](adr/0035-the-station-producer.md)
   — Proposed. One record for the station producer. It restates each live rule
   of ADR 0022 and ADR 0025 to ADR 0028, and adds the chapter image. At

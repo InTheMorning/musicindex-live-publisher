@@ -74,8 +74,16 @@ same play can arrive later.
 ### The Relay Retention
 
 The relay URL operates only while the relay holds the image. The relay must keep each image that a pending listener
-update names, until the apps got that update. A `musicindex-live-relay` record owns that rule. This record does not
-state the relay limits.
+update names, until the apps got that update. `musicindex-live-relay` ADR 0011 owns that rule (commit `e4ac9c7`).
+This record does not state the relay limits. Two facts of relay ADR 0011 apply to the publisher:
+
+- The relay keeps an image only when the top-level `image` string of the payload ends with
+  `/v1/liveitems/{event_id}/artwork/{sha256}`. The event must be the same, and the hash has 64 lowercase hex
+  characters. A query or other
+  text after the hash keeps no image.
+- The relay keeps the image from the time that it accepts the payload that names it. Before that, only the display
+  state keeps it. The order of this record (the upload, the display state, then the second send) thus keeps the
+  image.
 
 ## Invariants
 
@@ -87,8 +95,8 @@ These rules apply while this decision is current.
 
 ## Before Acceptance
 
-1. **The relay retention.** The relay session writes the record of §The Relay Retention. The orchestrator has the
-   handoff.
+1. **The relay retention.** Done 2026-11-25: `musicindex-live-relay` ADR 0011, commit `e4ac9c7`. The relay on
+   `api.musicindex.org` has this change only after the operator deploys it. Item 2 needs that deploy.
 2. **The second send in the apps.** On the test station, send a payload with no `image`, then the same `blockGuid`
    with an `image`. v4vmusic.com and The Split Kit must show the image. They must not show a new track, and a boost
    must pay the same block. A person does this check, because the apps are not in a test.
@@ -106,6 +114,8 @@ Mechanical:
 - A test that the second send keeps `eventGuid`, `blockGuid` and `value`, and that it occurs one time for each play.
 - A test that the second send does not occur when a newer payload of the target exists.
 - A test that the second send adds no show log line.
+- A test that the relay URL is the top-level `image` of the payload, in the form of relay ADR 0011. No text follows
+  the hash. If `image` moves, the relay stops the retention, and no relay test finds it.
 
 Visual. A person must examine these items in an app. Report each one as open until a person completes the check.
 

@@ -186,8 +186,9 @@ packet.
   the CitizenRadio session.
 - ADR 0034 has the status `Proposed`, and no implementation exists. When the
   drop file has no image URL, the payload `image` is the relay URL of the
-  picture that the display path uploaded. It waits for a relay record that
-  keeps each image that a pending listener update names.
+  picture that the display path uploaded. Relay ADR 0011 keeps each image that
+  a pending listener update names. Items 2 and 3 of its §Before Acceptance are
+  open, and item 2 needs the operator deploy of the relay.
 - ADR 0035 has the status `Proposed`. It is the consolidated station producer
   record. It restates each live rule of ADR 0022 and ADR 0025 to ADR 0028, and
   adds the chapter image of musicindex ADR 0099: the chapter `image_url`
