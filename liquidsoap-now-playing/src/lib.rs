@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use lookup::RouteLookups;
-use now_playing_drop::display::{Artwork, DisplayOutput, ShownTrack};
+use now_playing_drop::display::{Artwork, DisplayOutput, ShownTrack, image_url};
 use now_playing_drop::merge::{has_percentage, local_split_routes, merged_routes};
 use now_playing_drop::picture::{MAX_PICTURE_BYTES, artwork_from, embedded_artwork};
 use now_playing_drop::sink::{OutputFile, Presence};
@@ -228,10 +228,16 @@ impl Producer {
                 content["play_id"].as_str(),
             )
         };
-        // ADR 0028 §The Artwork Sequence: a valid image URL wins, else the
-        // picture file of the state, else `null`.
-        let artwork = artwork_from(nonempty(state.image.as_deref()), None)
-            .or_else(|| self.picture_artwork(state));
+        // ADR 0035 §The Artwork Of A Segment: the image URL of the drop file
+        // (the chapter image, else the state image) wins when it is valid,
+        // else the picture file of the state, else `null`. A jingle drop file
+        // has no image, so a jingle uses the state image.
+        let image = if state.jingle {
+            nonempty(state.image.as_deref())
+        } else {
+            content["image"].as_str()
+        };
+        let artwork = artwork_from(image, None).or_else(|| self.picture_artwork(state));
         if let Some(display) = self.display.as_mut() {
             write_display(
                 display,
@@ -477,7 +483,10 @@ fn render_state(
         artist,
         title,
         duration_secs: None,
-        image: nonempty(state.image.as_deref()),
+        // ADR 0035 §The Artwork Of A Segment: the chapter image first.
+        image: chapter
+            .and_then(|chapter| chapter.image_url.as_deref())
+            .or_else(|| nonempty(state.image.as_deref()).and_then(image_url)),
         feed_guid,
         track_guid,
         album: nonempty(state.album.as_deref()),
@@ -1740,6 +1749,90 @@ mod tests {
         Ok(())
     }
 
+    /// The chapters of the image tests: a chapter with a valid image, the
+    /// bad `image_url` values, and a local split with an image.
+    fn image_chapters(bad: Option<&serde_json::Value>) -> serde_json::Value {
+        let mut good = remote(0, 10_000, "f1", "i1".into());
+        good["image_url"] = "https://song.example/one.jpg".into();
+        good["unknown_field"] = 1.into();
+        let mut refused = remote(10_000, 20_000, "f2", "i2".into());
+        if let Some(bad) = bad {
+            refused["image_url"] = bad.clone();
+        }
+        let local = serde_json::json!({
+            "start_ms": 25_000, "end_ms": 30_000, "remote_percentage": 0,
+            "image_url": "https://song.example/local.jpg",
+            "value_routes": [{"address": "local-a", "split": 1}]
+        });
+        serde_json::json!([good, refused, local])
+    }
+
+    #[test]
+    fn a_chapter_image_wins_over_the_state_image_and_the_picture() -> Result<()> {
+        let picture = encoded_picture(image::ImageFormat::Jpeg)?;
+        let state_url = "https://episode.example/cover.jpg";
+        let long_url = format!("https://song.example/{}", "a".repeat(2_028));
+        assert_eq!(long_url.chars().count(), 2_049);
+        for bad in [
+            None,
+            Some(serde_json::Value::Null),
+            Some(serde_json::json!(7)),
+            Some(serde_json::json!("ftp://song.example/two.jpg")),
+            Some(serde_json::json!(long_url)),
+        ] {
+            let patch = chapter_state(serde_json::json!({
+                "chapters": image_chapters(bad.as_ref()).to_string(),
+                "image": state_url,
+                "picture": "picture-4",
+            }));
+            let out = display_reads_with_picture(
+                &patch,
+                &[(5.0, 0.0), (15.0, 0.0), (27.0, 0.0)],
+                Some(("picture-4", &picture)),
+                false,
+            )?;
+            // The chapter with a valid image_url, also with an unknown field.
+            assert_eq!(out[0].0["image"], "https://song.example/one.jpg");
+            assert_eq!(
+                out[0].1["track"]["artwork"]["url"],
+                "https://song.example/one.jpg"
+            );
+            assert_eq!(out[0].0["feed_guid"], "f1");
+            // A bad image_url gives the state image and keeps the entry.
+            assert_eq!(out[1].0["image"], state_url, "{bad:?}");
+            assert_eq!(out[1].1["track"]["artwork"]["url"], state_url, "{bad:?}");
+            assert_eq!(out[1].0["feed_guid"], "f2", "{bad:?}");
+            // A local split does not use image_url.
+            assert_eq!(out[2].0["image"], state_url);
+            assert_eq!(out[2].1["track"]["artwork"]["url"], state_url);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn a_bad_chapter_image_with_no_state_image_uses_the_picture() -> Result<()> {
+        let picture = encoded_picture(image::ImageFormat::Jpeg)?;
+        let chapters = image_chapters(Some(&"ftp://song.example/two.jpg".into()));
+        let patch = chapter_state(serde_json::json!({
+            "chapters": chapters.to_string(),
+            "image": "",
+            "picture": "picture-4",
+        }));
+        let out = display_reads_with_picture(
+            &patch,
+            &[(5.0, 0.0), (15.0, 0.0)],
+            Some(("picture-4", &picture)),
+            false,
+        )?;
+        assert_eq!(
+            out[0].1["track"]["artwork"]["url"],
+            "https://song.example/one.jpg"
+        );
+        assert!(out[1].0["image"].is_null());
+        assert_eq!(out[1].1["track"]["artwork"]["mime"], "image/jpeg");
+        Ok(())
+    }
+
     #[test]
     fn display_song_field_is_the_song_line_for_each_segment() -> Result<()> {
         let patch = chapter_state(serde_json::json!({"song": "ICY Title"}));
@@ -1921,6 +2014,9 @@ mod tests {
             false,
         )?;
         assert_eq!(out[0].1["track"]["artwork"]["mime"], "image/png");
+        // ADR 0035 §The Artwork Of A Segment: a refused URL is not in the
+        // drop file, so the publisher can use the relay copy (ADR 0034).
+        assert!(out[0].0["image"].is_null());
         Ok(())
     }
 

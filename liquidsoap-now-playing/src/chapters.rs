@@ -2,7 +2,9 @@
 
 use std::collections::HashSet;
 
-use now_playing_drop::{PaymentRoute, merge::has_percentage as routes_have_percentage};
+use now_playing_drop::{
+    PaymentRoute, display::image_url, merge::has_percentage as routes_have_percentage,
+};
 use serde_json::Value;
 
 use crate::state::StateFile;
@@ -27,6 +29,9 @@ pub struct Chapter {
     /// The local recipients of a local split, or the song routes from the
     /// file for a remote split. Empty when the file has no routes.
     pub value_routes: Vec<PaymentRoute>,
+    /// The image URL of the song of a remote split, when `image_url` of
+    /// `now-playing-drop` accepts it (ADR 0035 §The Chapter List).
+    pub image_url: Option<String>,
 }
 
 impl Chapter {
@@ -142,6 +147,12 @@ fn parse_entry(value: Value) -> Option<Chapter> {
             Some(routes) => serde_json::from_value::<Vec<PaymentRoute>>(routes.clone()).ok()?,
         }
     };
+    // ADR 0035 §The Chapter List: a bad `image_url` is the same as null,
+    // and it does not make the entry not valid.
+    let image_url = match object.get("image_url") {
+        Some(Value::String(url)) if !local_split => image_url(url).map(str::to_owned),
+        _ => None,
+    };
     Some(Chapter {
         start_ms,
         end_ms,
@@ -151,6 +162,7 @@ fn parse_entry(value: Value) -> Option<Chapter> {
         item_guid,
         remote_percentage,
         value_routes,
+        image_url,
     })
 }
 
