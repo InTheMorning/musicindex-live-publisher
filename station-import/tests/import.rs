@@ -484,6 +484,30 @@ fn episode_file_gets_the_channel_image_url() {
     );
 }
 
+// musicindex ADR 0099 R-IMAGE-4: each chapter entry gets the image URL of
+// its song, or null when the song has no image.
+#[test]
+fn episode_chapters_get_the_image_url_of_each_song() {
+    let server = TestServer::start();
+    let folder = tempfile::tempdir().expect("temporary folder");
+    let mut options = options(&folder);
+    options.episode_feed = Some(format!("{}/episode-feed.xml", server.base_url));
+    options.episodes = vec!["episode-guid".into()];
+
+    let result = run(&options, server.config()).expect("run import");
+    assert_eq!(result.error_count(), 0);
+    let chapters = read_podcast_tags(&options.out.join("episodes/episode-guid.mp3"))
+        .expect("read tags")
+        .chapters()
+        .expect("read chapters");
+    let images: Vec<_> = chapters.iter().map(|c| c.image_url.clone()).collect();
+    assert!(
+        images.contains(&Some(format!("{}/art/song.jpg", server.base_url))),
+        "{images:?}"
+    );
+    assert!(images.contains(&None), "{images:?}");
+}
+
 // Publisher ADR 0030: the episode file gets the item title and the episode
 // number. Each chapter has the title of its song item.
 #[test]

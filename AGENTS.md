@@ -179,9 +179,9 @@ packet.
   `display.json` with `song_line` as the ICY title of the file, asks the route
   service with the two GUIDs, and uses the chapter `image_url`, then the image
   of the file, then the relay copy (ADR 0034). The producer code is complete.
-  The station checks of the display state need a person and are open. The
-  `station-import` change that writes the chapter `image_url` is not started.
-  musicindex-lib commit `1d55a67` is pushed. Open: 47 code comments and 30
+  The station checks of the display state need a person and are open.
+  `station-import` uses musicindex-lib `cd21d45`, so each chapter entry of an
+  imported episode has the `image_url` of its song (musicindex ADR 0099). Open: 47 code comments and 30
   runbook lines cite ADR 0022 and ADR 0025 to ADR 0028. Change them to the
   sections of ADR 0035.
 - ADR 0036 has the status `Accepted`, and no implementation exists. The HLS
