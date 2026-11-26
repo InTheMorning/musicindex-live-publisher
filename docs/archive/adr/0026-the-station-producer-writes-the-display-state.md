@@ -33,7 +33,7 @@
 ## Context
 
 The app `citizenradio` holds the display states of the relay and releases one when its key agrees with the ICY title
-of the stream (`CitizenRadio/Core/IcySync.swift`, lines 87-99). The key changed in `citizenradio` commit 7ef3d2e (app ADR 0024).
+of the stream (`CitizenRadio/Core/IcySync.swift`, lines 87-99). The key changed in `citizenradio` commit 5caf226 (app ADR 0024).
 Now it is `songLine` of the display state when the state has one. Else it is `artist - title` (lines 119-126). The app uses one key for each state.
 
 On a station, an episode file keeps one ICY title for the full file. ADR 0025 and its slot text do not change the ICY
@@ -228,7 +228,7 @@ Manual, on the test station `heycitizens_test_radio`, with a person:
 1. A chaptered episode file plays. The ICY title of the stream equals the `songLine` of each chapter state on the relay
    (`GET /v1/liveitems/EVENT_ID/display`). This check also proves the inference of §How The Station Makes The ICY Title.
 2. A song file without chapters plays. The ICY title equals the `songLine` of its state.
-3. The app at `citizenradio` commit 7ef3d2e or later shows each chapter song.
+3. The app at `citizenradio` commit 5caf226 or later shows each chapter song.
 
 ## Open Questions
 
@@ -275,7 +275,7 @@ protection.
 ## Consequences
 
 - A station sends a display state for each segment. The relay then has a state for each track and each chapter.
-- The app shows a chapter song from `citizenradio` commit 7ef3d2e. An older app uses `artist - title` and agrees
+- The app shows a chapter song from `citizenradio` commit 5caf226. An older app uses `artist - title` and agrees
   only for a song file without chapters.
 - The station runbook gets one more configuration line.
 
