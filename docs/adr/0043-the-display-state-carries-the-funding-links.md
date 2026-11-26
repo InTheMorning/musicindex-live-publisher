@@ -158,7 +158,8 @@ These rules apply while this decision is current.
 
 1. Done: relay ADR 0013 §The Form Of funding has the row for `funding` (relay commit `4db75a1`). It agrees with §The
    Key. The relay build of `funding` starts when the operator accepts this record.
-2. A Rainbrook ADR tells where the app shows the links. musicindex ADR 0087 gives the shown word "Support links".
+2. Done: Rainbrook ADR 0031 (Proposed, Rainbrook commit `837d051`) adds a "Support links" button between AirPlay and
+   Boost. A tap opens a sheet with one row for each link: the label and the host name, or the host name alone.
 3. A request to `api.musicindex.org` with `include=payment_routes,source_links` for a chapter song of episode 158 gives
    `payment_routes` and `source_links` in one answer.
 
@@ -186,8 +187,8 @@ Mechanical. Tests in this repository:
 
 Visual. Only the operator can do this check:
 
-- While a chapter song with a funding link plays on the test station, Rainbrook shows the link where the Rainbrook ADR
-  tells.
+- While a chapter song with a funding link plays on the test station, a tap on "Support links" in Rainbrook
+  opens a sheet with that link (Rainbrook ADR 0031).
 
 ## Alternatives Considered
 

@@ -210,14 +210,14 @@ packet.
 - ADR 0042 has the status `Proposed`. An episode state sends its
   publication day in the display state. The operator accepted the text of
   relay ADR 0013, which gives the name and the format of `pubDate`. The relay
-  build starts when the operator accepts ADR 0042. ADR 0042 waits for a
-  Rainbrook ADR for the display and a station check of the Liquidsoap key
-  `date`. No implementation exists.
+  build starts when the operator accepts ADR 0042. Rainbrook ADR 0031
+  (Proposed) shows the date. ADR 0042 waits for a station check of the
+  Liquidsoap key `date`. No implementation exists.
 - ADR 0043 has the status `Proposed`. The display track gets `funding`, a
   list of 1 to 3 funding links of the segment. The station producer gets them
   from the route service with `include=source_links`. Relay ADR 0013 has the
-  row for `funding`. ADR 0043 waits for a Rainbrook ADR and a check of the
-  route service answer. No implementation exists.
+  row for `funding`, and Rainbrook ADR 0031 (Proposed) shows the links.
+  ADR 0043 waits for a check of the route service answer. No implementation exists.
 - This item needs a new ADR before work starts: a track identity source that
   is earlier than the Mixxx history row.
 - Studio client task 001 is not started. The publisher will start and end a

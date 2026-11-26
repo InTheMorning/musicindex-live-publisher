@@ -88,7 +88,8 @@ These rules apply while this decision is current.
 1. Done: the operator accepted the text of relay ADR 0013 on 2026-11-26 (relay commits `0375ea4` and `a83e703`). It
    gives the name, the format and the length of `pubDate`, and it agrees with this record. Relay ADR 0013 gets the
    status Accepted, and the relay build starts, when the operator accepts this record.
-2. A Rainbrook ADR tells where the app shows the date.
+2. Done: Rainbrook ADR 0031 (Proposed, Rainbrook commit `837d051`) shows the date as a line below the album, with no
+   label. The format is the medium date style of the iPhone, for example "Nov 12, 2026". The lock screen does not show it.
 3. On the test station, `state.json` gets `2026-11-12` from `m["date"]` for episode 158. If the key has a different
    name in Liquidsoap, §The Slot Text changes before acceptance.
 
@@ -105,7 +106,7 @@ Mechanical. Tests in this repository:
 
 Visual. Only the operator can do this check:
 
-- While episode 158 plays on the test station, Rainbrook shows its date where the Rainbrook ADR tells.
+- While episode 158 plays on the test station, Rainbrook shows "Nov 12, 2026" below the album (Rainbrook ADR 0031).
 
 ## Consequences
 
