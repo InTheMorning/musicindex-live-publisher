@@ -366,7 +366,7 @@ impl RelayClient {
     ///
     /// `POST {endpoint}/v1/liveitems/{event_id}/display` with the bearer
     /// token. The body includes `songLine` and optionally `value` when the
-    /// pairing information matches (ADR 0012). The request carries no
+    /// pairing information matches (ADR 0039). The request carries no
     /// `Listener-Delay-Secs` header (ADR 0011).
     ///
     /// # Errors
@@ -689,7 +689,7 @@ enum DisplayCommand {
     Resend { event_id: String },
     /// A live value payload was published with pairing information. If a
     /// display state with matching play_id is waiting, it should be resent
-    /// with the value (ADR 0012).
+    /// with the value (ADR 0039).
     UpdatePayloadPairing {
         event_id: String,
         play_id: Option<String>,
@@ -1649,7 +1649,7 @@ fn publish_worker(inputs: PublishWorkerInputs, fatal: &Mutex<Option<String>>) {
                 keepalive_interval: interval,
             } => {
                 // Notify the display worker about the new payload's pairing info
-                // so it can pair display states with their payloads (ADR 0012).
+                // so it can pair display states with their payloads (ADR 0039).
                 if let Some(display) = ctx.display {
                     let _ignored = display.send(DisplayCommand::UpdatePayloadPairing {
                         event_id: target.event_id.clone(),
@@ -1724,7 +1724,7 @@ struct DisplaySlot {
     pending: Option<DisplayState>,
     /// The last state that the relay accepted, for a resend.
     last_sent: Option<DisplayState>,
-    /// True if last_sent included value with its pairing (ADR 0012).
+    /// True if last_sent included value with its pairing (ADR 0039).
     ///
     /// When a payload arrives after a display state, the state is resent with
     /// value only one time. This flag ensures it happens only once.
@@ -1736,7 +1736,7 @@ struct DisplaySlot {
     backoff: Duration,
     /// The earliest time of the next attempt after a retryable failure.
     retry_at: Option<Instant>,
-    /// The pairing of the newest track payload (ADR 0012): play_id, event_guid,
+    /// The pairing of the newest track payload (ADR 0039): play_id, event_guid,
     /// and block_guid. None for dead blocks or tracks with no drop file.
     current_pairing: Option<Pairing>,
     /// The payload worker of this target. It gets the image of each

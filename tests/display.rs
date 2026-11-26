@@ -1306,7 +1306,7 @@ fn no_display_log_line_holds_the_token() -> Result<()> {
     Ok(())
 }
 
-// Pairing tests (ADR 0012)
+// Pairing tests (ADR 0039)
 
 #[test]
 fn display_state_with_matching_play_id_includes_value() -> Result<()> {

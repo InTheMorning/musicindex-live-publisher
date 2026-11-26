@@ -140,7 +140,7 @@ pub struct ShownTrack<'a> {
     pub artwork: Option<&'a Artwork>,
     /// The first line of `now-playing.txt` for this track (ADR 0009 §The Song Line).
     pub song_line: &'a str,
-    /// The history row ID of this play (ADR 0010, ADR 0012).
+    /// The history row ID of this play (ADR 0010, ADR 0039).
     pub play_id: Option<&'a str>,
     /// The album of the history row (ADR 0013).
     pub album: Option<&'a str>,

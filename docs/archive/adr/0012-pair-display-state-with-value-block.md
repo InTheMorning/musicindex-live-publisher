@@ -1,6 +1,9 @@
 # ADR 0012: Pair The Display State With Its Value Block
 
-Status: Implemented
+> Archived: superseded by [ADR 0039](../../adr/0039-the-display-state-pairs-with-its-value-block.md) on 2026-11-26.
+> ADR 0039 restates each live rule of this record and of its three changes.
+
+Status: Superseded by ADR 0039 on 2026-11-26. Implemented 2026-10-06.
 Date: 2026-10-06
 
 - Changes: ADR 0008 items: version 2 of `display.json`.

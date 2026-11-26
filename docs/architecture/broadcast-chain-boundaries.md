@@ -91,7 +91,7 @@ display state at once, with the header `Listener-Delay-Secs` on each block
 publish (ADR 0011). `musicindex-live-relay` ADR 0004 owns that header and
 delays Socket.IO only. A display state has `songLine`, and the display state
 of the same play as the newest block has that block's identity in `value`
-(ADR 0012). `musicindex-live-relay` ADR 0005 owns those two keys on the wire.
+(ADR 0039). `musicindex-live-relay` ADR 0005 owns those two keys on the wire.
 
 ## What Other Components Control Here
 

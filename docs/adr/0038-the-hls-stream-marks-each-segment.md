@@ -114,7 +114,7 @@ These rules apply while this decision is current.
    records no new song.
 3. **The handoffs.** The relay session accepts the change to relay ADR 0005. The Rainbrook session accepts the rule
    of §The Player in its own record.
-4. **The pairing record.** ADR 0039 is accepted.
+4. **The pairing record.** Done 2026-11-26: ADR 0039 is accepted.
 
 ## Verification After Implementation
 
@@ -165,7 +165,7 @@ state also has no GUID.
 ## References
 
 - `docs/adr/0009-hls-track-metadata.md`
-- `docs/adr/0012-pair-display-state-with-value-block.md`
+- `docs/adr/0039-the-display-state-pairs-with-its-value-block.md`
 - `docs/adr/0035-the-station-producer.md`
 - `docs/adr/0037-the-listener-delay-comes-from-the-icecast-burst.md`
 - `docs/runbooks/test-station-log.md`, steps 47 and 50

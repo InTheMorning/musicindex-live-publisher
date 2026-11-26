@@ -53,10 +53,6 @@ the next priority. Confirm that logging works before the show.
   — Accepted. The publisher sends each block and display state at once, with
   the delay in a header. Relay ADR 0004 delays Socket.IO only. Replaces the
   schedule rules of ADR 0005 and ADR 0008 at its implementation review
-- [ADR 0012: Pair the display state with its value block](adr/0012-pair-display-state-with-value-block.md)
-  — Implemented. `display.json` version 2 with the exact song line and
-  `play_id`. The publisher adds `songLine` and the block identity to the
-  display state (relay ADR 0005)
 - [ADR 0013: The display state carries the album](adr/0013-display-album.md)
   — Accepted. `display.json` version 3 with the album of the history row.
   The publisher adds `album` to the display state (relay ADR 0006)
@@ -125,8 +121,8 @@ the next priority. Confirm that logging works before the show.
   the `playId` of the segment at each chapter boundary. It changes ADR 0009
   and ADR 0035, and adds `playId` to the display state of ADR 0039
 - [ADR 0039: The display state pairs with its value block](adr/0039-the-display-state-pairs-with-its-value-block.md)
-  — Proposed. One record for the pairing rules of ADR 0012 and its three
-  changes. It adds no rule. At acceptance it supersedes ADR 0012
+  — Accepted. One record for the pairing rules of ADR 0012 and its three
+  changes. It adds no rule. It supersedes ADR 0012
 
 ## Plans
 
@@ -162,7 +158,7 @@ the next priority. Confirm that logging works before the show.
 - [Live value reference shape plan](plans/live-value-reference-shape.md) —
   Ready. Two packets for ADR 0010
 - [Display pairing plan](plans/display-pairing.md) — Implemented. Two packets
-  for ADR 0012, in one release, after relay ADR 0005
+  for ADR 0039, in one release, after relay ADR 0005
 - [Display album plan](plans/display-album.md) — Ready. One packet for
   ADR 0013, after relay ADR 0006
 - [Relay applies the stream delay plan](plans/relay-applies-stream-delay.md)
@@ -290,7 +286,7 @@ Ship both in one release, after the relay of ADR 0004 is deployed.
 - [001 — The delay header](tasks/relay-delay-task-001-delay-header.md)
 - [002 — Send at once](tasks/relay-delay-task-002-send-at-once.md)
 
-Packets for the display pairing plan. ADR 0012 governs them. They start after
+Packets for the display pairing plan. ADR 0039 governs them. They start after
 ADR 0010 task 001 and ADR 0011 task 002. Ship both in one release, after the
 relay of ADR 0005 is deployed.
 
@@ -391,6 +387,8 @@ Superseded decisions and their packets. Read them for research only.
   — Superseded by ADR 0017 on 2026-10-19
 - [ADR 0005: Producer liveness, the dead block and the relay lease](archive/adr/0005-producer-liveness-and-dead-block.md)
   — Replaced by ADR 0029 on 2026-11-24
+- [ADR 0012: Pair the display state with its value block](archive/adr/0012-pair-display-state-with-value-block.md)
+  — Superseded by ADR 0039 on 2026-11-26
 - [ADR 0022: A producer for Liquidsoap and AzuraCast](archive/adr/0022-liquidsoap-producer.md)
   — Superseded by ADR 0035 on 2026-11-26
 - [ADR 0025: The station producer pays each chapter song of an episode file](archive/adr/0025-the-station-producer-pays-each-chapter-song.md)

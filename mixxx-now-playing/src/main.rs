@@ -523,7 +523,7 @@ impl<'a> Runtime<'a> {
                 ..
             } => {
                 let song_line = render_now_playing_line(&artist, &title, self.cli.strip_hyphens);
-                // ADR 0012: the display `play_id` is the `play_id` of the
+                // ADR 0039: the display `play_id` is the `play_id` of the
                 // drop file of this play. Since ADR 0014, a non-payable track
                 // has a drop file with a `play_id` too, so it gets one here.
                 // The show log of ADR 0017 joins the two by this value. The

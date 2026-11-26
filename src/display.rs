@@ -21,7 +21,7 @@ use std::sync::Arc;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-/// The pairing of a display state with a live value payload (ADR 0012).
+/// The pairing of a display state with a live value payload (ADR 0039).
 ///
 /// This holds the identity of the newest payload for a target, used to pair
 /// display states with their payloads.
@@ -166,7 +166,7 @@ pub struct DisplayTrack {
     pub artwork: Option<Artwork>,
     /// The song line from `display.json` version 2 (ADR 0009 §The Song Line).
     pub song_line: String,
-    /// The play ID from `display.json` version 2 (ADR 0010, ADR 0012).
+    /// The play ID from `display.json` version 2 (ADR 0010, ADR 0039).
     pub play_id: Option<String>,
     /// The album from `display.json` version 3 (ADR 0013).
     pub album: Option<String>,
@@ -185,7 +185,7 @@ impl DisplayState {
     }
 
     /// Tells if this state is the play of `pairing`: the track has a
-    /// `play_id`, and it is the `play_id` of the payload (ADR 0012). Only
+    /// `play_id`, and it is the `play_id` of the payload (ADR 0039). Only
     /// then does the body get `value`.
     pub fn pairs_with(&self, pairing: &Pairing) -> bool {
         self.track
@@ -199,7 +199,7 @@ impl DisplayState {
     /// The body holds only the key `track` (relay ADR 0003). It never holds
     /// the `schema` key of `display.json`. If pairing is supplied and the
     /// track's play_id matches, the track also includes `value: {eventGuid,
-    /// blockGuid}` (ADR 0012).
+    /// blockGuid}` (ADR 0039).
     pub fn body_with_pairing(&self, pairing: Option<&Pairing>) -> Value {
         let track = self.track.as_ref().map(|track| {
             let artwork = match &track.artwork {

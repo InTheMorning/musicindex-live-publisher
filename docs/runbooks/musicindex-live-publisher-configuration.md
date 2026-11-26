@@ -161,7 +161,7 @@ state needs no upload. These requests share the per-event publish rate limit
 of the relay.
 
 The display file `display.json` uses the schema `musicindex.display/3`. ADR
-0012 added two fields to each track in version 2, and ADR 0013 added one
+0039 owns two fields of each track, added in version 2, and ADR 0013 added one
 field in version 3:
 
 - `song_line`: the first line of `now-playing.txt` for this track, with the same
@@ -176,7 +176,7 @@ field in version 3:
 Earlier versions are not supported.
 
 The publisher sends each display state to the relay in the body of
-`POST /v1/liveitems/{event_id}/display`. ADR 0012 owns the two keys
+`POST /v1/liveitems/{event_id}/display`. ADR 0039 owns the two keys
 `songLine` and `value`, and relay ADR 0005 accepts them. ADR 0013 owns the
 key `album`, and relay ADR 0006 accepts it. Deploy that relay before this
 publisher, because an older relay refuses each such state.
@@ -896,7 +896,7 @@ recipients. The show log then has two rows for one track.
 
 A replay in the same deck with no new load stays one play, with one
 `play_id`. A new block for that replay needs a new ADR, because the play
-identity of ADR 0010 and ADR 0012 is the Mixxx history row.
+identity of ADR 0010 and ADR 0039 is the Mixxx history row.
 
 ## Drop File Contract
 
@@ -996,6 +996,6 @@ flock -x /tmp/musicindex-live-publisher-nowplaying/.producer.lock \
   musicindex-live-publisher --config /tmp/publisher.toml --dry-run --verbose
 ```
 
-The dry run prints each display state without `value` (ADR 0012). The relay
+The dry run prints each display state without `value` (ADR 0039). The relay
 worker adds `value`, and a dry run starts no relay worker. A dry run also
 writes no show log.

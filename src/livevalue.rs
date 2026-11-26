@@ -37,7 +37,7 @@ pub struct LiveValuePayload {
     #[serde(rename = "podcastName", skip_serializing_if = "Option::is_none")]
     pub podcast_name: Option<String>,
     pub value: LiveValue,
-    /// The ID of the Mixxx history row for this play (ADR 0010, ADR 0012).
+    /// The ID of the Mixxx history row for this play (ADR 0010, ADR 0039).
     /// This field is not serialized; it is used only for pairing with display state.
     #[serde(skip)]
     pub play_id: Option<String>,

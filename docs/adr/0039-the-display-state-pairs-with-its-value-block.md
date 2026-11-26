@@ -1,9 +1,9 @@
 # ADR 0039: The Display State Pairs With Its Value Block
 
-- Status: Proposed
+- Status: Accepted on 2026-11-26 by the operator. ADR 0012 is in `docs/archive/adr/`.
 - Date: 2026-11-26
 - Changed by: ADR 0038, proposed 2026-11-26. The display state on the wire also has `playId`.
-- Supersedes: ADR 0012 (`docs/adr/0012-pair-display-state-with-value-block.md`). This record restates each live rule
+- Supersedes: ADR 0012 (`docs/archive/adr/0012-pair-display-state-with-value-block.md`). This record restates each live rule
   of ADR 0012 and of its three changes. It adds no rule and removes no rule.
 - Uses: ADR 0013 (version 3 of `display.json` and `album`), ADR 0035 §The Song Line (the station song line), ADR 0009
   §The Song Line (the Mixxx song line), ADR 0010 (`play_id` in the drop file), relay ADR 0005 (`songLine` and `value`
@@ -98,7 +98,7 @@ second minter would break that rule.
 
 - The tagger of ADR 0009 and the apps match by equality and name the exact block.
 - A display state can go out two times for one play.
-- At acceptance, ADR 0012 moves to `docs/archive/adr/`, and the comments that cite ADR 0012 cite this record.
+- ADR 0012 is in `docs/archive/adr/`. The code comments cite this record.
 
 ## References
 

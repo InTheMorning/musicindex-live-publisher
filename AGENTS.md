@@ -49,7 +49,7 @@ packet.
   are open.
 - ADR 0009, track metadata in the HLS stream, has the status `Accepted`. It
   owns the song line that `butt` sends. The operator decided its tagger home
-  (a new repository, not made yet) and its pairing (ADR 0012). Two device
+  (a new repository, not made yet) and its pairing (ADR 0039). Two device
   checks are open. No implementation exists.
 - ADR 0010, the live value payload of the model server, has the status
   `Accepted`. It adds `line`, `author` and `podcastName` to the payload, and a
@@ -63,9 +63,9 @@ packet.
 - **Do not deploy this publisher before the relay of `musicindex-live-relay`
   ADR 0004 runs.** An older relay ignores the header, and podcast apps then
   get no delay.
-- ADR 0012, the pairing of the display state with its value block, has the
-  status `Implemented`. The producer writes
-  `display.json` version 2 with `song_line` and `play_id`. Each display body
+- ADR 0039, the pairing of the display state with its value block, has the
+  status `Accepted`. Its rules are implemented. The producer writes
+  `display.json` with `song_line` and `play_id`. Each display body
   has `songLine`. A display state of the same play as the newest payload also
   has `value` with the `eventGuid` and the `blockGuid` of that payload.
 - **Do not deploy this publisher before the relay of `musicindex-live-relay`
@@ -197,11 +197,9 @@ packet.
   `musicindex.hls/2` with the `playId` of the segment at each chapter boundary,
   and Rainbrook releases the display state with the same `playId`. Cause:
   Rainbrook on HLS shows a chapter change too early (station log step 50).
-  Before acceptance, ADR 0039 must be accepted, and the relay and Rainbrook
-  sessions must accept their changes.
-- ADR 0039 has the status `Proposed`. It restates the pairing rules of ADR 0012
-  and its three changes in one record, with no new rule. At acceptance,
-  ADR 0012 moves to the archive.
+  Before acceptance, the relay and Rainbrook sessions must accept their
+  changes, and a station test must prove the `playId` equality and the ICY
+  title.
 - This item needs a new ADR before work starts: a track identity source that
   is earlier than the Mixxx history row.
 - Studio client task 001 is not started. The publisher will start and end a
