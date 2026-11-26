@@ -49,8 +49,8 @@ A track in `display.json` version 3 has one more optional field:
 - A song state, a jingle and a state with no chapter list give `null`.
 - The producer writes the date only when the first 10 characters of the state `pub_date` are a day in the format
   `YYYY-MM-DD` that exists in the Gregorian calendar. Else it writes `null`. For example, `2026-02-30` gives `null`,
-  because the relay refuses the full display state for a day that does not exist (relay ADR 0013). A longer value, for example `2026-11-12T08:00:00`, gives its first 10
-  characters.
+  because the relay refuses the full display state for a day that does not exist (relay ADR 0013). A longer value,
+  for example `2026-11-12T08:00:00`, gives its first 10 characters.
 - The drop file does not change.
 - The Mixxx producer does not change. Its `display.json` has no `pub_date`.
 
@@ -85,8 +85,9 @@ These rules apply while this decision is current.
 
 ## Before Acceptance
 
-1. A relay ADR accepts `pubDate` in the display track, and gives its format. Relay ADR 0013 (relay commit `0375ea4`)
-   has the status Proposed and agrees with this record. It waits for the acceptance of this record.
+1. Done: the operator accepted relay ADR 0013 on 2026-11-26 (relay commits `0375ea4` and `a83e703`). It gives the
+   name, the format and the length of `pubDate`, and it agrees with this record. The relay build does not wait for the
+   acceptance of this record.
 2. A Rainbrook ADR tells where the app shows the date.
 3. On the test station, `state.json` gets `2026-11-12` from `m["date"]` for episode 158. If the key has a different
    name in Liquidsoap, §The Slot Text changes before acceptance.
