@@ -211,22 +211,25 @@ packet.
   publication day in the display state. Relay ADR 0013 gives the name and the
   format of `pubDate`, and Rainbrook ADR 0031 (Proposed) shows the date. On the
   test station, Liquidsoap gives the key `date` (station log step 61).
-  Display keys tasks 001 and 002 implement it and are not deployed.
+  Display keys tasks 001 and 002 implement it. The test station has them,
+  and episode 158 sends `pubDate` `2026-11-12` (station log step 62). The
+  Mixxx host is not deployed. The Rainbrook check is open.
 - ADR 0043 has the status `Accepted`. The display track gets `funding`, a
   list of 1 to 3 funding links of the segment. The station producer gets them
   from the route service with `include=source_links`. Relay ADR 0013 has the
   row for `funding`, and Rainbrook ADR 0031 (Proposed) shows the links.
   The route service gives the routes and the links in one answer (station
   log step 58). The publisher sends `funding` (display keys task 001), and
-  the station producer writes `funding` `null`. Display keys task 003 (the
-  station lookup) and task 004 (the Mixxx links) implement ADR 0044 and are
-  not deployed.
+  the station producer writes the links of ADR 0044. Display keys task 003
+  (the station lookup) and task 004 (the Mixxx links) implement ADR 0044.
 - The deploy order of ADR 0042 and ADR 0043 is the relay, then the publisher,
   then Rainbrook.
 - ADR 0044 has the status `Accepted`. The funding of a segment uses the
   order of its routes: the route service answer first, then the file `WPAY`,
   then `null`. The Mixxx producer also writes `funding`. Display keys
-  tasks 003 and 004 implement it and are not deployed.
+  tasks 003 and 004 implement it. The test station has `e8c9502`, and a song
+  sends the funding link of the index (station log step 62). The Mixxx host
+  is not deployed. The Rainbrook checks are open.
 - Relay commit `1dec0b3` accepts `pubDate` and `funding` (relay ADR 0013).
   The publisher sends the two keys only after
   `https://api.musicindex.org/v1/liveitems/info` gives `git_revision`
