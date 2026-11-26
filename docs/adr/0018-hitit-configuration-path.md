@@ -1,6 +1,6 @@
 # ADR 0018: The HitIt Configuration Path
 
-Status: Proposed
+Status: Accepted on 2026-11-26 by the operator.
 Date: 2026-11-11
 
 The code change for this ADR is in the same commit. The operator must accept

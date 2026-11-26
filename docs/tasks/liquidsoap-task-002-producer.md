@@ -22,7 +22,7 @@ A new workspace member crate and binary, `liquidsoap-now-playing`. It reads `sta
 
 ## Files To Inspect
 
-- `docs/adr/0022-liquidsoap-producer.md`, all sections
+- `docs/archive/adr/0022-liquidsoap-producer.md`, all sections
 - `docs/adr/0024-payable-block-needs-both-guids.md`
 - `docs/adr/0016-instances-events-and-producer-lock.md` §The Producer Lock
 - `docs/adr/0014-one-assembler-and-track-reporting.md` §Each Producer Reports Each Track

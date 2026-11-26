@@ -41,7 +41,7 @@ the next priority. Confirm that logging works before the show.
   — Accepted. Artwork and track text for every track, through the stream delay,
   to the display routes of the relay. A paused stream clears the `butt` title
 - [ADR 0009: Track metadata in the HLS stream](adr/0009-hls-track-metadata.md)
-  — Proposed. The song line, and a MusicIndex ID3 frame that a tagger on the
+  — Accepted. The song line, and a MusicIndex ID3 frame that a tagger on the
   VPS releases at the ICY title. The Socket.IO live value and its `image` stay
   as the compatibility path. The tagger reads the instant relay routes, and a
   new repository holds it. Two device checks and one repository remain
@@ -64,7 +64,7 @@ the next priority. Confirm that logging works before the show.
   — Implemented. Only this repository assembles and publishes
   blocks. Drop file version 3: each producer reports each track that plays, payable or not
 - [ADR 0015: Live segments from HitIt](adr/0015-live-segments-from-v4vmm.md)
-  — Proposed. HitIt starts a talk break or a live set through `segment`
+  — Accepted. HitIt starts a talk break or a live set through `segment`
   commands over `ssh`, with a split that it sets for each show
 - [ADR 0016: Instances, events and the producer lock](adr/0016-instances-events-and-producer-lock.md)
   — Implemented. One instance for each show and for each event, and the rules
@@ -74,7 +74,7 @@ the next priority. Confirm that logging works before the show.
   episode. The time is the read time of this service, and the art is a
   reference. It supersedes ADR 0003
 - [ADR 0018: The HitIt configuration path](adr/0018-hitit-configuration-path.md)
-  — Proposed. The producer reads the `hitit` configuration file first, then
+  — Accepted. The producer reads the `hitit` configuration file first, then
   the `v4vmm` file. With no file, it writes a warning and uses the defaults
 - [ADR 0019: The Debian package and the Docker image](adr/0019-debian-package-and-docker-image.md)
   — Accepted. cargo-deb makes the `.deb`. The Docker image holds the
@@ -84,30 +84,12 @@ the next priority. Confirm that logging works before the show.
   configuration. A kernel lock lets one Mixxx producer run at a time. The
   setup helper gets `--instance`, `--target`, `--event-id`, `--json` and
   `--migrate-units`. It changes ADR 0016 §Producer Units
-- [ADR 0022: A producer for Liquidsoap and AzuraCast](adr/0022-liquidsoap-producer.md)
-  — Accepted. `liquidsoap-now-playing` reads `state.json` from the
-  Liquidsoap slot text and writes the drop file version 3. It releases the
-  producer lock while a live DJ is on air or the heartbeat stops
 - [ADR 0023: A live DJ takes over the event of a station](adr/0023-dj-takeover.md)
   — Accepted. Each publisher sends its payable block again over a foreign dead
   block at each keepalive. No relay change
 - [ADR 0024: A payable block needs the feed GUID and the track GUID](adr/0024-payable-block-needs-both-guids.md)
   — Accepted. The publisher publishes routes only with the two GUIDs. Each
   producer asks a route service with the two GUIDs. It changes ADR 0014
-- [ADR 0025: The station producer pays each chapter song of an episode file](adr/0025-the-station-producer-pays-each-chapter-song.md)
-  — Accepted. The `state.json` format 2 gives the position in the file. Each chapter
-  song gets a drop file with the merged routes. The readers read only the new
-  `Podcast` frame names. It changes ADR 0022
-- [ADR 0026: The station producer writes the display state with the ICY line of the file](adr/0026-the-station-producer-writes-the-display-state.md)
-  — Accepted. `display.json` gives the artist and the title of each segment,
-  and `song_line` is the ICY title of the file
-- [ADR 0027: The station producer asks the route service for a song file](adr/0027-the-station-producer-asks-the-route-service-for-a-song.md)
-  — Accepted. A song state with the two GUIDs gets the routes of the route
-  service, else the routes of the state. It changes ADR 0022 and ADR 0025
-- [ADR 0028: The station producer uses the embedded picture of the file as the artwork fallback](adr/0028-the-station-producer-uses-the-embedded-picture.md)
-  — Accepted. The slot text writes the front cover of an MP3 or FLAC file into
-  the state folder, and the producer uses it when the state has no image URL.
-  It changes ADR 0025 and ADR 0026
 - [ADR 0029: Producer liveness, the dead block and the remoteValue title](adr/0029-producer-liveness-dead-block-and-remote-value-title.md)
   — Accepted. It replaces ADR 0005: the producer lock, the dead block, the
   relay keepalive and the expiry limit without the MIDI connector. The dead
@@ -123,19 +105,19 @@ the next priority. Confirm that logging works before the show.
   — Accepted. The dead block has one destination at
   `no-v4v-track@example.invalid`. It supersedes ADR 0031
 - [ADR 0034: The payload image falls back to the relay copy of the picture](adr/0034-the-payload-image-falls-back-to-the-relay-copy-of-the-picture.md)
-  — Proposed. When the drop file has no image URL, the payload `image` is the
+  — Accepted. When the drop file has no image URL, the payload `image` is the
   display URL or the relay URL of the picture of the same play. Relay
   ADR 0011 keeps the image. It changes ADR 0010
 - [ADR 0035: The station producer](adr/0035-the-station-producer.md)
-  — Proposed. One record for the station producer. It restates each live rule
-  of ADR 0022 and ADR 0025 to ADR 0028, and adds the chapter image. At
-  acceptance it supersedes those five records
+  — Accepted. One record for the station producer. It restates each live rule
+  of ADR 0022 and ADR 0025 to ADR 0028, and adds the chapter image. It
+  supersedes those five records
 - [ADR 0036: The HLS stream carries the picture one time for each song](adr/0036-the-hls-stream-carries-the-picture-one-time-for-each-song.md)
-  — Proposed. An `APIC` frame goes into the first segment of each song, on
+  — Accepted. An `APIC` frame goes into the first segment of each song, on
   the station and on the VPS stack. It needs a change of the Liquidsoap cover
   keys. It changes ADR 0009 and ADR 0035
 - [ADR 0037: The listener delay comes from the Icecast burst](adr/0037-the-listener-delay-comes-from-the-icecast-burst.md)
-  — Proposed. A target can give `icecast_burst_bytes` and
+  — Accepted. A target can give `icecast_burst_bytes` and
   `stream_bitrate_kbps`. The publisher sends that delay, rounded down, as
   `Listener-Delay-Secs`. It changes ADR 0011
 
@@ -397,6 +379,16 @@ Superseded decisions and their packets. Read them for research only.
   — Superseded by ADR 0017 on 2026-10-19
 - [ADR 0005: Producer liveness, the dead block and the relay lease](archive/adr/0005-producer-liveness-and-dead-block.md)
   — Replaced by ADR 0029 on 2026-11-24
+- [ADR 0022: A producer for Liquidsoap and AzuraCast](archive/adr/0022-liquidsoap-producer.md)
+  — Superseded by ADR 0035 on 2026-11-26
+- [ADR 0025: The station producer pays each chapter song of an episode file](archive/adr/0025-the-station-producer-pays-each-chapter-song.md)
+  — Superseded by ADR 0035 on 2026-11-26
+- [ADR 0026: The station producer writes the display state with the ICY line of the file](archive/adr/0026-the-station-producer-writes-the-display-state.md)
+  — Superseded by ADR 0035 on 2026-11-26
+- [ADR 0027: The station producer asks the route service for a song file](archive/adr/0027-the-station-producer-asks-the-route-service-for-a-song.md)
+  — Superseded by ADR 0035 on 2026-11-26
+- [ADR 0028: The station producer uses the embedded picture of the file as the artwork fallback](archive/adr/0028-the-station-producer-uses-the-embedded-picture.md)
+  — Superseded by ADR 0035 on 2026-11-26
 - [ADR 0031: The dead block has no destination](archive/adr/0031-the-dead-block-has-no-destination.md)
   — Superseded by ADR 0033 on 2026-11-25
 - [Show log task 001 — Show log writer](archive/tasks/show-log-task-001-log-writer.md)

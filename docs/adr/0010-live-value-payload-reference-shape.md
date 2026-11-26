@@ -7,7 +7,7 @@ Date: 2026-10-06
 - Changed by: ADR 0029, 2026-11-24. The `title` of a payable track block is
   "artist - title". The display state does not change. ADR 0029 replaces
   ADR 0005 for the dead block and the timing.
-- Changed by: ADR 0034, proposed 2026-11-25. When the drop file has no
+- Changed by: ADR 0034, accepted 2026-11-26. When the drop file has no
   `image`, the payload uses the display URL or the relay copy of the picture.
 
 Accepted 2026-10-06 by the operator. Item 3 of §Before Acceptance, the app

@@ -25,8 +25,8 @@ task, the map of service results stays empty, so a remote split uses the routes 
 
 ## Files To Inspect
 
-- `docs/adr/0025-the-station-producer-pays-each-chapter-song.md`. It owns each rule of this task. Read all of it.
-- `docs/adr/0022-liquidsoap-producer.md` §What The Producer Writes and §Jingle Mode.
+- `docs/archive/adr/0025-the-station-producer-pays-each-chapter-song.md`. It owns each rule of this task. Read all of it.
+- `docs/archive/adr/0022-liquidsoap-producer.md` §What The Producer Writes and §Jingle Mode.
 - `liquidsoap-now-playing/src/lib.rs`, `liquidsoap-now-playing/src/state.rs`
 - `now-playing-drop/src/lib.rs`, `now-playing-drop/src/payment_route.rs`
 - `../musicindex-lib/value/src/lib.rs`

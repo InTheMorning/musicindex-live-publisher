@@ -1,6 +1,6 @@
 # ADR 0015: Live Segments From HitIt
 
-Status: Proposed
+Status: Accepted on 2026-11-26 by the operator.
 Date: 2026-10-18
 
 Class: situational. Supersede this record when a different input replaces

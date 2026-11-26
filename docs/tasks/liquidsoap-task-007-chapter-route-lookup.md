@@ -23,7 +23,7 @@ complete: `render_state` already selects the service result first, then the file
 
 ## Files To Inspect
 
-- `docs/adr/0025-the-station-producer-pays-each-chapter-song.md`, all of §The Chapter Route Lookup, §What The
+- `docs/archive/adr/0025-the-station-producer-pays-each-chapter-song.md`, all of §The Chapter Route Lookup, §What The
   Producer Writes and §Verification. It owns each rule of this task.
 - `docs/adr/0024-*.md` §The Assembler Examines The Two GUIDs.
 - `mixxx-now-playing/src/musicindex.rs`, `mixxx-now-playing/src/main.rs` (the use of `ValueRouteResolver`).

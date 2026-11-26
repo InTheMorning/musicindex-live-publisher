@@ -24,9 +24,9 @@ and are not in this task.
 
 ## Files To Inspect
 
-- `docs/adr/0026-the-station-producer-writes-the-display-state.md`, all of §Decision, §Invariants and §Verification.
+- `docs/archive/adr/0026-the-station-producer-writes-the-display-state.md`, all of §Decision, §Invariants and §Verification.
   It owns each rule of this task.
-- `docs/adr/0025-the-station-producer-pays-each-chapter-song.md` §What The Producer Writes For An Episode File and
+- `docs/archive/adr/0025-the-station-producer-pays-each-chapter-song.md` §What The Producer Writes For An Episode File and
   §Verification (the chapter sequence that the tests use).
 - `liquidsoap-now-playing/src/lib.rs` (the tests too), `liquidsoap-now-playing/src/state.rs`,
   `liquidsoap-now-playing/src/main.rs`.

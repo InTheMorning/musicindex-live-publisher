@@ -1,11 +1,11 @@
 # ADR 0034: The Payload Image Falls Back To The Relay Copy Of The Picture
 
-- Status: Proposed
+- Status: Accepted on 2026-11-26 by the operator.
 - Date: 2026-11-25
 - Changes: ADR 0010, the item "`image` stays the artwork URL of the drop file".
 - Changes: ADR 0011 §Send At Once, item 1. A track block waits at most 2 seconds for the picture of its play
   (§The First Send Waits For The Picture).
-- Uses: ADR 0008 §The Embedded Image and ADR 0028 §The Artwork Sequence, without a change. ADR 0012 for the pairing
+- Uses: ADR 0008 §The Embedded Image and ADR 0035 §The Artwork Of A Segment, without a change. ADR 0012 for the pairing
   of a display state with its payload by `play_id`. ADR 0011 for the listener delay.
 - Uses: `musicindex-live-relay` ADR 0003, the routes `PUT` and `GET /v1/liveitems/{event_id}/artwork/{sha256}`.
 - Depends on: a `musicindex-live-relay` record that keeps each image that a pending listener update names
@@ -29,7 +29,7 @@ changes `image` at each track (`musicindex-research`, report "Live RSS metadata 
 
 The publisher copies `image` from the drop file (`src/livevalue.rs`, `payload_from_dropfile`). A producer writes it
 only from an image URL: the `Image` tag in Mixxx, or the `image` of the station state. On 2026-11-24, 19 of the 68
-station files had an embedded picture, and no file had an image URL (ADR 0028 §Context).
+station files had an embedded picture, and no file had an image URL (archived ADR 0028 §Context).
 
 The apps read `image` in different procedures (station log step 44, 2026-11-25):
 
@@ -40,7 +40,7 @@ The apps read `image` in different procedures (station log step 44, 2026-11-25):
 
 Thus a second send does not put the picture in these apps. The picture must be in the first send.
 
-The display path already sends the embedded picture to the relay (ADR 0008, ADR 0028). For a target with
+The display path already sends the embedded picture to the relay (ADR 0008, ADR 0035). For a target with
 `display_dir`, the publisher uploads the image with `PUT /v1/liveitems/{event_id}/artwork/{sha256}`, then sends the
 display state with `artwork.sha256` (`src/relay.rs`, `send_display`). This occurs for each track, payable or not. The
 read route needs no token, and it sends `Cache-Control: public, max-age=31536000, immutable`
@@ -208,6 +208,6 @@ Not selected. It needs a new service and a new token. The relay already holds th
 ## References
 
 - `docs/adr/0010-live-value-payload-reference-shape.md`
-- `docs/adr/0028-the-station-producer-uses-the-embedded-picture.md`
+- `docs/adr/0035-the-station-producer.md`
 - `musicindex-live-relay/docs/adr/0003-display-state-and-artwork.md`
 - `musicindex-research/reports/Live RSS metadata delivery paths.md`

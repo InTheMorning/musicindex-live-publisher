@@ -22,7 +22,7 @@ The display writer of `mixxx-now-playing/src/display.rs` moves to a new module `
 
 ## Files To Inspect
 
-- `docs/adr/0026-the-station-producer-writes-the-display-state.md` §One Display Writer. It owns each rule of this
+- `docs/archive/adr/0026-the-station-producer-writes-the-display-state.md` §One Display Writer. It owns each rule of this
   task.
 - `mixxx-now-playing/src/display.rs`, `mixxx-now-playing/src/main.rs` (the `ShownTrack` at about line 533),
   `mixxx-now-playing/tests/display.rs`, `mixxx-now-playing/tests/lifecycle.rs`.

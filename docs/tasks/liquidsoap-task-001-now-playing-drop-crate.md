@@ -22,7 +22,7 @@ producer does not change.
 
 ## Files To Inspect
 
-- `docs/adr/0022-liquidsoap-producer.md` §Name And Crate
+- `docs/archive/adr/0022-liquidsoap-producer.md` §Name And Crate
 - `docs/adr/0016-instances-events-and-producer-lock.md` §The Producer Lock
 - `docs/adr/0021-mixxx-producer-template-unit.md` §The Producer Reads Its Instance
 - `mixxx-now-playing/src/lock.rs`, `sink.rs`, `render.rs`, `musicindex.rs`, `config.rs`, `lib.rs`, `main.rs`

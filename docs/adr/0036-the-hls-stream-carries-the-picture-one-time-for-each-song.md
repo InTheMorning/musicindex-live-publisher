@@ -1,6 +1,6 @@
 # ADR 0036: The HLS Stream Carries The Picture One Time For Each Song
 
-- Status: Proposed
+- Status: Accepted on 2026-11-26 by the operator.
 - Date: 2026-11-25
 - Bar: crosses repositories. The rule changes the slot text of this repository and `radio.liq` of
   `musicindex-stream-test`. An agent can also make the opposite choice by mistake, because ADR 0009 forbids image data

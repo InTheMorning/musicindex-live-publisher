@@ -20,7 +20,7 @@ the state (ADR 0027). An imported song file with no routes in the file then pays
 ## Files To Change
 
 - `liquidsoap-now-playing/src/lib.rs`, `liquidsoap-now-playing/src/lookup.rs`.
-- `docs/adr/0027-the-station-producer-asks-the-route-service-for-a-song.md`, and the `Changed by` lines of ADR 0022
+- `docs/archive/adr/0027-the-station-producer-asks-the-route-service-for-a-song.md`, and the `Changed by` lines of ADR 0022
   and ADR 0025. `docs/README.md` and `AGENTS.md`.
 
 ## Acceptance Criteria

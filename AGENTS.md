@@ -47,7 +47,7 @@ packet.
   the display state and the image to the relay through its stream delay. Its
   relay side is relay ADR 0003. The review of task 004 and the visual check
   are open.
-- ADR 0009, track metadata in the HLS stream, has the status `Proposed`. It
+- ADR 0009, track metadata in the HLS stream, has the status `Accepted`. It
   owns the song line that `butt` sends. The operator decided its tagger home
   (a new repository, not made yet) and its pairing (ADR 0012). Two device
   checks are open. No implementation exists.
@@ -92,10 +92,10 @@ packet.
     error.
   - `target add` and the startup of the publisher refuse an event that a
     different instance on the same host holds.
-- ADR 0015 has the status `Proposed`, and no implementation exists. In it,
+- ADR 0015 has the status `Accepted`, and no implementation exists. In it,
   HitIt starts a talk break or a live set through `segment` commands. It
-  needs a HitIt ADR before acceptance.
-- ADR 0018 has the status `Proposed`. The code follows it. It needs acceptance.
+  needs a HitIt ADR before implementation.
+- ADR 0018 has the status `Accepted`. The code follows it.
   `mixxx-now-playing` reads `~/.config/hitit/config.toml` first, then
   `~/.config/v4vmm/config.toml`. With no file, it writes a warning.
 - ADR 0019 has the status `Accepted`. It applies musicindex ADR 0084.
@@ -118,46 +118,13 @@ packet.
   template unit `mixxx-now-playing@<instance>.service`, and one Mixxx producer
   runs at a time. HitIt uses these units to keep a show stream apart from the
   private stream.
-- ADR 0022, ADR 0023 and ADR 0024 have the status `Accepted`. The five
-  packets of `docs/plans/liquidsoap-producer.md` are committed. Manual
-  checks 1-3 and the station side of check 4 passed on the test host. The
-  jingle test passed, so a station can use AzuraCast jingle mode (ADR 0022
-  §Jingle Mode). The check with a DJ publisher and the last review are open.
-  - ADR 0022 adds the producer `liquidsoap-now-playing` for an AzuraCast or
-    Liquidsoap station. It reads `state.json`, which the slot text writes,
-    and this repository owns that format.
+- ADR 0023 and ADR 0024 have the status `Accepted`. The check with a DJ
+  publisher and the last review are open.
   - ADR 0023 lets a live DJ take over the event of a station. Each publisher
     sends its payable block again over a foreign dead block. The relay does
     not change.
   - ADR 0024 makes a block payable only with a feed GUID and a track GUID.
     A track GUID is unique only in its feed.
-- ADR 0025 has the status `Accepted`, and the implementation is not
-  complete. In it, the station producer pays each chapter song of an episode
-  file, with the state format 2 and only the new `Podcast` frame names.
-  Readers do not accept the old `MusicIndex` names. It depends on musicindex
-  ADR 0086, which owns the frame names and the chapter list. Its section
-  §The Chapter Route Lookup is Accepted: the station producer gets the routes
-  of a chapter song from the route service with the two chapter GUIDs, then
-  from the file (musicindex ADR 0089 R-TAG-6). With no routes, the chapter
-  pays nobody. `mixxx-now-playing` also asks with the two GUIDs. Do not
-  install the new slot text or the new Mixxx reader on a station. The
-  operator installs the two in one maintenance window, after HitIt writes the
-  new frames in all the files.
-- ADR 0026 is `Accepted`, and its code is complete (tasks 009 and 010). The
-  station producer writes `display.json` with the artist and the title of each
-  segment, and `song_line` is the ICY title of the file. The one display writer
-  is in `now-playing-drop/src/display.rs`. The station checks 1 to 3 of its
-  §Verification are open, and need a person. Its four Open Questions stay
-  open.
-- ADR 0027 is `Accepted`, and its code is complete (task 011). The station
-  producer asks the route service for a song state with the two state GUIDs,
-  and the service routes win over the routes of the state. The station check
-  of its §Verification passed on 2026-11-23.
-- ADR 0028 is `Accepted`, and its code is complete (task 012). The slot text
-  writes the embedded front cover of an MP3 or FLAC file into the state folder
-  as `picture-SEQ`. The station producer uses that picture when the state has
-  no image URL. The picture code is in `now-playing-drop/src/picture.rs`. The
-  four station checks of task 012 passed on 2026-11-24.
 - The binary `station-import` (crate `station-import/`, task 001 of the
   station import) is complete. It makes a folder of song and episode files
   with their GUID and chapter tags and `manifest.json`, for the AzuraCast SFTP
@@ -191,7 +158,7 @@ packet.
 - Open: at a jingle, CitizenRadio does not show the station lines (station log
   step 36). The relay output is correct. The orchestrator has the handoff for
   the CitizenRadio session.
-- ADR 0034 has the status `Proposed`. `src/relay.rs` implements it: when the
+- ADR 0034 has the status `Accepted`. `src/relay.rs` implements it: when the
   drop file has no image URL, the first send of a play waits at most 2 seconds
   for the display URL or the relay URL of the uploaded picture. If the picture
   is not available, the payload worker sends the payload one more time when
@@ -205,19 +172,24 @@ packet.
   image that a pending listener update names, and the relay runs it. Item 2 of
   its §Before Acceptance is partly done: v4vmusic.com and Podcast Guru show the
   image, and a boost pays the song. The check for no new track is open.
-- ADR 0035 has the status `Proposed`. It is the consolidated station producer
-  record. It restates each live rule of ADR 0022 and ADR 0025 to ADR 0028, and
-  adds the chapter image of musicindex ADR 0099: the chapter `image_url`
-  first, then the image of the file, then the relay copy (ADR 0034). Until
-  acceptance, the five earlier records stay current. The producer reads the
-  chapter `image_url`. The `station-import` change that writes the field waits
-  until the operator pushes musicindex-lib commit `1d55a67`.
-- ADR 0036 has the status `Proposed`, and no implementation exists. The HLS
+- ADR 0035 has the status `Accepted`. It is the one record for the station
+  producer `liquidsoap-now-playing`. It replaces ADR 0022 and ADR 0025 to
+  ADR 0028, which are in `docs/archive/adr/`. The producer reads `state.json`
+  from the slot text, pays each chapter song of an episode file, writes
+  `display.json` with `song_line` as the ICY title of the file, asks the route
+  service with the two GUIDs, and uses the chapter `image_url`, then the image
+  of the file, then the relay copy (ADR 0034). The producer code is complete.
+  The station checks of the display state need a person and are open. The
+  `station-import` change that writes the chapter `image_url` is not started.
+  musicindex-lib commit `1d55a67` is pushed. Open: 47 code comments and 30
+  runbook lines cite ADR 0022 and ADR 0025 to ADR 0028. Change them to the
+  sections of ADR 0035.
+- ADR 0036 has the status `Accepted`, and no implementation exists. The HLS
   stream carries the picture one time for each song. Liquidsoap removes cover
   keys from the HLS metadata by default, so the script must change
   `settings.encoder.metadata.cover`. The first test is on the VPS stack with a
   fixed picture (§Before Acceptance item 1).
-- ADR 0037 has the status `Proposed`. A target can give `icecast_burst_bytes`
+- ADR 0037 has the status `Accepted`. A target can give `icecast_burst_bytes`
   and `stream_bitrate_kbps` in place of `stream_delay_secs`. The publisher
   calculates the delay, rounds it down, and sends it as `Listener-Delay-Secs`.
   Listener delay task 001 implements it. The test station does not have the
@@ -354,7 +326,7 @@ This service routes money. These rules are not style preferences.
 - The Mixxx producer exits cleanly when Mixxx is not running. The unit
   restarts it.
 - The Liquidsoap producer stays in operation when Liquidsoap stops. It
-  removes the drop file and releases the lock (ADR 0022).
+  removes the drop file and releases the lock (ADR 0035).
 
 ### 8. Test Strategy
 

@@ -1,6 +1,9 @@
 # ADR 0027: The Station Producer Asks The Route Service For A Song File
 
-- Status: Accepted on 2026-11-23 by the operator. The orchestrator session relayed the decision.
+> Archived: superseded by [ADR 0035](../../adr/0035-the-station-producer.md) on 2026-11-26. ADR 0035 restates
+> each live rule of this record.
+
+- Status: Superseded by ADR 0035 on 2026-11-26. Accepted on 2026-11-23 by the operator. The orchestrator session relayed the decision.
 - Date: 2026-11-23
 - Changes: ADR 0022 §What The Producer Writes, the last row of the table ("no routes" gives empty `value_routes`). A
   song state of §The Producer Selects The Lookup gets the routes of §The Song Routes.

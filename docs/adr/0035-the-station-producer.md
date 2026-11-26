@@ -1,15 +1,14 @@
 # ADR 0035: The Station Producer
 
-- Status: Proposed. Until the operator accepts this record, ADR 0022 and ADR 0025 to ADR 0028 stay current, and the
-  code follows them. At acceptance, the five records move to `docs/archive/adr/` in the same commit.
+- Status: Accepted on 2026-11-26 by the operator. ADR 0022 and ADR 0025 to ADR 0028 are in `docs/archive/adr/`.
 - Date: 2026-11-25
-- Changed by: ADR 0036, proposed 2026-11-25. The slot text also gives the picture to the HLS output, one time for each
+- Changed by: ADR 0036, accepted 2026-11-26. The slot text also gives the picture to the HLS output, one time for each
   song.
-- Supersedes: ADR 0022 (`docs/adr/0022-liquidsoap-producer.md`).
-- Supersedes: ADR 0025 (`docs/adr/0025-the-station-producer-pays-each-chapter-song.md`).
-- Supersedes: ADR 0026 (`docs/adr/0026-the-station-producer-writes-the-display-state.md`).
-- Supersedes: ADR 0027 (`docs/adr/0027-the-station-producer-asks-the-route-service-for-a-song.md`).
-- Supersedes: ADR 0028 (`docs/adr/0028-the-station-producer-uses-the-embedded-picture.md`).
+- Supersedes: ADR 0022 (`docs/archive/adr/0022-liquidsoap-producer.md`).
+- Supersedes: ADR 0025 (`docs/archive/adr/0025-the-station-producer-pays-each-chapter-song.md`).
+- Supersedes: ADR 0026 (`docs/archive/adr/0026-the-station-producer-writes-the-display-state.md`).
+- Supersedes: ADR 0027 (`docs/archive/adr/0027-the-station-producer-asks-the-route-service-for-a-song.md`).
+- Supersedes: ADR 0028 (`docs/archive/adr/0028-the-station-producer-uses-the-embedded-picture.md`).
 - Changes: ADR 0012 §The Producer and its invariant "`songLine` is the line that `butt` reads". This item restates
   the change of ADR 0026: `song_line` is the ICY `StreamTitle` of the stream for the track. For Mixxx it is the first
   line of `now-playing.txt` (ADR 0009). For a station it is the line of §The Song Line.

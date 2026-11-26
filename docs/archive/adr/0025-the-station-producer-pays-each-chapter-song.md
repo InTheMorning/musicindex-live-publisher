@@ -1,6 +1,9 @@
 # ADR 0025: The Station Producer Pays Each Chapter Song Of An Episode File
 
-- Status: Accepted on 2026-11-22 by the operator. The orchestrator session relayed the decision. Open Questions 2
+> Archived: superseded by [ADR 0035](../../adr/0035-the-station-producer.md) on 2026-11-26. ADR 0035 restates
+> each live rule of this record.
+
+- Status: Superseded by ADR 0035 on 2026-11-26. Accepted on 2026-11-22 by the operator. The orchestrator session relayed the decision. Open Questions 2
   and 4 stay open. The operator accepted §The Chapter Route Lookup on 2026-11-22, with the operator choices below.
 - Date: 2026-11-22
 - Changes: ADR 0022 items: §The State File Contract (a format version 2) and §What The Producer Writes (the chapter

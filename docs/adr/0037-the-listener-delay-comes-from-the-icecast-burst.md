@@ -1,6 +1,6 @@
 # ADR 0037: The Listener Delay Comes From The Icecast Burst
 
-- Status: Proposed
+- Status: Accepted on 2026-11-26 by the operator.
 - Date: 2026-11-26
 - Changes: ADR 0011 §Send At Once, the item about the value of `Listener-Delay-Secs`, and §The Setting. A target can
   give the Icecast burst in place of `stream_delay_secs` (§The Two Fields).

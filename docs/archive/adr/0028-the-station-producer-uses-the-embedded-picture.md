@@ -1,6 +1,9 @@
 # ADR 0028: The Station Producer Uses The Embedded Picture Of The File As The Artwork Fallback
 
-- Status: Accepted on 2026-11-24 by the operator, as at commit ca460a2. The orchestrator session relayed the decision.
+> Archived: superseded by [ADR 0035](../../adr/0035-the-station-producer.md) on 2026-11-26. ADR 0035 restates
+> each live rule of this record.
+
+- Status: Superseded by ADR 0035 on 2026-11-26. Accepted on 2026-11-24 by the operator, as at commit ca460a2. The orchestrator session relayed the decision.
   The two Open Questions stay open.
 - Revised 2026-11-24, after acceptance: the FLAC reader is `file.metadata.flac_native`, not `file.metadata.flac`. A
   read of the Liquidsoap source showed that `file.metadata.flac` gives only the Vorbis comments. The slot text also

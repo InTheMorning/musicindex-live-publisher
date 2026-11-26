@@ -21,8 +21,8 @@ limit affects no station file that has one `APIC` frame.
 
 Read these documents first:
 
-- `docs/adr/0028-the-station-producer-uses-the-embedded-picture.md`, all sections.
-- `docs/adr/0026-the-station-producer-writes-the-display-state.md` §What The Producer Writes In `display.json`.
+- `docs/archive/adr/0028-the-station-producer-uses-the-embedded-picture.md`, all sections.
+- `docs/archive/adr/0026-the-station-producer-writes-the-display-state.md` §What The Producer Writes In `display.json`.
 - `docs/adr/0008-display-path.md` §The Embedded Image.
 
 ## Base components
