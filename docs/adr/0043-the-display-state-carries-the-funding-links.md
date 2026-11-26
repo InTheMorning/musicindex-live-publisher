@@ -69,6 +69,9 @@ apply each one:
 - An entry has no other key.
 - Two entries do not have the same `url`.
 - In `display.json`, a track with no funding link has `funding` `null`.
+- One function in the workspace crate `display-keys` applies the rules of §The Key, the label cut and the limit of 3
+  entries. The producer and the publisher use it. The publisher does not depend on `now-playing-drop` (ADR 0041 §One
+  Display Writer And One Picture Component), so the function is not in that crate.
 - On the wire, a track with no funding link has no key `funding`. The relay refuses `null` and an empty list.
 
 Example:

@@ -52,6 +52,7 @@ A track in `display.json` version 3 has one more optional field:
   the format `YYYY-MM-DD` that exists in the Gregorian calendar. Else it writes `null`. For example, `2026-02-30`
   gives `null`, because the relay refuses the full display state for a day that does not exist (relay ADR 0013). A
   longer value, for example `2026-11-12T08:00:00`, gives its first 10 characters.
+- One function in the workspace crate `display-keys` applies the day rule (ADR 0043 §The Key names the crate).
 - The drop file does not change.
 - The Mixxx producer does not change. Its `display.json` has no `pub_date`.
 
