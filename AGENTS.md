@@ -197,8 +197,11 @@ packet.
   `musicindex.hls/2` with the `playId` of the segment at each chapter boundary,
   and Rainbrook releases the display state with the same `playId`. Cause:
   Rainbrook on HLS shows a chapter change too early (station log step 50).
-  Before acceptance, a consolidated pairing record must replace ADR 0012, and
-  the relay and Rainbrook sessions must accept their changes.
+  Before acceptance, ADR 0039 must be accepted, and the relay and Rainbrook
+  sessions must accept their changes.
+- ADR 0039 has the status `Proposed`. It restates the pairing rules of ADR 0012
+  and its three changes in one record, with no new rule. At acceptance,
+  ADR 0012 moves to the archive.
 - This item needs a new ADR before work starts: a track identity source that
   is earlier than the Mixxx history row.
 - Studio client task 001 is not started. The publisher will start and end a

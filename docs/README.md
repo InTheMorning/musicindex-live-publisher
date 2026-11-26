@@ -123,7 +123,10 @@ the next priority. Confirm that logging works before the show.
 - [ADR 0038: The HLS stream marks each segment](adr/0038-the-hls-stream-marks-each-segment.md)
   — Proposed. The station slot text writes a frame `musicindex.hls/2` with
   the `playId` of the segment at each chapter boundary. It changes ADR 0009
-  and ADR 0035, and needs a consolidated record for ADR 0012
+  and ADR 0035, and adds `playId` to the display state of ADR 0039
+- [ADR 0039: The display state pairs with its value block](adr/0039-the-display-state-pairs-with-its-value-block.md)
+  — Proposed. One record for the pairing rules of ADR 0012 and its three
+  changes. It adds no rule. At acceptance it supersedes ADR 0012
 
 ## Plans
 

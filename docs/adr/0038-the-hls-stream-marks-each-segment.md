@@ -6,9 +6,8 @@
   `musicindex-live-relay`, and the HLS sync of Rainbrook.
 - Changes: ADR 0009 §The MusicIndex Frame. The station slot text writes the frame `musicindex.hls/2` of §The Segment
   Frame in place of `musicindex.hls/1`. The tagger of ADR 0009 keeps `musicindex.hls/1`.
-- Needs: a change of ADR 0012 §The Publisher, so that the display state on the wire also has `playId` (§The Display
-  State Gets `playId`). ADR 0012 has three "Changed by" lines. Thus a consolidated record of the pairing must replace
-  ADR 0012 first (global `CLAUDE.md` §Consolidate A Changed Decision). See §Before Acceptance item 4.
+- Changes: ADR 0039 §The Publisher. The display state on the wire also has `playId` (§The Display State Gets
+  `playId`). ADR 0039 replaces ADR 0012, which has three "Changed by" lines.
 - Changes: ADR 0035 §The Slot Text Writes The Picture File and §Invariants. The slot text also writes a segment frame
   at each chapter boundary (§The Slot Text Writes The Frames).
 - Operator choice, 2026-11-26: Rainbrook on HLS shows a chapter change too early. The fix is a
@@ -115,8 +114,7 @@ These rules apply while this decision is current.
    records no new song.
 3. **The handoffs.** The relay session accepts the change to relay ADR 0005. The Rainbrook session accepts the rule
    of §The Player in its own record.
-4. **The pairing record.** A consolidated record replaces ADR 0012 and its three changes, and adds `playId` to the
-   display state of the publisher.
+4. **The pairing record.** ADR 0039 is accepted.
 
 ## Verification After Implementation
 
