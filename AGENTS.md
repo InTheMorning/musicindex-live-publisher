@@ -207,18 +207,19 @@ packet.
   (station log step 52). In Rainbrook on HLS the chapter change comes with
   the chapter song (station log step 53). The boost at the start of a chapter
   song is open.
-- ADR 0042 has the status `Proposed`. An episode state sends its
-  publication day in the display state. The operator accepted the text of
-  relay ADR 0013, which gives the name and the format of `pubDate`. The relay
-  build starts when the operator accepts ADR 0042. Rainbrook ADR 0031
-  (Proposed) shows the date. ADR 0042 waits for a station check of the
-  Liquidsoap key `date`. No implementation exists.
-- ADR 0043 has the status `Proposed`. The display track gets `funding`, a
+- ADR 0042 has the status `Accepted`. An episode state sends its
+  publication day in the display state. Relay ADR 0013 gives the name and the
+  format of `pubDate`, and Rainbrook ADR 0031 (Proposed) shows the date. The
+  station check of the Liquidsoap key `date` is open and comes before the
+  deploy. No implementation exists.
+- ADR 0043 has the status `Accepted`. The display track gets `funding`, a
   list of 1 to 3 funding links of the segment. The station producer gets them
   from the route service with `include=source_links`. Relay ADR 0013 has the
   row for `funding`, and Rainbrook ADR 0031 (Proposed) shows the links.
   The route service gives the routes and the links in one answer (station
-  log step 58). ADR 0043 waits for the operator acceptance. No implementation exists.
+  log step 58). No implementation exists.
+- The deploy order of ADR 0042 and ADR 0043 is the relay, then the publisher,
+  then Rainbrook.
 - This item needs a new ADR before work starts: a track identity source that
   is earlier than the Mixxx history row.
 - Studio client task 001 is not started. The publisher will start and end a

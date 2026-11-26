@@ -1,6 +1,7 @@
 # ADR 0042: An Episode Sends Its Publication Date
 
-- Status: Proposed on 2026-11-26.
+- Status: Accepted on 2026-11-26 by the operator, with item 3 of §Before Acceptance open. Item 3 is a check of the
+  implementation before the deploy.
 - Date: 2026-11-26
 - Bar: crosses repositories. The rule changes the slot text and the producer in this repository, the display state of
   `musicindex-live-relay`, and the display of Rainbrook.
@@ -91,7 +92,7 @@ These rules apply while this decision is current.
 2. Done: Rainbrook ADR 0031 (Proposed, Rainbrook commit `837d051`) shows the date as a line below the album, with no
    label. The format is the medium date style of the iPhone, for example "Nov 12, 2026". The lock screen does not show it.
 3. On the test station, `state.json` gets `2026-11-12` from `m["date"]` for episode 158. If the key has a different
-   name in Liquidsoap, §The Slot Text changes before acceptance.
+   name in Liquidsoap, §The Slot Text changes before the deploy.
 
 ## Verification
 

@@ -126,12 +126,12 @@ the next priority. Confirm that logging works before the show.
   of ADR 0035 and its changes by ADR 0036, ADR 0038 and ADR 0040, and adds no
   rule. It supersedes ADR 0035 and ADR 0040
 - [ADR 0042: An episode sends its publication date](adr/0042-an-episode-sends-its-publication-date.md)
-  — Proposed. An episode state sends the `TDRC` day as `pub_date` in
+  — Accepted. An episode state sends the `TDRC` day as `pub_date` in
   `display.json` and as `pubDate` on the wire. It changes ADR 0013 and
   ADR 0041. Relay ADR 0013 gives the wire rule, and Rainbrook ADR 0031
   shows the date
 - [ADR 0043: The display state carries the funding links of the track](adr/0043-the-display-state-carries-the-funding-links.md)
-  — Proposed. A display track gets `funding`, 1 to 3 links with `url` and
+  — Accepted. A display track gets `funding`, 1 to 3 links with `url` and
   `label`, from the route service. It changes ADR 0013 and ADR 0041.
   Rainbrook ADR 0031 shows the links
 

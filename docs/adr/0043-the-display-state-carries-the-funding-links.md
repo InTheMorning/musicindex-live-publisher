@@ -1,6 +1,6 @@
 # ADR 0043: The Display State Carries The Funding Links Of The Track
 
-- Status: Proposed on 2026-11-26.
+- Status: Accepted on 2026-11-26 by the operator.
 - Date: 2026-11-26
 - Bar: crosses repositories. The rule changes the station producer and the publisher in this repository, the display
   state of `musicindex-live-relay`, and the display of Rainbrook.
