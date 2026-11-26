@@ -57,6 +57,10 @@ today. Its track has `album`, `artist`, `artwork`, `songLine`, `title` and `valu
 - `playId` is `null` for a jingle and while the slot text cannot make the identity (§The Slot Text Writes The Frames).
 - The frame has no other field. A new field needs a new `schema` value.
 - The frame goes in a `TXXX` frame with the description `musicindex`, as in ADR 0009 §The ID3 Frames.
+- The HLS output repeats the last metadata group in each segment until the next group (ADR 0009 §The ID3 Frames).
+  Thus each segment after a boundary has the frame of that boundary, and a player that connects during a segment
+  gets the frame in its first HLS segment. §Before Acceptance item 1 checks this. If the check fails, this record
+  must change before acceptance.
 
 The frame does not carry the track, the artwork or the value block. The player gets them from the display state with
 the same `playId`. Thus the slot text does not copy the chapter rules of the producer.
@@ -83,18 +87,25 @@ the same `playId`. Thus the slot text does not copy the chapter rules of the pro
 ### The Display State Gets `playId`
 
 - The publisher adds `playId` to each display state that it sends, with the `play_id` of `display.json`, or `null`.
-- The relay accepts `playId` as a string of at most 128 characters, or `null`, and passes it through. Relay ADR 0005
-  owns the wire rule. This record asks for that change.
+- The publisher sends `null` for a missing `play_id`, never an empty string.
+- Relay ADR 0012 owns the wire rule. On 2026-11-26 the relay session agreed to it, with the status Proposed (relay
+  commit `13a2635`). `playId` is optional, a string of 1 to 128 characters, or `null`. The relay passes it through
+  and does not compare it.
+- The relay with relay ADR 0012 must run on `api.musicindex.org` before a publisher sends `playId`. The present relay
+  refuses each track with `playId`, also with `null`.
 
 ### The Player
 
-Rainbrook ADR 0011 owns the selection rule of the app. This record asks Rainbrook for this rule on HLS:
+Rainbrook ADR 0030 will own this rule (Proposed, agreed by the Rainbrook session on 2026-11-26). This record asks
+Rainbrook for this rule on HLS:
 
 - A `musicindex.hls/2` frame with a `playId` releases the held display state with the same `playId`.
 - A frame that names no held state changes nothing. A state that arrives after its frame is released when it
   arrives, as in ADR 0009 §The Join Point.
 - A frame with `playId` `null`, and a stream with no `musicindex.hls/2` frame, keep the ICY rule of Rainbrook
   ADR 0011.
+- Held states with different `playId` values do not replace each other, and the app holds enough states for the HLS
+  delay. Rainbrook ADR 0030 owns these two app rules.
 
 ## Invariants
 
@@ -109,11 +120,12 @@ These rules apply while this decision is current.
 
 1. **The `playId` equality.** On the station, write the frames for one episode in a test slot text, and read the
    HLS segments. Make sure that each frame at a real boundary has the same `playId` as the producer `display.json`
-   of that segment. This proves that Liquidsoap and the producer make the same `<ms>` from `track_started`.
+   of that segment. This proves that Liquidsoap and the producer make the same `<ms>` from `track_started`. Also
+   read two or more HLS segments after one boundary, and make sure that each has the same frame.
 2. **The ICY title.** Make sure that the ICY title of `/radio.mp3` does not change at a frame, and that AzuraCast
    records no new song.
-3. **The handoffs.** The relay session accepts the change to relay ADR 0005. The Rainbrook session accepts the rule
-   of §The Player in its own record.
+3. **The handoffs.** Done 2026-11-26: the relay session agreed, in relay ADR 0012. The Rainbrook session agreed, in
+   Rainbrook ADR 0030. Each session builds after this record is accepted.
 4. **The pairing record.** Done 2026-11-26: ADR 0039 is accepted.
 
 ## Verification After Implementation
@@ -169,5 +181,5 @@ state also has no GUID.
 - `docs/adr/0035-the-station-producer.md`
 - `docs/adr/0037-the-listener-delay-comes-from-the-icecast-burst.md`
 - `docs/runbooks/test-station-log.md`, steps 47 and 50
-- `musicindex-live-relay`: `docs/adr/0005-display-song-line-and-value.md`
+- `musicindex-live-relay`: `docs/adr/0012-display-play-id.md`
 - `rainbrook`: `docs/adr/0011-icy-sync-of-the-relay-display.md`, `docs/adr/0025-the-icy-text-of-an-hls-stream.md`

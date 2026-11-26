@@ -197,9 +197,10 @@ packet.
   `musicindex.hls/2` with the `playId` of the segment at each chapter boundary,
   and Rainbrook releases the display state with the same `playId`. Cause:
   Rainbrook on HLS shows a chapter change too early (station log step 50).
-  Before acceptance, the relay and Rainbrook sessions must accept their
-  changes, and a station test must prove the `playId` equality and the ICY
-  title.
+  The relay (relay ADR 0012) and Rainbrook (Rainbrook ADR 0030) agreed, and
+  build only after acceptance. Before acceptance, a station test must prove
+  the `playId` equality, the frame in each segment and the ICY title. The
+  relay with relay ADR 0012 must run before a publisher sends `playId`.
 - This item needs a new ADR before work starts: a track identity source that
   is earlier than the Mixxx history row.
 - Studio client task 001 is not started. The publisher will start and end a
