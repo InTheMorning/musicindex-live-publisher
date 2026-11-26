@@ -211,18 +211,25 @@ packet.
   publication day in the display state. Relay ADR 0013 gives the name and the
   format of `pubDate`, and Rainbrook ADR 0031 (Proposed) shows the date. The
   station check of the Liquidsoap key `date` is open and comes before the
-  deploy. No implementation exists.
+  deploy. Display keys tasks 001 and 002 implement it and are not deployed.
 - ADR 0043 has the status `Accepted`. The display track gets `funding`, a
   list of 1 to 3 funding links of the segment. The station producer gets them
   from the route service with `include=source_links`. Relay ADR 0013 has the
   row for `funding`, and Rainbrook ADR 0031 (Proposed) shows the links.
   The route service gives the routes and the links in one answer (station
-  log step 58). No implementation exists.
+  log step 58). The publisher sends `funding` (display keys task 001), and
+  the station producer writes `funding` `null`. Display keys task 003 (the
+  lookup) is stopped: musicindex ADR 0101 (Proposed) can move the source of
+  the links to the frame `WPAY`.
 - The deploy order of ADR 0042 and ADR 0043 is the relay, then the publisher,
   then Rainbrook.
 - ADR 0044 has the status `Proposed`. The Mixxx producer gets `funding` from
-  the same route service answer as the routes of the track. The operator
-  decides it.
+  the same route service answer as the routes of the track. It is against
+  rule 5 of musicindex ADR 0101 (Proposed). The operator decides it.
+- Relay commit `1dec0b3` accepts `pubDate` and `funding` (relay ADR 0013).
+  The publisher sends the two keys only after
+  `https://api.musicindex.org/v1/liveitems/info` gives `git_revision`
+  `1dec0b3` or a subsequent revision.
 - This item needs a new ADR before work starts: a track identity source that
   is earlier than the Mixxx history row.
 - Studio client task 001 is not started. The publisher will start and end a

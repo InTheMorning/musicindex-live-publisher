@@ -55,7 +55,7 @@ the next priority. Confirm that logging works before the show.
   schedule rules of ADR 0005 and ADR 0008 at its implementation review
 - [ADR 0013: The display state carries the album](adr/0013-display-album.md)
   — Accepted. `display.json` version 3 with the album of the history row.
-  The publisher adds `album` to the display state (relay ADR 0006)
+  The publisher adds `album` to the display state (relay ADR 0013)
 - [ADR 0014: One assembler, and each producer reports each track](adr/0014-one-assembler-and-track-reporting.md)
   — Implemented. Only this repository assembles and publishes
   blocks. Drop file version 3: each producer reports each track that plays, payable or not
@@ -382,7 +382,7 @@ Packets for the display keys. ADR 0042 and ADR 0043 govern them.
 - [002 — The station producer writes the episode date](tasks/display-keys-task-002-producer-pub-date.md)
   — Implemented - 2026-11-26
 - [003 — The station producer gets the funding links](tasks/display-keys-task-003-producer-funding.md)
-  — Ready - 2026-11-26
+  — Stopped - 2026-11-26
 
 ## Reviews
 

@@ -177,9 +177,10 @@ Earlier versions are not supported.
 
 The publisher sends each display state to the relay in the body of
 `POST /v1/liveitems/{event_id}/display`. ADR 0039 owns the two keys
-`songLine` and `value`, and relay ADR 0005 accepts them. ADR 0013 owns the
-key `album`, and relay ADR 0006 accepts it. Deploy that relay before this
-publisher, because an older relay refuses each such state.
+`songLine` and `value`. ADR 0013 owns the key `album`. ADR 0042 owns
+`pubDate`, and ADR 0043 owns `funding`. Relay ADR 0013 accepts each of these
+keys. Deploy that relay before this publisher, because an older relay refuses
+each such state.
 
 This is the display state of a V4V track after its payload:
 

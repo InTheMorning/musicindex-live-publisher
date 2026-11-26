@@ -530,7 +530,7 @@ needs its own record.
 
 - The publisher reads `display.json` of the target and adds `songLine` and `value` (ADR 0012).
 - Relay ADR 0005 accepts `songLine` of 1 to 1,024 characters.
-- The relay accepts an `album` of at most 1,024 characters (relay ADR 0006).
+- The relay accepts an `album` of at most 1,024 characters (relay ADR 0013).
 
 ## Invariants
 
