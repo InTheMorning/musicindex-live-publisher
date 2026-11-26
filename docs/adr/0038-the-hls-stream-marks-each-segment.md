@@ -59,8 +59,10 @@ today. Its track has `album`, `artist`, `artwork`, `songLine`, `title` and `valu
 - The frame goes in a `TXXX` frame with the description `musicindex`, as in ADR 0009 §The ID3 Frames.
 - The HLS output repeats the last metadata group in each segment until the next group (ADR 0009 §The ID3 Frames).
   Thus each segment after a boundary has the frame of that boundary, and a player that connects during a segment
-  gets the frame in its first HLS segment. §Before Acceptance item 1 checks this. If the check fails, this record
-  must change before acceptance.
+  gets the frame in its first HLS segment. Station log step 51 shows this. The HLS output also starts a new segment
+  at each inserted group.
+- The slot text writes the frame one audio frame after the track mark. Thus the short HLS segment at a track start can
+  have the track tags and no `musicindex.hls/2` frame. In station log step 51 that segment was 20 ms long.
 
 The frame does not carry the track, the artwork or the value block. The player gets them from the display state with
 the same `playId`. Thus the slot text does not copy the chapter rules of the producer.
@@ -73,6 +75,8 @@ the same `playId`. Thus the slot text does not copy the chapter rules of the pro
 - The `playId` of a frame at position `b` is `ls-<ms>-<seq>-<b>` for a file with chapters, and `ls-<ms>-<seq>` for
   a file with no chapters. `<ms>` and `<seq>` are the values that the slot text writes as `track_started` and `seq`
   in `state.json`. `<ms>` is `track_started * 1000` with the fraction removed, the same as the producer.
+- The slot text makes `<ms>` from the text of `track_started` that it writes in `state.json`, not from the full value
+  of `time()`. Liquidsoap writes that number with about 12 significant digits (station log step 51).
 - A frame at a position that the producer does not use as a boundary names no display state. Examples: the `end_ms`
   of a chapter when the next chapter starts earlier, and an entry that the producer refuses. §The Player ignores such
   a frame.
@@ -118,11 +122,11 @@ These rules apply while this decision is current.
 
 ## Before Acceptance
 
-1. **The `playId` equality.** On the station, write the frames for one episode in a test slot text, and read the
+1. **The `playId` equality.** Done 2026-11-26, pass, station log step 51. On the station, write the frames for one episode in a test slot text, and read the
    HLS segments. Make sure that each frame at a real boundary has the same `playId` as the producer `display.json`
    of that segment. This proves that Liquidsoap and the producer make the same `<ms>` from `track_started`. Also
    read two or more HLS segments after one boundary, and make sure that each has the same frame.
-2. **The ICY title.** Make sure that the ICY title of `/radio.mp3` does not change at a frame, and that AzuraCast
+2. **The ICY title.** Done 2026-11-26, pass, station log step 51. Make sure that the ICY title of `/radio.mp3` does not change at a frame, and that AzuraCast
    records no new song.
 3. **The handoffs.** Done 2026-11-26: the relay session agreed, in relay ADR 0012. The Rainbrook session agreed, in
    Rainbrook ADR 0030. Each session builds after this record is accepted.
@@ -180,6 +184,6 @@ state also has no GUID.
 - `docs/adr/0039-the-display-state-pairs-with-its-value-block.md`
 - `docs/adr/0035-the-station-producer.md`
 - `docs/adr/0037-the-listener-delay-comes-from-the-icecast-burst.md`
-- `docs/runbooks/test-station-log.md`, steps 47 and 50
+- `docs/runbooks/test-station-log.md`, steps 47, 50 and 51
 - `musicindex-live-relay`: `docs/adr/0012-display-play-id.md`
 - `rainbrook`: `docs/adr/0011-icy-sync-of-the-relay-display.md`, `docs/adr/0025-the-icy-text-of-an-hls-stream.md`
