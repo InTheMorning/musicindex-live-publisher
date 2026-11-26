@@ -541,6 +541,8 @@ impl<'a> Runtime<'a> {
                     song_line: &song_line,
                     play_id: play_id.as_deref(),
                     album: album.as_deref(),
+                    pub_date: None,
+                    funding: None,
                 };
                 write_display(display, Some(track));
             }

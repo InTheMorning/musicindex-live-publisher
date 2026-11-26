@@ -210,6 +210,7 @@ mod tests {
             artist: "State artist".to_owned(),
             song: String::new(),
             album: None,
+            pub_date: None,
             track_guid: None,
             feed_guid: None,
             image: None,

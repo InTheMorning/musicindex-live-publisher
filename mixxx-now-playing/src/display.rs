@@ -41,10 +41,14 @@ mod tests {
             song_line: "A - T",
             play_id: Some("42"),
             album: None,
+            pub_date: None,
+            funding: None,
         }))
         .expect("render display.json");
         let value: serde_json::Value = serde_json::from_str(&json).expect("parse display.json");
 
         assert_eq!(value["track"]["play_id"], "42");
+        assert!(value["track"].get("pub_date").is_none());
+        assert!(value["track"].get("funding").is_none());
     }
 }

@@ -144,6 +144,10 @@ pub struct ShownTrack<'a> {
     pub play_id: Option<&'a str>,
     /// The album of the history row (ADR 0013).
     pub album: Option<&'a str>,
+    /// The episode publication date. `None` omits the key.
+    pub pub_date: Option<Option<&'a str>>,
+    /// The funding links. An empty slice writes `null`.
+    pub funding: Option<&'a [display_keys::FundingLink]>,
 }
 
 #[derive(Serialize)]
@@ -160,6 +164,27 @@ struct TrackJson<'a> {
     song_line: &'a str,
     play_id: Option<String>,
     album: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub_date: Option<Option<&'a str>>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_funding"
+    )]
+    funding: Option<&'a [display_keys::FundingLink]>,
+}
+
+fn serialize_funding<S>(
+    funding: &Option<&[display_keys::FundingLink]>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    match funding {
+        Some([]) => serializer.serialize_none(),
+        Some(links) => links.serialize(serializer),
+        None => serializer.serialize_none(),
+    }
 }
 
 #[derive(Serialize)]
@@ -190,6 +215,8 @@ pub fn render_display_json(track: Option<ShownTrack<'_>>) -> Result<String> {
             song_line: track.song_line,
             play_id: track.play_id.map(str::to_owned),
             album: track.album,
+            pub_date: track.pub_date,
+            funding: track.funding,
         }),
     };
     let mut json = serde_json::to_string_pretty(&document).context("render display.json")?;
@@ -377,6 +404,8 @@ mod tests {
             song_line: name,
             play_id: None,
             album: None,
+            pub_date: None,
+            funding: None,
         }
     }
 
@@ -460,6 +489,8 @@ mod tests {
                 song_line: "A - B - T",
                 play_id: Some("42"),
                 album: None,
+                pub_date: None,
+                funding: None,
             }))?)?;
         assert_eq!(
             embedded,
@@ -484,6 +515,60 @@ mod tests {
         let none: serde_json::Value =
             serde_json::from_str(&render_display_json(Some(shown("A", None)))?)?;
         assert_eq!(none["track"]["artwork"], serde_json::Value::Null);
+        Ok(())
+    }
+
+    #[test]
+    fn optional_display_keys_follow_their_independent_presence_rules() -> Result<()> {
+        let links = [
+            display_keys::FundingLink {
+                url: "https://one.test".to_owned(),
+                label: Some("One".to_owned()),
+            },
+            display_keys::FundingLink {
+                url: "https://two.test".to_owned(),
+                label: None,
+            },
+        ];
+        let json = render_display_json(Some(ShownTrack {
+            artist: "A",
+            title: "T",
+            artwork: None,
+            song_line: "A - T",
+            play_id: None,
+            album: None,
+            pub_date: Some(None),
+            funding: Some(&links),
+        }))?;
+        let value: serde_json::Value = serde_json::from_str(&json)?;
+        assert_eq!(value["track"]["pub_date"], serde_json::Value::Null);
+        assert_eq!(value["track"]["funding"].as_array().map(Vec::len), Some(2));
+        assert!(value["track"]["funding"][1].get("label").is_none());
+        let omitted: serde_json::Value =
+            serde_json::from_str(&render_display_json(Some(ShownTrack {
+                artist: "A",
+                title: "T",
+                artwork: None,
+                song_line: "A - T",
+                play_id: None,
+                album: None,
+                pub_date: None,
+                funding: None,
+            }))?)?;
+        assert!(omitted["track"].get("pub_date").is_none());
+        assert!(omitted["track"].get("funding").is_none());
+        let empty: serde_json::Value =
+            serde_json::from_str(&render_display_json(Some(ShownTrack {
+                artist: "A",
+                title: "T",
+                artwork: None,
+                song_line: "A - T",
+                play_id: None,
+                album: None,
+                pub_date: None,
+                funding: Some(&[]),
+            }))?)?;
+        assert_eq!(empty["track"]["funding"], serde_json::Value::Null);
         Ok(())
     }
 

@@ -34,6 +34,8 @@ pub struct StateFile {
     #[serde(default)]
     pub album: Option<String>,
     #[serde(default)]
+    pub pub_date: Option<String>,
+    #[serde(default)]
     pub track_guid: Option<String>,
     #[serde(default)]
     pub feed_guid: Option<String>,

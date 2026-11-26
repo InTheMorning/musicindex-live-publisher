@@ -199,12 +199,17 @@ impl Producer {
             .set(Presence::Present(serde_json::to_string_pretty(&content)?))?;
         // ADR 0041 §Invariants: the display state follows the drop file of
         // the same read, and uses its artist, title, album and play_id.
-        self.write_display_track(&parsed, &content);
+        self.write_display_track(&parsed, &chapters, &content);
         Ok(())
     }
 
     /// Writes the display track of one fresh state (ADR 0041 §What The Producer Writes In `display.json`). A write error gives a warning.
-    fn write_display_track(&mut self, state: &StateFile, content: &serde_json::Value) {
+    fn write_display_track(
+        &mut self,
+        state: &StateFile,
+        chapters: &[chapters::Chapter],
+        content: &serde_json::Value,
+    ) {
         if self.display.is_none() {
             return;
         }
@@ -251,6 +256,12 @@ impl Producer {
                     song_line: &line,
                     play_id,
                     album,
+                    pub_date: if !state.jingle && !chapters.is_empty() {
+                        Some(state.pub_date.as_deref().and_then(display_keys::pub_day))
+                    } else {
+                        Some(None)
+                    },
+                    funding: Some(&[]),
                 }),
             );
         }
@@ -1757,6 +1768,57 @@ mod tests {
     }
 
     #[test]
+    fn episode_date_is_written_for_each_segment_and_funding_is_null() -> Result<()> {
+        let outputs = display_reads(
+            &chapter_state(serde_json::json!({"pub_date": "2026-11-12"})),
+            &CHAPTER_READS,
+        )?;
+        for (_, shown) in outputs {
+            assert_eq!(shown["track"]["pub_date"], "2026-11-12");
+            assert_eq!(shown["track"]["funding"], serde_json::Value::Null);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn non_episode_states_and_invalid_dates_write_null() -> Result<()> {
+        for (patch, reads) in [
+            (serde_json::json!({}), vec![(1.0, 0.0)]),
+            (serde_json::json!({"jingle": true}), vec![(1.0, 0.0)]),
+            (
+                serde_json::json!({"chapters": "[]", "pub_date": "2026-11-12"}),
+                vec![(1.0, 0.0)],
+            ),
+        ] {
+            for (_, shown) in display_reads(&patch, &reads)? {
+                assert_eq!(shown["track"]["pub_date"], serde_json::Value::Null);
+                assert_eq!(shown["track"]["funding"], serde_json::Value::Null);
+            }
+        }
+        for date in ["", "2026-13-40", "2026-02-30", "12 Nov 2026"] {
+            let outputs = display_reads(
+                &chapter_state(serde_json::json!({"pub_date": date})),
+                &CHAPTER_READS,
+            )?;
+            assert!(
+                outputs
+                    .iter()
+                    .all(|(_, shown)| shown["track"]["pub_date"].is_null())
+            );
+        }
+        let outputs = display_reads(
+            &chapter_state(serde_json::json!({"pub_date": "2026-11-12T08:00:00"})),
+            &CHAPTER_READS,
+        )?;
+        assert!(
+            outputs
+                .iter()
+                .all(|(_, shown)| shown["track"]["pub_date"] == "2026-11-12")
+        );
+        Ok(())
+    }
+
+    #[test]
     fn a_chapter_with_a_title_has_the_episode_title_as_the_album() -> Result<()> {
         // ADR 0041 §The Album Of A Segment: reads 0, 1 and 3 are chapters, read 2 is a gap and read 4
         // is after the last chapter.
@@ -2111,7 +2173,7 @@ mod tests {
         producer.start()?;
         let parsed: StateFile =
             serde_json::from_str(&patched(1.0, &serde_json::json!({"picture": "picture-4"}))?)?;
-        producer.write_display_track(&parsed, &serde_json::json!({}));
+        producer.write_display_track(&parsed, &[], &serde_json::json!({}));
         assert!(read_display(&temp)?["track"]["artwork"].is_null());
         producer.shutdown()?;
         Ok(())
@@ -2166,7 +2228,7 @@ mod tests {
             fs::write(temp.path().join("picture-4"), &picture)?;
             let fields = serde_json::json!({"picture": "picture-4", "track_started": started});
             let parsed: StateFile = serde_json::from_str(&patched(1.0, &fields)?)?;
-            producer.write_display_track(&parsed, &serde_json::json!({}));
+            producer.write_display_track(&parsed, &[], &serde_json::json!({}));
             shown.push((
                 read_display(&temp)?["track"]["artwork"]["sha256"].clone(),
                 now_playing_drop::display::sha256_hex(&picture),
@@ -2189,6 +2251,7 @@ mod tests {
             .remove("picture");
         let parsed: StateFile = serde_json::from_value(value)?;
         assert_eq!(parsed.picture, "");
+        assert_eq!(parsed.pub_date, None);
         Ok(())
     }
 

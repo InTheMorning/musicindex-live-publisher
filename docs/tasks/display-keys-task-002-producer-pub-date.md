@@ -1,6 +1,6 @@
 # Display Keys Task 002: The Station Producer Writes The Episode Date
 
-Status: Ready - 2026-11-26. ADR 0042 governs this task. Task 001 must be committed before this task starts.
+Status: Implemented - 2026-11-26. ADR 0042 governs this task.
 
 Each criterion is mechanical. No visual check applies to this task.
 

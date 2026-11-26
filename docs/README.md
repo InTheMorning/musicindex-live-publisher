@@ -380,7 +380,7 @@ Packets for the display keys. ADR 0042 and ADR 0043 govern them.
 - [001 — The crate `display-keys` and the publisher keys](tasks/display-keys-task-001-crate-and-publisher.md)
   — Implemented - 2026-11-26
 - [002 — The station producer writes the episode date](tasks/display-keys-task-002-producer-pub-date.md)
-  — Ready - 2026-11-26
+  — Implemented - 2026-11-26
 - [003 — The station producer gets the funding links](tasks/display-keys-task-003-producer-funding.md)
   — Ready - 2026-11-26
 
