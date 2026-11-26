@@ -376,14 +376,16 @@ Packets for the episode album. ADR 0041 §The Album Of A Segment governs them.
 - [001 — A chapter song has the episode title as its album](tasks/episode-album-task-001-chapter-album-is-episode-title.md)
   — Implemented - 2026-11-26
 
-Packets for the display keys. ADR 0042 and ADR 0043 govern them.
+Packets for the display keys. ADR 0042, ADR 0043 and ADR 0044 govern them.
 
 - [001 — The crate `display-keys` and the publisher keys](tasks/display-keys-task-001-crate-and-publisher.md)
   — Implemented - 2026-11-26
 - [002 — The station producer writes the episode date](tasks/display-keys-task-002-producer-pub-date.md)
   — Implemented - 2026-11-26
 - [003 — The station producer gets the funding links](tasks/display-keys-task-003-producer-funding.md)
-  — Stopped - 2026-11-26
+  — Ready - 2026-11-26
+- [004 — The Mixxx producer gets the funding links](tasks/display-keys-task-004-mixxx-funding.md)
+  — Ready - 2026-11-26. It comes after task 003
 
 ## Reviews
 
