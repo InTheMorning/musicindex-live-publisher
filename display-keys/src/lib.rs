@@ -39,6 +39,12 @@ pub struct FundingLink {
     pub label: Option<String>,
 }
 
+/// Returns one valid funding link from a file's `WPAY` value.
+pub fn file_funding(raw: &str) -> Vec<FundingLink> {
+    let value = raw.trim_end_matches('\0');
+    funding_links([(value, None)])
+}
+
 /// Returns true when `url` follows the relay funding URL rules.
 pub fn funding_url_ok(url: &str) -> bool {
     let count = url.chars().count();
@@ -143,5 +149,16 @@ mod tests {
         assert_eq!(links.len(), 3);
         assert_eq!(links[0].label.as_deref(), Some("Support"));
         assert_eq!(links[1].label, None);
+    }
+
+    #[test]
+    fn reads_file_funding_values() {
+        assert_eq!(
+            file_funding("https://example.com/pay\0")[0].url,
+            "https://example.com/pay"
+        );
+        assert!(file_funding("").is_empty());
+        assert!(file_funding("\0").is_empty());
+        assert!(file_funding("ftp://x").is_empty());
     }
 }

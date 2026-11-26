@@ -199,7 +199,39 @@ impl Producer {
             .set(Presence::Present(serde_json::to_string_pretty(&content)?))?;
         // ADR 0041 §Invariants: the display state follows the drop file of
         // the same read, and uses its artist, title, album and play_id.
-        self.write_display_track(&parsed, &chapters, &content);
+        // ADR 0044 §The Station Producer: the segment that plays selects the
+        // pair of the fresh links and tells if the state `wpay` applies. The
+        // segment selection is the same as the selection of the drop file.
+        let (selected, file_link) = if parsed.jingle {
+            (None, false)
+        } else if chapters.is_empty() {
+            (song_pair(&parsed), true)
+        } else {
+            let identified = position_ms(&parsed)
+                .and_then(|position| chapters::segment_at(&chapters, position))
+                .and_then(|segment| segment.chapter)
+                .and_then(identified_pair)
+                .map(|(feed, item)| (feed.to_owned(), item.to_owned()));
+            // An identified remote split never uses the `wpay` of the
+            // episode file. Each other segment uses only that `wpay`.
+            let file_link = identified.is_none();
+            (identified, file_link)
+        };
+        let fresh = selected
+            .as_ref()
+            .map(|pair| self.lookups.funding(pair))
+            .unwrap_or(&[]);
+        let fallback = if fresh.is_empty() && file_link {
+            display_keys::file_funding(parsed.wpay.as_deref().unwrap_or(""))
+        } else {
+            Vec::new()
+        };
+        let funding = if fresh.is_empty() {
+            fallback
+        } else {
+            fresh.to_vec()
+        };
+        self.write_display_track(&parsed, &chapters, &content, &funding);
         Ok(())
     }
 
@@ -209,6 +241,7 @@ impl Producer {
         state: &StateFile,
         chapters: &[chapters::Chapter],
         content: &serde_json::Value,
+        funding: &[display_keys::FundingLink],
     ) {
         if self.display.is_none() {
             return;
@@ -261,7 +294,7 @@ impl Producer {
                     } else {
                         Some(None)
                     },
-                    funding: Some(&[]),
+                    funding: Some(funding),
                 }),
             );
         }
@@ -1244,6 +1277,34 @@ mod tests {
         serde_json::json!({"data":{"payment_routes":[{"address":address,"split":100}]}}).to_string()
     }
 
+    /// A track answer with routes and one funding link. The producer sends no
+    /// feed request for such an answer.
+    fn route_body_with_funding(address: &str) -> String {
+        serde_json::json!({"data":{
+            "payment_routes":[{"address":address,"split":100}],
+            "source_links":[{"link_type":"funding","url":"https://example.com/pay","position":1}]
+        }})
+        .to_string()
+    }
+
+    /// Polls with a fixed time until the server has `count` requests.
+    fn poll_for_requests(
+        producer: &mut Producer,
+        server: &TestServer,
+        now: Instant,
+        count: usize,
+    ) -> Result<()> {
+        let started = Instant::now();
+        while started.elapsed() < Duration::from_secs(5) {
+            producer.poll(now)?;
+            if server.requests().len() >= count {
+                return Ok(());
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        anyhow::bail!("timed out waiting for {count} requests")
+    }
+
     #[test]
     fn producer_requests_identified_chapters_in_start_order() -> Result<()> {
         let server = TestServer::start(|_| Reply::Answer {
@@ -1268,8 +1329,8 @@ mod tests {
         assert_eq!(
             server.requests(),
             [
-                "/v1/feeds/feed-b/tracks/item-b?include=payment_routes",
-                "/v1/feeds/feed-a/tracks/item-a?include=payment_routes",
+                "/v1/feeds/feed-b/tracks/item-b?include=payment_routes,source_links",
+                "/v1/feeds/feed-a/tracks/item-a?include=payment_routes,source_links",
             ]
         );
         producer.shutdown()?;
@@ -1354,6 +1415,8 @@ mod tests {
                 Duration::from_secs(1),
             )?;
             assert!(wait_for_requests(&server, 1));
+            // The track answer has no funding link, so one feed request follows.
+            poll_for_requests(&mut producer, &server, now + Duration::from_secs(1), 2)?;
             for step in 1..=20 {
                 let elapsed = Duration::from_millis(600 * step);
                 fs::write(
@@ -1363,7 +1426,13 @@ mod tests {
                 producer.poll(now + elapsed)?;
                 std::thread::sleep(Duration::from_millis(5));
             }
-            assert_eq!(server.requests().len(), 1);
+            assert_eq!(
+                server.requests(),
+                [
+                    "/v1/feeds/feed/tracks/item?include=payment_routes,source_links",
+                    "/v1/feeds/feed?include=source_links",
+                ]
+            );
             let output: serde_json::Value =
                 serde_json::from_slice(&fs::read(&producer.drop_path)?)?;
             assert!(
@@ -1418,7 +1487,7 @@ mod tests {
     fn producer_retains_current_pair_results_and_reloads_evicted_pairs() -> Result<()> {
         let server = TestServer::start(|_| Reply::Answer {
             status: 200,
-            body: route_body("service"),
+            body: route_body_with_funding("service"),
         })?;
         let temp = TempDir::new()?;
         let path = temp.path().join("state.json");
@@ -1522,7 +1591,7 @@ mod tests {
             assert!(wait_for_requests(&server, 1), "{format}");
             assert_eq!(
                 server.requests(),
-                ["/v1/feeds/feed/tracks/track?include=payment_routes"],
+                ["/v1/feeds/feed/tracks/track?include=payment_routes,source_links"],
                 "{format}"
             );
             producer.shutdown()?;
@@ -1568,12 +1637,20 @@ mod tests {
                 let (mut producer, path) =
                     start_service_producer(&temp, &server, &patch, now, Duration::from_secs(1))?;
                 assert!(wait_for_requests(&server, 1));
+                // The track answer has no funding link, so one feed request follows.
+                poll_for_requests(&mut producer, &server, now + Duration::from_secs(1), 2)?;
                 for step in 1..=10_u32 {
                     fs::write(&path, patched(1.0 + f64::from(step), &patch)?)?;
                     producer.poll(now + Duration::from_millis(600 * u64::from(step)))?;
                     std::thread::sleep(Duration::from_millis(5));
                 }
-                assert_eq!(server.requests().len(), 1);
+                assert_eq!(
+                    server.requests(),
+                    [
+                        "/v1/feeds/feed/tracks/track?include=payment_routes,source_links",
+                        "/v1/feeds/feed?include=source_links",
+                    ]
+                );
                 let output: serde_json::Value =
                     serde_json::from_slice(&fs::read(&producer.drop_path)?)?;
                 assert_eq!(addresses(&output), expected, "{status} {routes}");
@@ -1628,7 +1705,7 @@ mod tests {
         std::thread::sleep(Duration::from_millis(50));
         assert_eq!(
             server.requests(),
-            ["/v1/feeds/song-feed/tracks/song-item?include=payment_routes"]
+            ["/v1/feeds/song-feed/tracks/song-item?include=payment_routes,source_links"]
         );
         producer.shutdown()?;
         Ok(())
@@ -2173,7 +2250,7 @@ mod tests {
         producer.start()?;
         let parsed: StateFile =
             serde_json::from_str(&patched(1.0, &serde_json::json!({"picture": "picture-4"}))?)?;
-        producer.write_display_track(&parsed, &[], &serde_json::json!({}));
+        producer.write_display_track(&parsed, &[], &serde_json::json!({}), &[]);
         assert!(read_display(&temp)?["track"]["artwork"].is_null());
         producer.shutdown()?;
         Ok(())
@@ -2228,7 +2305,7 @@ mod tests {
             fs::write(temp.path().join("picture-4"), &picture)?;
             let fields = serde_json::json!({"picture": "picture-4", "track_started": started});
             let parsed: StateFile = serde_json::from_str(&patched(1.0, &fields)?)?;
-            producer.write_display_track(&parsed, &[], &serde_json::json!({}));
+            producer.write_display_track(&parsed, &[], &serde_json::json!({}), &[]);
             shown.push((
                 read_display(&temp)?["track"]["artwork"]["sha256"].clone(),
                 now_playing_drop::display::sha256_hex(&picture),
@@ -2290,6 +2367,510 @@ mod tests {
         fs::write(&path, b"{")?;
         producer.poll(now + Duration::from_secs(2))?;
         assert_eq!(read_display(&temp)?, before);
+        producer.shutdown()?;
+        Ok(())
+    }
+
+    // The funding tests of ADR 0044 §Verification.
+
+    const WPAY: &str = "https://file.example/pay";
+    const TRACK_REQUEST: &str = "/v1/feeds/feed/tracks/track?include=payment_routes,source_links";
+    const FEED_REQUEST: &str = "/v1/feeds/feed?include=source_links";
+
+    fn funding_entry(url: &str, position: i64, label: Option<&str>) -> serde_json::Value {
+        let mut entry =
+            serde_json::json!({"link_type": "funding", "url": url, "position": position});
+        if let Some(label) = label {
+            entry["label"] = label.into();
+        }
+        entry
+    }
+
+    fn answer(status: u16, body: &serde_json::Value) -> Reply {
+        Reply::Answer {
+            status,
+            body: body.to_string(),
+        }
+    }
+
+    /// An answer that has `source_links` and no routes.
+    fn links_reply(links: &serde_json::Value) -> Reply {
+        answer(200, &serde_json::json!({"data": {"source_links": links}}))
+    }
+
+    /// An answer that has no funding link.
+    fn no_links_reply() -> Reply {
+        answer(200, &serde_json::json!({"data": {}}))
+    }
+
+    /// A server that gives `track` for a track request and `feed` for a feed
+    /// request.
+    fn funding_server(track: Reply, feed: Reply) -> Result<TestServer> {
+        TestServer::start(move |target| {
+            if target.contains("/tracks/") {
+                track.clone()
+            } else {
+                feed.clone()
+            }
+        })
+    }
+
+    /// Starts a producer with a display folder and a route service. The two
+    /// polls make the state fresh.
+    fn funding_producer(
+        temp: &TempDir,
+        server: &TestServer,
+        patch: &serde_json::Value,
+        now: Instant,
+    ) -> Result<(Producer, PathBuf)> {
+        let path = temp.path().join("state.json");
+        fs::write(&path, patched(0.0, patch)?)?;
+        let client = RouteServiceClient::new(server.base_url(), Duration::from_secs(1))?;
+        let mut producer = Producer::new(&path, display_settings(temp)).with_route_service(client);
+        producer.start()?;
+        producer.poll(now)?;
+        fs::write(&path, patched(1.0, patch)?)?;
+        producer.poll(now + Duration::from_millis(500))?;
+        Ok((producer, path))
+    }
+
+    /// Reads the state at `elapsed` seconds, with the fields of `patch`.
+    fn read_at(
+        producer: &mut Producer,
+        path: &Path,
+        patch: &serde_json::Value,
+        written: f64,
+        elapsed: f64,
+        now: Instant,
+    ) -> Result<()> {
+        let mut fields = patch.clone();
+        fields["elapsed"] = elapsed.into();
+        fields["cue_in"] = 0.0.into();
+        fs::write(path, patched(written, &fields)?)?;
+        producer.poll(now)
+    }
+
+    fn shown_funding(temp: &TempDir) -> Result<serde_json::Value> {
+        Ok(read_display(temp)?["track"]["funding"].clone())
+    }
+
+    /// Polls until `display.json` has `expected` as `funding`. It fails after
+    /// five seconds.
+    fn poll_for_funding(
+        producer: &mut Producer,
+        temp: &TempDir,
+        now: Instant,
+        expected: &serde_json::Value,
+    ) -> Result<()> {
+        let started = Instant::now();
+        loop {
+            producer.poll(now)?;
+            let shown = shown_funding(temp)?;
+            if shown == *expected {
+                return Ok(());
+            }
+            if started.elapsed() >= Duration::from_secs(5) {
+                anyhow::bail!("funding is {shown} and not {expected}");
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    /// Polls for a short time. The `funding` value must not change.
+    fn assert_funding_stays(
+        producer: &mut Producer,
+        temp: &TempDir,
+        now: Instant,
+        expected: &serde_json::Value,
+    ) -> Result<()> {
+        for _ in 0..40 {
+            producer.poll(now)?;
+            assert_eq!(shown_funding(temp)?, *expected);
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        Ok(())
+    }
+
+    fn wpay_json() -> serde_json::Value {
+        serde_json::json!([{"url": WPAY}])
+    }
+
+    #[test]
+    fn item_funding_links_come_in_position_order_and_beat_the_channel_links() -> Result<()> {
+        let server = funding_server(
+            links_reply(&serde_json::json!([
+                funding_entry("https://two.example", 2, Some("Two")),
+                funding_entry("https://one.example", 1, None),
+            ])),
+            links_reply(&serde_json::json!([funding_entry(
+                "https://channel.example",
+                1,
+                None
+            )])),
+        )?;
+        let temp = TempDir::new()?;
+        let now = Instant::now();
+        let (mut producer, _) =
+            funding_producer(&temp, &server, &serde_json::json!({"seq": 4}), now)?;
+        let expected = serde_json::json!([
+            {"url": "https://one.example"},
+            {"url": "https://two.example", "label": "Two"},
+        ]);
+        poll_for_funding(
+            &mut producer,
+            &temp,
+            now + Duration::from_secs(1),
+            &expected,
+        )?;
+        assert_funding_stays(
+            &mut producer,
+            &temp,
+            now + Duration::from_secs(1),
+            &expected,
+        )?;
+        // The item links are usable, so the producer sends no feed request.
+        assert_eq!(server.requests(), [TRACK_REQUEST]);
+        producer.shutdown()?;
+        Ok(())
+    }
+
+    #[test]
+    fn a_track_answer_with_no_funding_link_causes_the_feed_request() -> Result<()> {
+        let server = funding_server(
+            no_links_reply(),
+            links_reply(&serde_json::json!([funding_entry(
+                "https://channel.example",
+                1,
+                Some("Channel")
+            )])),
+        )?;
+        let temp = TempDir::new()?;
+        let now = Instant::now();
+        let (mut producer, _) =
+            funding_producer(&temp, &server, &serde_json::json!({"seq": 4}), now)?;
+        let expected = serde_json::json!([{"url": "https://channel.example", "label": "Channel"}]);
+        poll_for_funding(
+            &mut producer,
+            &temp,
+            now + Duration::from_secs(1),
+            &expected,
+        )?;
+        assert_eq!(server.requests(), [TRACK_REQUEST, FEED_REQUEST]);
+        producer.shutdown()?;
+        Ok(())
+    }
+
+    #[test]
+    fn funding_links_follow_the_url_label_duplicate_and_count_rules() -> Result<()> {
+        let long_url = format!("https://{}", "a".repeat(505));
+        assert_eq!(long_url.chars().count(), 513);
+        let server = funding_server(
+            links_reply(&serde_json::json!([
+                funding_entry("ftp://x", 1, None),
+                funding_entry(&long_url, 2, None),
+                funding_entry("https://example.com/a b", 3, None),
+                funding_entry("https://example.com/a\u{1}b", 4, None),
+                funding_entry("https:///support", 5, None),
+                funding_entry("HTTPS://example.com", 6, Some(&"x".repeat(200))),
+                funding_entry("HTTPS://example.com", 7, Some("Duplicate")),
+                funding_entry("https://b.example", 8, Some("")),
+                funding_entry("https://c.example", 9, Some("C")),
+                funding_entry("https://d.example", 10, None),
+            ])),
+            no_links_reply(),
+        )?;
+        let temp = TempDir::new()?;
+        let now = Instant::now();
+        let (mut producer, _) =
+            funding_producer(&temp, &server, &serde_json::json!({"seq": 4}), now)?;
+        let expected = serde_json::json!([
+            {"url": "HTTPS://example.com", "label": "x".repeat(128)},
+            {"url": "https://b.example"},
+            {"url": "https://c.example", "label": "C"},
+        ]);
+        poll_for_funding(
+            &mut producer,
+            &temp,
+            now + Duration::from_secs(1),
+            &expected,
+        )?;
+        // An empty label gives no key.
+        assert!(shown_funding(&temp)?[1].get("label").is_none());
+        producer.shutdown()?;
+        Ok(())
+    }
+
+    #[test]
+    fn a_song_state_with_fresh_links_and_a_wpay_gives_the_fresh_links() -> Result<()> {
+        let server = funding_server(
+            links_reply(&serde_json::json!([funding_entry(
+                "https://fresh.example",
+                1,
+                None
+            )])),
+            no_links_reply(),
+        )?;
+        let temp = TempDir::new()?;
+        let now = Instant::now();
+        let patch = serde_json::json!({"seq": 4, "wpay": WPAY});
+        let (mut producer, _) = funding_producer(&temp, &server, &patch, now)?;
+        let expected = serde_json::json!([{"url": "https://fresh.example"}]);
+        poll_for_funding(
+            &mut producer,
+            &temp,
+            now + Duration::from_secs(1),
+            &expected,
+        )?;
+        assert_funding_stays(
+            &mut producer,
+            &temp,
+            now + Duration::from_secs(1),
+            &expected,
+        )?;
+        producer.shutdown()?;
+        Ok(())
+    }
+
+    #[test]
+    fn a_song_state_uses_the_wpay_with_no_label_when_no_fresh_link_exists() -> Result<()> {
+        let not_found = || answer(404, &serde_json::json!({}));
+        let failed = || answer(500, &serde_json::json!({}));
+        // The NUL character at the end is part of the value of the state.
+        let wpay = format!("{WPAY}\0");
+        for (name, track, feed, patch, requests) in [
+            (
+                "404",
+                not_found(),
+                not_found(),
+                serde_json::json!({"seq": 4, "wpay": wpay}),
+                vec![TRACK_REQUEST, FEED_REQUEST],
+            ),
+            (
+                "failed request",
+                failed(),
+                failed(),
+                serde_json::json!({"seq": 4, "wpay": wpay}),
+                vec![TRACK_REQUEST],
+            ),
+            (
+                "missing GUID",
+                no_links_reply(),
+                no_links_reply(),
+                serde_json::json!({"seq": 4, "wpay": wpay, "feed_guid": ""}),
+                vec![],
+            ),
+        ] {
+            let server = funding_server(track, feed)?;
+            let temp = TempDir::new()?;
+            let now = Instant::now();
+            let (mut producer, _) = funding_producer(&temp, &server, &patch, now)?;
+            let later = now + Duration::from_secs(1);
+            if !requests.is_empty() {
+                poll_for_requests(&mut producer, &server, later, requests.len())?;
+            }
+            assert_funding_stays(&mut producer, &temp, later, &wpay_json())?;
+            assert_eq!(server.requests(), requests, "{name}");
+            producer.shutdown()?;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn a_late_answer_replaces_the_wpay_and_keeps_the_play_id_and_the_drop_file() -> Result<()> {
+        let server = TestServer::start(|_| {
+            std::thread::sleep(Duration::from_millis(200));
+            links_reply(&serde_json::json!([funding_entry(
+                "https://fresh.example",
+                1,
+                None
+            )]))
+        })?;
+        let temp = TempDir::new()?;
+        let now = Instant::now();
+        let patch = serde_json::json!({"seq": 4, "wpay": WPAY});
+        let (mut producer, _) = funding_producer(&temp, &server, &patch, now)?;
+        // No answer has come yet.
+        assert_eq!(shown_funding(&temp)?, wpay_json());
+        let play_id = read_display(&temp)?["track"]["play_id"].clone();
+        assert!(play_id.is_string());
+        let drop_before = fs::read(&producer.drop_path)?;
+        let expected = serde_json::json!([{"url": "https://fresh.example"}]);
+        poll_for_funding(
+            &mut producer,
+            &temp,
+            now + Duration::from_secs(1),
+            &expected,
+        )?;
+        assert_eq!(read_display(&temp)?["track"]["play_id"], play_id);
+        assert_eq!(fs::read(&producer.drop_path)?, drop_before);
+        producer.shutdown()?;
+        Ok(())
+    }
+
+    #[test]
+    fn a_wpay_loses_the_nul_at_the_end_and_a_refused_wpay_gives_null() -> Result<()> {
+        for (wpay, expected) in [
+            (format!("{WPAY}\0"), wpay_json()),
+            ("ftp://x".to_owned(), serde_json::Value::Null),
+            ("\0".to_owned(), serde_json::Value::Null),
+        ] {
+            let out = display_reads(&serde_json::json!({"wpay": wpay}), &[(1.0, 0.0)])?;
+            assert_eq!(out[0].1["track"]["funding"], expected, "{wpay:?}");
+        }
+        Ok(())
+    }
+
+    fn episode_chapters() -> serde_json::Value {
+        serde_json::json!([
+            {
+                "start_ms": 0, "end_ms": 10_000, "remote_percentage": 90,
+                "value_routes": [{"address": "local", "split": 100}]
+            },
+            remote(15_000, 20_000, "feed-u", serde_json::Value::Null),
+            remote(25_000, 30_000, "f3", "i3".into()),
+        ])
+    }
+
+    #[test]
+    fn the_segments_that_are_not_identified_remote_splits_give_the_state_wpay() -> Result<()> {
+        let server = funding_server(
+            links_reply(&serde_json::json!([funding_entry(
+                "https://fresh.example",
+                1,
+                None
+            )])),
+            no_links_reply(),
+        )?;
+        let temp = TempDir::new()?;
+        let now = Instant::now();
+        let later = now + Duration::from_secs(1);
+        let mut patch = chapter_patch(&episode_chapters(), 4);
+        patch["wpay"] = WPAY.into();
+        let (mut producer, path) = funding_producer(&temp, &server, &patch, now)?;
+        // The identified remote split shows its fresh links. This also shows
+        // that an answer is in the cache for the other reads.
+        read_at(&mut producer, &path, &patch, 2.0, 27.0, later)?;
+        let fresh = serde_json::json!([{"url": "https://fresh.example"}]);
+        poll_for_funding(&mut producer, &temp, later, &fresh)?;
+        // A local split, a gap, a remote split that is not identified, and
+        // the part after the last chapter.
+        for (step, elapsed) in [5.0, 12.0, 17.0, 35.0].into_iter().enumerate() {
+            read_at(
+                &mut producer,
+                &path,
+                &patch,
+                3.0 + step as f64,
+                elapsed,
+                later,
+            )?;
+            assert_eq!(shown_funding(&temp)?, wpay_json(), "elapsed {elapsed}");
+        }
+        // The producer asks only for the identified chapter. It sends no
+        // request for the state pair.
+        let requests = server.requests();
+        assert!(!requests.is_empty());
+        assert!(
+            requests
+                .iter()
+                .all(|request| request.starts_with("/v1/feeds/f3/tracks/i3")),
+            "{requests:?}"
+        );
+        producer.shutdown()?;
+        Ok(())
+    }
+
+    #[test]
+    fn an_identified_remote_split_never_uses_the_wpay() -> Result<()> {
+        let chapters = serde_json::json!([remote(0, 10_000, "feed", "track".into())]);
+        let mut patch = chapter_patch(&chapters, 4);
+        patch["wpay"] = WPAY.into();
+
+        // No fresh link: `funding` is `null`, also with a `wpay`.
+        let not_found = || answer(404, &serde_json::json!({}));
+        let server = funding_server(not_found(), not_found())?;
+        let temp = TempDir::new()?;
+        let now = Instant::now();
+        let later = now + Duration::from_secs(1);
+        let (mut producer, _) = funding_producer(&temp, &server, &patch, now)?;
+        assert_eq!(shown_funding(&temp)?, serde_json::Value::Null);
+        poll_for_requests(&mut producer, &server, later, 2)?;
+        assert_funding_stays(&mut producer, &temp, later, &serde_json::Value::Null)?;
+        producer.shutdown()?;
+
+        // Fresh links: `funding` has the fresh links.
+        let server = funding_server(
+            links_reply(&serde_json::json!([funding_entry(
+                "https://fresh.example",
+                1,
+                None
+            )])),
+            no_links_reply(),
+        )?;
+        let temp = TempDir::new()?;
+        let (mut producer, _) = funding_producer(&temp, &server, &patch, now)?;
+        let fresh = serde_json::json!([{"url": "https://fresh.example"}]);
+        poll_for_funding(&mut producer, &temp, later, &fresh)?;
+        producer.shutdown()?;
+        Ok(())
+    }
+
+    #[test]
+    fn a_jingle_with_a_wpay_gives_null_funding_and_sends_no_request() -> Result<()> {
+        let server = funding_server(
+            links_reply(&serde_json::json!([funding_entry(
+                "https://fresh.example",
+                1,
+                None
+            )])),
+            no_links_reply(),
+        )?;
+        let temp = TempDir::new()?;
+        let now = Instant::now();
+        let patch = serde_json::json!({"seq": 4, "jingle": true, "wpay": WPAY});
+        let (mut producer, _) = funding_producer(&temp, &server, &patch, now)?;
+        assert_funding_stays(
+            &mut producer,
+            &temp,
+            now + Duration::from_secs(1),
+            &serde_json::Value::Null,
+        )?;
+        assert!(server.requests().is_empty());
+        producer.shutdown()?;
+        Ok(())
+    }
+
+    #[test]
+    fn two_segments_with_the_same_feed_guid_and_no_item_link_cause_one_feed_request() -> Result<()>
+    {
+        let server = funding_server(
+            no_links_reply(),
+            links_reply(&serde_json::json!([funding_entry(
+                "https://channel.example",
+                1,
+                None
+            )])),
+        )?;
+        let chapters = serde_json::json!([
+            remote(0, 10_000, "shared", "item-1".into()),
+            remote(10_000, 20_000, "shared", "item-2".into()),
+        ]);
+        let patch = chapter_patch(&chapters, 4);
+        let temp = TempDir::new()?;
+        let now = Instant::now();
+        let later = now + Duration::from_secs(1);
+        let (mut producer, path) = funding_producer(&temp, &server, &patch, now)?;
+        let expected = serde_json::json!([{"url": "https://channel.example"}]);
+        poll_for_funding(&mut producer, &temp, later, &expected)?;
+        read_at(&mut producer, &path, &patch, 2.0, 15.0, later)?;
+        poll_for_funding(&mut producer, &temp, later, &expected)?;
+        assert_funding_stays(&mut producer, &temp, later, &expected)?;
+        let feed_requests: Vec<_> = server
+            .requests()
+            .into_iter()
+            .filter(|request| !request.contains("/tracks/"))
+            .collect();
+        assert_eq!(feed_requests, ["/v1/feeds/shared?include=source_links"]);
+        assert_eq!(server.requests().len(), 3);
         producer.shutdown()?;
         Ok(())
     }

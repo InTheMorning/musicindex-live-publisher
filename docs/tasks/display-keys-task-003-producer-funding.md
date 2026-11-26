@@ -1,6 +1,6 @@
 # Display Keys Task 003: The Station Producer Gets The Funding Links
 
-Status: Ready - 2026-11-26. ADR 0043 and ADR 0044 govern this task.
+Status: Implemented - 2026-11-26. ADR 0043 and ADR 0044 govern this task.
 
 Each criterion is mechanical. No visual check applies to this task.
 

@@ -36,6 +36,8 @@ pub struct StateFile {
     #[serde(default)]
     pub pub_date: Option<String>,
     #[serde(default)]
+    pub wpay: Option<String>,
+    #[serde(default)]
     pub track_guid: Option<String>,
     #[serde(default)]
     pub feed_guid: Option<String>,
@@ -52,4 +54,30 @@ pub struct StateFile {
     pub cue_in: Option<f64>,
     #[serde(default)]
     pub chapters: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn state_text(extra: &str) -> String {
+        format!(
+            r#"{{"format":"{STATE_FORMAT_2}","seq":1,"written":1.0,"live":false,"track_started":2.0{extra}}}"#
+        )
+    }
+
+    #[test]
+    fn a_state_with_no_wpay_parses_and_wpay_is_none() {
+        let parsed: StateFile =
+            serde_json::from_str(&state_text("")).expect("a state with no wpay must parse");
+        assert_eq!(parsed.wpay, None);
+    }
+
+    #[test]
+    fn a_state_with_a_wpay_keeps_the_raw_value() {
+        let parsed: StateFile =
+            serde_json::from_str(&state_text(r#","wpay":"https://example.com/pay\u0000""#))
+                .expect("a state with a wpay must parse");
+        assert_eq!(parsed.wpay.as_deref(), Some("https://example.com/pay\0"));
+    }
 }

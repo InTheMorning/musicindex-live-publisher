@@ -198,6 +198,7 @@ def musicindex_write() =
       song = m["song"],
       album = m["album"],
       pub_date = m["date"],
+      wpay = m["wpay"],
       track_guid = m["podcast item guid"],
       feed_guid = m["podcast feed guid"],
       value_routes = m["podcast value routes"],

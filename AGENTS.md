@@ -219,8 +219,8 @@ packet.
   The route service gives the routes and the links in one answer (station
   log step 58). The publisher sends `funding` (display keys task 001), and
   the station producer writes `funding` `null`. Display keys task 003 (the
-  station lookup) and task 004 (the Mixxx links) implement ADR 0044 and are
-  ready.
+  station lookup) implements ADR 0044 and is not deployed. Task 004 (the Mixxx
+  links) is ready.
 - The deploy order of ADR 0042 and ADR 0043 is the relay, then the publisher,
   then Rainbrook.
 - ADR 0044 has the status `Accepted`. The funding of a segment uses the

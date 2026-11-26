@@ -115,7 +115,7 @@ fn api_body_with_empty_routes() -> String {
 fn musicindex_api_track_routes_are_authoritative() -> Result<()> {
     let _network = network_test_lock();
     let server = test_server(vec![(
-        "/v1/feeds/feed-guid-fixture/tracks/track-guid-fixture?include=payment_routes",
+        "/v1/feeds/feed-guid-fixture/tracks/track-guid-fixture?include=payment_routes,source_links",
         Reply::Answer {
             status: 200,
             body: api_body("API Alice"),
@@ -149,7 +149,9 @@ fn musicindex_api_track_routes_are_authoritative() -> Result<()> {
     assert!(rendered.contains("API Alice"));
     assert_eq!(
         server.requests(),
-        vec!["/v1/feeds/feed-guid-fixture/tracks/track-guid-fixture?include=payment_routes"]
+        vec![
+            "/v1/feeds/feed-guid-fixture/tracks/track-guid-fixture?include=payment_routes,source_links"
+        ]
     );
     Ok(())
 }
@@ -158,7 +160,7 @@ fn musicindex_api_track_routes_are_authoritative() -> Result<()> {
 fn musicindex_track_404_falls_back_to_embedded_routes() -> Result<()> {
     let _network = network_test_lock();
     let server = test_server(vec![(
-        "/v1/feeds/feed-guid-fixture/tracks/track-guid-fixture?include=payment_routes",
+        "/v1/feeds/feed-guid-fixture/tracks/track-guid-fixture?include=payment_routes,source_links",
         Reply::Answer {
             status: 404,
             body: "{}".to_owned(),
@@ -172,7 +174,9 @@ fn musicindex_track_404_falls_back_to_embedded_routes() -> Result<()> {
     assert_eq!(resolution.source, ValueRoutesSource::EmbeddedId3);
     assert_eq!(
         server.requests(),
-        vec!["/v1/feeds/feed-guid-fixture/tracks/track-guid-fixture?include=payment_routes"]
+        vec![
+            "/v1/feeds/feed-guid-fixture/tracks/track-guid-fixture?include=payment_routes,source_links"
+        ]
     );
     Ok(())
 }
@@ -215,7 +219,7 @@ fn musicindex_no_embedded_frame_and_no_api_routes_omits_value_routes_line() -> R
     let _network = network_test_lock();
     let tags = no_embedded_routes_track();
     let server = test_server(vec![(
-        "/v1/feeds/feed-guid-fixture/tracks/track-guid-fixture?include=payment_routes",
+        "/v1/feeds/feed-guid-fixture/tracks/track-guid-fixture?include=payment_routes,source_links",
         Reply::Answer {
             status: 500,
             body: "server error".to_owned(),
@@ -248,7 +252,7 @@ fn musicindex_empty_or_missing_api_routes_are_not_rendered_as_authoritative() ->
     for body in [api_body_without_routes(), api_body_with_empty_routes()] {
         let tags = no_embedded_routes_track();
         let server = test_server(vec![(
-            "/v1/feeds/feed-guid-fixture/tracks/track-guid-fixture?include=payment_routes",
+            "/v1/feeds/feed-guid-fixture/tracks/track-guid-fixture?include=payment_routes,source_links",
             Reply::Answer { status: 200, body },
         )])?;
         let client = RouteServiceClient::new(server.base_url(), Duration::from_secs(1))?;
@@ -277,7 +281,7 @@ fn musicindex_empty_or_missing_api_routes_are_not_rendered_as_authoritative() ->
 fn musicindex_once_mode_waits_for_api_routes_before_exit() -> Result<()> {
     let _network = network_test_lock();
     let server = test_server(vec![(
-        "/v1/feeds/feed-guid-fixture/tracks/track-guid-fixture?include=payment_routes",
+        "/v1/feeds/feed-guid-fixture/tracks/track-guid-fixture?include=payment_routes,source_links",
         Reply::Answer {
             status: 200,
             body: api_body("Once API Alice"),
@@ -332,7 +336,7 @@ fn musicindex_once_mode_waits_for_api_routes_before_exit() -> Result<()> {
 fn musicindex_repeat_track_uses_cache_without_second_api_request() -> Result<()> {
     let _network = network_test_lock();
     let server = test_server(vec![(
-        "/v1/feeds/feed-guid-fixture/tracks/track-guid-fixture?include=payment_routes",
+        "/v1/feeds/feed-guid-fixture/tracks/track-guid-fixture?include=payment_routes,source_links",
         Reply::Answer {
             status: 200,
             body: api_body("Cached API Alice"),
@@ -356,7 +360,9 @@ fn musicindex_repeat_track_uses_cache_without_second_api_request() -> Result<()>
     assert_eq!(second.resolution.routes_json, first.resolution.routes_json);
     assert_eq!(
         server.requests(),
-        vec!["/v1/feeds/feed-guid-fixture/tracks/track-guid-fixture?include=payment_routes"]
+        vec![
+            "/v1/feeds/feed-guid-fixture/tracks/track-guid-fixture?include=payment_routes,source_links"
+        ]
     );
     Ok(())
 }
