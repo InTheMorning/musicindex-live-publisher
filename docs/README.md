@@ -349,6 +349,13 @@ Packets for the listener delay. ADR 0037 governs them.
 - [001 — The delay from the Icecast burst](tasks/listener-delay-task-001-icecast-burst.md)
   — Implemented - 2026-11-26
 
+Packets for the segment frame. ADR 0038 governs them.
+
+- [001 — The display state gets `playId`](tasks/segment-frame-task-001-publisher-play-id.md)
+  — Open
+- [002 — The slot text writes the segment frame](tasks/segment-frame-task-002-slot-text-frame.md)
+  — Open
+
 ## Reviews
 
 - [Rust now-playing review checklist](reviews/rust-now-playing-review-checklist.md)
