@@ -196,6 +196,8 @@ packet.
   for the display URL or the relay URL of the uploaded picture. If the picture
   is not available, the payload worker sends the payload one more time when
   the picture is available. The tests are at the end of `tests/display.rs`.
+  On the test station, v4vmusic.com changes the picture at each replay after a
+  jingle, with no page reload (station log step 46).
   Open, from the review of 2026-11-25, in the code from before the wait: a
   publish retry reads the channel and not the queue of the second send check,
   so an older queued payload can go after a newer one. A permanent refusal

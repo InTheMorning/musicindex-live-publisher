@@ -167,9 +167,11 @@ examines its channel goes out immediately after the second send. The publisher c
 
 Visual. A person must examine these items in an app. Report each one as open until a person completes the check.
 
-- On the test station, a song with only an embedded picture shows that picture in v4vmusic.com.
+- On the test station, a song with only an embedded picture shows that picture in v4vmusic.com. Done 2026-11-25,
+  station log step 43.
 - At the next song, the app shows the picture of the next song, not the old one.
-- After a jingle, a replay of the same song shows the picture of the song in v4vmusic.com, with no page reload.
+- After a jingle, a replay of the same song shows the picture of the song in v4vmusic.com, with no page reload. Done
+  2026-11-25 with publisher `2f30e4f`, station log step 46. The picture came 1 to 2 seconds before the audio.
 
 ## Alternatives Considered
 
