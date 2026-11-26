@@ -5,6 +5,7 @@
 - Changed by: ADR 0036, accepted 2026-11-26. The slot text also gives the picture to the HLS output, one time for each
   song.
 - Changed by: ADR 0038, accepted 2026-11-26. The slot text also writes a segment frame at each chapter boundary.
+- Changed by: ADR 0040, accepted 2026-11-26. A chapter with a title has the state title as its `album`.
 - Supersedes: ADR 0022 (`docs/archive/adr/0022-liquidsoap-producer.md`).
 - Supersedes: ADR 0025 (`docs/archive/adr/0025-the-station-producer-pays-each-chapter-song.md`).
 - Supersedes: ADR 0026 (`docs/archive/adr/0026-the-station-producer-writes-the-display-state.md`).
@@ -250,8 +251,8 @@ identified split is usable when the song routes of §The Route Lookup have a per
 - The producer applies ADR 0024: routes only with a feed GUID and an item GUID in the identity of the drop file, and
   episode routes only when the episode group is usable.
 - `title` is the chapter title when it is a string that is not empty, and the state title otherwise. `artist` is
-  the chapter artist when it is a string that is not empty, and the state artist otherwise. `album` comes from the
-  state. `image` follows §The Artwork Of A Segment.
+  the chapter artist when it is a string that is not empty, and the state artist otherwise. `album` follows ADR 0040.
+  `image` follows §The Artwork Of A Segment.
 - `play_id` is `ls-<track_started in ms>-<seq>` for a file with no valid chapter. For a file with chapters, it is
   `ls-<track_started in ms>-<seq>-<segment start in ms>`. Each segment thus gets its own line in the show log
   (ADR 0017).
@@ -372,7 +373,7 @@ The first row that applies wins:
 | --- | --- |
 | `artist` | The `artist` of the drop file of the same segment. |
 | `title` | The `title` of the drop file of the same segment. |
-| `album` | The `album` of the state, or `null`. |
+| `album` | The `album` of the drop file of the same segment (ADR 0040). |
 | `artwork` | §The Artwork Of A Segment. |
 | `song_line` | The song line of the file. |
 | `play_id` | The `play_id` of the drop file of the same segment. |

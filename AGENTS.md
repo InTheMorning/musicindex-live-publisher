@@ -203,6 +203,10 @@ packet.
   (station log step 52). In Rainbrook on HLS the chapter change comes with
   the chapter song (station log step 53). The boost at the start of a chapter
   song is open.
+- ADR 0040 has the status `Accepted`. A chapter with a title has the
+  episode title as its `album`. The drop file, `display.json` and the live
+  value payload have this `album`. Episode album task 001
+  implements it. The check in Rainbrook on the test station is open.
 - This item needs a new ADR before work starts: a track identity source that
   is earlier than the Mixxx history row.
 - Studio client task 001 is not started. The publisher will start and end a

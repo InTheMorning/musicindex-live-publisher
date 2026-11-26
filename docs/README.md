@@ -123,6 +123,9 @@ the next priority. Confirm that logging works before the show.
 - [ADR 0039: The display state pairs with its value block](adr/0039-the-display-state-pairs-with-its-value-block.md)
   — Accepted. One record for the pairing rules of ADR 0012 and its three
   changes. It adds no rule. It supersedes ADR 0012
+- [ADR 0040: A chapter song has the episode title as its album](adr/0040-a-chapter-song-has-the-episode-title-as-its-album.md)
+  — Accepted. A chapter with a title has the state title as its `album`, in
+  the drop file and in `display.json`. It changes ADR 0035
 
 ## Plans
 
@@ -354,6 +357,11 @@ Packets for the segment frame. ADR 0038 governs them.
 - [001 — The display state gets `playId`](tasks/segment-frame-task-001-publisher-play-id.md)
   — Implemented - 2026-11-26
 - [002 — The slot text writes the segment frame](tasks/segment-frame-task-002-slot-text-frame.md)
+  — Implemented - 2026-11-26
+
+Packets for the episode album. ADR 0040 governs them.
+
+- [001 — A chapter song has the episode title as its album](tasks/episode-album-task-001-chapter-album-is-episode-title.md)
   — Implemented - 2026-11-26
 
 ## Reviews

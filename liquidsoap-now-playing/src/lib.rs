@@ -198,7 +198,7 @@ impl Producer {
         self.output
             .set(Presence::Present(serde_json::to_string_pretty(&content)?))?;
         // ADR 0035 §Invariants: the display state follows the drop file of
-        // the same read, and uses its artist, title and play_id.
+        // the same read, and uses its artist, title, album and play_id.
         self.write_display_track(&parsed, &content);
         Ok(())
     }
@@ -215,14 +215,20 @@ impl Producer {
             }
             return;
         };
-        let (artist, title, play_id) = if state.jingle {
-            // A jingle has the state artist and title, and no play_id.
-            (state.artist.as_str(), state.title.as_str(), None)
+        let (artist, title, play_id, album) = if state.jingle {
+            // A jingle has the state artist, title and album, and no play_id.
+            (
+                state.artist.as_str(),
+                state.title.as_str(),
+                None,
+                nonempty(state.album.as_deref()),
+            )
         } else {
             (
                 content["artist"].as_str().unwrap_or(""),
                 content["title"].as_str().unwrap_or(""),
                 content["play_id"].as_str(),
+                nonempty(content["album"].as_str()),
             )
         };
         // ADR 0035 §The Artwork Of A Segment: the image URL of the drop file
@@ -244,7 +250,7 @@ impl Producer {
                     artwork: artwork.as_ref(),
                     song_line: &line,
                     play_id,
-                    album: nonempty(state.album.as_deref()),
+                    album,
                 }),
             );
         }
@@ -467,6 +473,12 @@ fn render_state(
     let artist = chapter
         .and_then(|chapter| nonempty(chapter.artist.as_deref()))
         .unwrap_or(&state.artist);
+    // ADR 0040: a chapter with a title gives the episode title as the album,
+    // because the title line then shows the chapter song.
+    let album = chapter
+        .and_then(|chapter| nonempty(chapter.title.as_deref()))
+        .and_then(|_| nonempty(Some(state.title.as_str())))
+        .or_else(|| nonempty(state.album.as_deref()));
     // ADR 0035 §What The Producer Writes For An Episode File: each segment of a file with chapters gets its own play.
     let play_id = match segment {
         Some(segment) => format!("ls-{play_ms}-{}-{}", state.seq, segment.start_ms),
@@ -485,7 +497,7 @@ fn render_state(
             .or_else(|| nonempty(state.image.as_deref()).and_then(image_url)),
         feed_guid,
         track_guid,
-        album: nonempty(state.album.as_deref()),
+        album,
         play_id: Some(play_id),
         value_routes: routes,
         value_routes_source: routes_source,
@@ -1723,6 +1735,7 @@ mod tests {
         assert_eq!(shown["schema"], "musicindex.display/3");
         assert_eq!(track["artist"], drop["artist"]);
         assert_eq!(track["title"], drop["title"]);
+        assert_eq!(track["album"], drop["album"]);
         assert_eq!(track["play_id"], drop["play_id"]);
         assert_eq!(track["song_line"], line);
     }
@@ -1740,6 +1753,46 @@ mod tests {
         assert_eq!(out[2].1["track"]["title"], "Title");
         assert_eq!(play_ids.len(), 5);
         assert_eq!(play_ids[1], "ls-12500-4-10000");
+        Ok(())
+    }
+
+    #[test]
+    fn a_chapter_with_a_title_has_the_episode_title_as_the_album() -> Result<()> {
+        // ADR 0040: reads 0, 1 and 3 are chapters, read 2 is a gap and read 4
+        // is after the last chapter.
+        let out = display_reads(&chapter_state(serde_json::json!({})), &CHAPTER_READS)?;
+        let albums: Vec<_> = out.iter().map(|(drop, _)| drop["album"].clone()).collect();
+        assert_eq!(albums, ["Title", "Title", "Album", "Title", "Album"]);
+        for (drop, shown) in &out {
+            assert_eq!(shown["track"]["album"], drop["album"]);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn a_chapter_with_no_title_or_no_episode_title_has_the_state_album() -> Result<()> {
+        // ADR 0040: with no chapter title, the title line shows the episode
+        // title, so the album line shows the state album.
+        let mut untitled = remote(0, 10_000, "f1", "i1".into());
+        untitled["title"] = "".into();
+        let songs = song_routes(&[("f1", "i1")]);
+        let out = chapter_drops(
+            &serde_json::json!([untitled]),
+            &serde_json::json!({}),
+            songs,
+            &[(5.0, 0.0)],
+        )?;
+        assert_eq!(out[0]["title"], "Title");
+        assert_eq!(out[0]["album"], "Album");
+        let songs = song_routes(&[("f1", "i1")]);
+        let out = chapter_drops(
+            &serde_json::json!([remote(0, 10_000, "f1", "i1".into())]),
+            &serde_json::json!({"title": ""}),
+            songs,
+            &[(5.0, 0.0)],
+        )?;
+        assert_eq!(out[0]["title"], "Song 0");
+        assert_eq!(out[0]["album"], "Album");
         Ok(())
     }
 
@@ -1859,6 +1912,7 @@ mod tests {
         assert_eq!(out[0].1, out[1].1);
         assert_eq!(out[0].1["track"]["play_id"], "ls-12500-4");
         assert_eq!(out[0].1["track"]["album"], "Album");
+        assert_eq!(out[0].0["album"], "Album");
         Ok(())
     }
 
@@ -1870,6 +1924,7 @@ mod tests {
         assert_eq!(track["title"], "Title");
         assert_eq!(track["song_line"], "Artist - Title");
         assert!(track["play_id"].is_null());
+        assert_eq!(track["album"], "Album");
         Ok(())
     }
 
