@@ -200,8 +200,9 @@ packet.
   Relay ADR 0012 runs on `api.musicindex.org`, and Rainbrook builds
   Rainbrook ADR 0030. Segment frame tasks 001 (`playId`) and 002 (the slot
   text) run on the test station, and the station check of task 002 passes
-  (station log step 52). The visual checks of ADR 0038 in Rainbrook are
-  open.
+  (station log step 52). In Rainbrook on HLS the chapter change comes with
+  the chapter song (station log step 53). The boost at the start of a chapter
+  song is open.
 - This item needs a new ADR before work starts: a track identity source that
   is earlier than the Mixxx history row.
 - Studio client task 001 is not started. The publisher will start and end a

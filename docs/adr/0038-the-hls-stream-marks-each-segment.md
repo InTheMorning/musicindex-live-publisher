@@ -145,8 +145,11 @@ Mechanical:
 Visual. A person must examine these items in Rainbrook on HLS. Report each one as open until a person completes the
 check.
 
-- The picture and the lines of a chapter change when the listener hears the chapter song.
-- A boost during the first seconds of a chapter song pays the block of that song.
+- The picture and the lines of a chapter change when the listener hears the chapter song. Done 2026-11-26, pass,
+  station log step 53.
+- A boost during the first seconds of a chapter song pays the block of that song. Partly done 2026-11-26, station log
+  step 53: a boost in the first seconds after the end of a chapter song paid the block of the episode. A boost at the
+  start of a chapter song is open.
 
 ## Alternatives Considered
 
