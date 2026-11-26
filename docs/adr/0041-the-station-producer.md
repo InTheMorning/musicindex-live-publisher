@@ -615,9 +615,9 @@ Manual, on the test station `heycitizens_test_radio`, with a person. A test here
    give the correct display artwork. Passed on 2026-11-24 on the relay display state. The app was not examined.
 8. After a new run of `station-import`, an episode file plays. Each chapter song with an image in its feed shows that
    image on the relay display state and in the payload `image`.
-9. While a chapter song of an episode plays, Rainbrook shows the episode title below the artist. The lock screen shows
-   the same text. Station log step 54 passed for the files. Step 56 passed in Rainbrook. The check of the lock screen
-   is open.
+9. While a chapter song of an episode plays, Rainbrook shows the episode title below the artist. Station log step 54
+   passed for the files, and step 56 passed in Rainbrook. The iOS lock screen shows no album line (step 57), so it is
+   not a part of this check.
 
 HitIt and `station-import` must write the new frames in all the files first. Before that, the operator does not
 install the new slot text or the new Mixxx reader on a station.

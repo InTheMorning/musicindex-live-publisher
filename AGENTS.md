@@ -181,8 +181,8 @@ packet.
   then the relay copy (ADR 0034). A chapter with a title has the episode
   title as its `album`, in the drop file, in `display.json` and in the live
   value payload. That album shows in Rainbrook on the test station (station
-  log step 56). The check of the lock screen is open. The producer code is
-  complete.
+  log step 56). The iOS lock screen shows no album line (station log step
+  57). The producer code is complete.
   The station checks of the display state need a person and are open.
   `station-import` uses musicindex-lib `cd21d45`, so each chapter entry of an
   imported episode has the `image_url` of its song (musicindex ADR 0099).
