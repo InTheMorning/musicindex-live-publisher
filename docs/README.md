@@ -336,6 +336,11 @@ one before it.
 - [004 — The off switch](tasks/show-log-task-004-off-switch.md)
   — Implemented - 2026-10-19. The amendment of ADR 0017 that adds `show_log`
 
+Packets for the station producer record. ADR 0035 governs them.
+
+- [001 — Comments and runbooks cite the current record](tasks/adr-0035-task-001-cite-the-current-record.md)
+  — Implemented - 2026-11-26
+
 Packets for the listener delay. ADR 0037 governs them.
 
 - [001 — The delay from the Icecast burst](tasks/listener-delay-task-001-icecast-burst.md)

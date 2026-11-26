@@ -53,7 +53,7 @@ pub struct Segment<'a> {
 
 /// Parses valid chapter entries and logs at most one error for each sequence.
 pub fn parse_chapters(state: &StateFile, bad_chapters_seq: &mut Option<i64>) -> Vec<Chapter> {
-    // ADR 0025 §The State File Format 2: an empty `chapters` value means that the file
+    // ADR 0035 §The State File Contract: an empty `chapters` value means that the file
     // has no chapter list. Liquidsoap gives an empty value for a missing tag.
     let Some(raw) = state
         .chapters
@@ -140,7 +140,7 @@ fn parse_entry(value: Value) -> Option<Chapter> {
         }
         routes
     } else {
-        // ADR 0025 §The Chapter Route Lookup: the routes of a remote entry are
+        // ADR 0035 §The Route Lookup: the routes of a remote entry are
         // the second source of the song routes (musicindex ADR 0089 R-TAG-6).
         match object.get("value_routes") {
             None | Some(Value::Null) => Vec::new(),

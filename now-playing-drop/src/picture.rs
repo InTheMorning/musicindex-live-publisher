@@ -1,4 +1,4 @@
-//! Shared embedded picture preparation rules (ADR 0008 and ADR 0028).
+//! Shared embedded picture preparation rules (ADR 0008 and ADR 0035 §The Producer Reads The Picture File).
 
 use std::io::Cursor;
 

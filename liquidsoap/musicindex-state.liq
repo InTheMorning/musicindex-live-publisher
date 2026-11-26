@@ -1,9 +1,9 @@
-# MusicIndex producer support: the reference slot text of publisher ADR 0022.
-# It writes state.json in the format musicindex-liquidsoap-state/2 (ADR 0025).
-# liquidsoap-now-playing reads that file. A new required field needs a new format version. An optional field does not (ADR 0026).
-# It also writes the picture file of ADR 0028 into the same folder. The producer reads it.
+# MusicIndex producer support: the reference slot text of publisher ADR 0035 §The State File Contract.
+# It writes state.json in the format musicindex-liquidsoap-state/2 (ADR 0035 §The State File Contract).
+# liquidsoap-now-playing reads that file. A new required field needs a new format version. An optional field does not (ADR 0035 §The State File Contract).
+# It also writes the picture file of ADR 0035 §The Slot Text Writes The Picture File into the same folder. The producer reads it.
 # Put this text in the AzuraCast Pre-Broadcast slot, after azuracast.handle_jingle_mode.
-# Replace INSTANCE on the musicindex_dir line with the instance name of ADR 0022 §The Template Unit.
+# Replace INSTANCE on the musicindex_dir line with the instance name of ADR 0035 §The Template Unit.
 settings.request.metadata_decoders.recode.exclude := list.append(settings.request.metadata_decoders.recode.exclude(), ["podcast value routes", "podcast chapters"])
 
 # The MusicIndex frame of publisher ADR 0009 in the HLS timed ID3. Test only.
@@ -70,7 +70,7 @@ def musicindex_on_metadata(m) =
 end
 source.methods(radio).on_metadata(synchronous=true, musicindex_on_metadata)
 
-# The picture file of ADR 0028. The slot text selects the front cover of the
+# The picture file of ADR 0035 §The Slot Text Writes The Picture File. The slot text selects the front cover of the
 # file, else the first picture, and writes the bytes with no change. The
 # producer reads the picture file. It never reads the media file.
 musicindex_picture_max = 67108864
@@ -90,7 +90,7 @@ catch err do
 end
 
 # Gives the picture blocks of a FLAC metadata_block_picture value.
-# file.metadata.flac_native joins two blocks with ", " (ADR 0028 §Context).
+# file.metadata.flac_native joins two blocks with ", " (ADR 0035 §The Slot Text Writes The Picture File).
 # Each block holds its lengths, so the function reads them to find the next block.
 def musicindex_flac_blocks(s) =
   total = string.bytes.length(s)
@@ -117,7 +117,7 @@ end
 
 # Gives the pictures of a file as a list of (picture type, data), in file order.
 # MP3 gives one APIC frame: Liquidsoap keeps one value for each metadata key
-# (ADR 0028 §Formats). FLAC gives its picture blocks. Each other format gives [].
+# (ADR 0035 §The Slot Text Writes The Picture File). FLAC gives its picture blocks. Each other format gives [].
 def musicindex_pictures(fname) =
   pictures = ref([])
   def add(picture_type, data) =

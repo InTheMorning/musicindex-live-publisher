@@ -181,9 +181,7 @@ packet.
   of the file, then the relay copy (ADR 0034). The producer code is complete.
   The station checks of the display state need a person and are open.
   `station-import` uses musicindex-lib `cd21d45`, so each chapter entry of an
-  imported episode has the `image_url` of its song (musicindex ADR 0099). Open: 47 code comments and 30
-  runbook lines cite ADR 0022 and ADR 0025 to ADR 0028. Change them to the
-  sections of ADR 0035.
+  imported episode has the `image_url` of its song (musicindex ADR 0099).
 - ADR 0036 has the status `Accepted`, and no implementation exists. The HLS
   stream carries the picture one time for each song. Liquidsoap removes cover
   keys from the HLS metadata by default, so the script must change

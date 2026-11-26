@@ -28,8 +28,7 @@ pub struct StateFile {
     pub title: String,
     #[serde(default)]
     pub artist: String,
-    /// The ICY title of the file (ADR 0026 §The State File Format 2 Gets
-    /// `song`). A missing field is the same as an empty field.
+    /// The ICY title of the file (ADR 0035 §The State File Contract). A missing field is the same as an empty field.
     #[serde(default)]
     pub song: String,
     #[serde(default)]
@@ -40,7 +39,7 @@ pub struct StateFile {
     pub feed_guid: Option<String>,
     #[serde(default)]
     pub image: Option<String>,
-    /// The embedded picture file name in the state folder (ADR 0028).
+    /// The embedded picture file name in the state folder (ADR 0035 §The Producer Reads The Picture File).
     #[serde(default)]
     pub picture: String,
     #[serde(default)]

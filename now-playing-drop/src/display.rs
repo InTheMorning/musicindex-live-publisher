@@ -3,7 +3,7 @@
 //! With a display directory `DIR`, a producer writes `DIR/display.json` and
 //! the image of the present track. This module holds the output schema, the
 //! artwork types, the writes and the image retention. Each producer uses
-//! this one writer (ADR 0026 §One Display Writer). The code that reads a
+//! this one writer (ADR 0035 §One Display Writer And One Picture Component). The code that reads a
 //! picture and makes an `ImageFile` from it stays in the producer.
 
 use std::fs;

@@ -3,7 +3,7 @@
 ## Purpose
 
 This runbook installs `liquidsoap-now-playing` and the publisher on a radio host with AzuraCast. One user account
-with lingering owns the two units (ADR 0022). Lingering is a systemd function: the user services of the account
+with lingering owns the two units (ADR 0035 §The Template Unit). Lingering is a systemd function: the user services of the account
 operate with no login.
 
 The station side comes first. The tutorial `docs/runbooks/musicindex-producer-tutorial.md`, Part 1 steps 1
@@ -11,14 +11,14 @@ to 7, gives it. The slot text of step 5 is
 `liquidsoap/musicindex-state.liq` in this repository. The package installs it as
 `/usr/share/doc/musicindex-live-publisher/liquidsoap/musicindex-state.liq`.
 
-This slot text writes the format `musicindex-liquidsoap-state/2` (ADR 0025). It reads only the `Podcast` frames of
+This slot text writes the format `musicindex-liquidsoap-state/2` (ADR 0035 §The State File Contract). It reads only the `Podcast` frames of
 musicindex ADR 0086, for example `TXXX:Podcast Item Guid`. It does not read the old `MusicIndex` frames. A file with
 only old frames pays nobody. Install this slot text only after HitIt wrote the new frames in all the files of the
 station. The operator installs it in the same maintenance window as the Mixxx reader with the new frames.
 
 The steps use two names:
 
-- `INSTANCE` is the instance name of ADR 0022 §The Template Unit. It is the AzuraCast short name with each `_` changed
+- `INSTANCE` is the instance name of ADR 0035 §The Template Unit. It is the AzuraCast short name with each `_` changed
   to `-`, for example `heycitizens-test-radio`.
 - `musicindex` is the user account. You can use a different name.
 
@@ -88,7 +88,7 @@ box. For a first install, the tutorial gives the steps.
 - A `.deb` package of this repository. Make it on a different computer (ADR 0019). A small radio host does not have
   the CPU and the memory to make it.
 - `liquidsoap-now-playing` operates on the radio host, as the user account, not in the AzuraCast containers. It sends
-  HTTPS requests to the route service (ADR 0025 §The Chapter Route Lookup), and it uses the OpenSSL library of the
+  HTTPS requests to the route service (ADR 0035 §The Route Lookup), and it uses the OpenSSL library of the
   host. On Debian and Ubuntu this is `libssl3`. The `.deb` package declares it, so `apt install` installs it. On a
   host without `apt`, install the OpenSSL library before the first start.
 - The host can open `https://api.musicindex.org`, or the URL of `--route-service`.
@@ -229,7 +229,7 @@ add this line:
 display_dir = "/run/user/UID/musicindex-live-publisher/INSTANCE/display"
 ```
 
-The producer writes `display.json` in this folder (ADR 0026). The unit makes the folder. Without this line, the relay
+The producer writes `display.json` in this folder (ADR 0035 §What The Producer Writes In `display.json`). The unit makes the folder. Without this line, the relay
 gets no display state. Replace `UID` as in the step before.
 
 Examine the result:

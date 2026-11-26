@@ -114,7 +114,7 @@ mod tests {
         assert!(parse(["liquidsoap-now-playing", "--instance", "test"]).is_err());
         assert!(parse(["liquidsoap-now-playing", "--other"]).is_err());
         // ADR 0021 §The Unit Names: an AzuraCast short name with `_` is not
-        // an instance name (ADR 0022 §The Template Unit).
+        // an instance name (ADR 0035 §The Template Unit).
         let error = parse([
             "liquidsoap-now-playing",
             "--instance",
