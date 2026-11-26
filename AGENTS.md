@@ -180,8 +180,9 @@ packet.
   two GUIDs, and uses the chapter `image_url`, then the image of the file,
   then the relay copy (ADR 0034). A chapter with a title has the episode
   title as its `album`, in the drop file, in `display.json` and in the live
-  value payload. The check of that album in Rainbrook on the test station is
-  open. The producer code is complete.
+  value payload. That album shows in Rainbrook on the test station (station
+  log step 56). The check of the lock screen is open. The producer code is
+  complete.
   The station checks of the display state need a person and are open.
   `station-import` uses musicindex-lib `cd21d45`, so each chapter entry of an
   imported episode has the `image_url` of its song (musicindex ADR 0099).
