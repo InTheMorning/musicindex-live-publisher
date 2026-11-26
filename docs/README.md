@@ -117,7 +117,7 @@ the next priority. Confirm that logging works before the show.
   `stream_bitrate_kbps`. The publisher sends that delay, rounded down, as
   `Listener-Delay-Secs`. It changes ADR 0011
 - [ADR 0038: The HLS stream marks each segment](adr/0038-the-hls-stream-marks-each-segment.md)
-  — Proposed. The station slot text writes a frame `musicindex.hls/2` with
+  — Accepted. The station slot text writes a frame `musicindex.hls/2` with
   the `playId` of the segment at each chapter boundary. It changes ADR 0009
   and ADR 0035, and adds `playId` to the display state of ADR 0039
 - [ADR 0039: The display state pairs with its value block](adr/0039-the-display-state-pairs-with-its-value-block.md)

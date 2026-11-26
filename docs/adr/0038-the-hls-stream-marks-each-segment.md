@@ -1,6 +1,6 @@
 # ADR 0038: The HLS Stream Marks Each Segment
 
-- Status: Proposed
+- Status: Accepted on 2026-11-26 by the operator.
 - Date: 2026-11-26
 - Bar: crosses repositories. The rule changes the slot text and the publisher in this repository, the display state of
   `musicindex-live-relay`, and the HLS sync of Rainbrook.

@@ -2,7 +2,7 @@
 
 - Status: Accepted on 2026-11-26 by the operator. ADR 0012 is in `docs/archive/adr/`.
 - Date: 2026-11-26
-- Changed by: ADR 0038, proposed 2026-11-26. The display state on the wire also has `playId`.
+- Changed by: ADR 0038, accepted 2026-11-26. The display state on the wire also has `playId`.
 - Supersedes: ADR 0012 (`docs/archive/adr/0012-pair-display-state-with-value-block.md`). This record restates each live rule
   of ADR 0012 and of its three changes. It adds no rule and removes no rule.
 - Uses: ADR 0013 (version 3 of `display.json` and `album`), ADR 0035 §The Song Line (the station song line), ADR 0009

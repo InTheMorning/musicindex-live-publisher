@@ -193,14 +193,15 @@ packet.
   Listener delay task 001 implements it. The test station has the two fields
   (station log step 48). In v4vmusic.com a chapter change comes at almost the
   correct time. The boost check of ADR 0037 is open.
-- ADR 0038 has the status `Proposed`. The station slot text writes a frame
+- ADR 0038 has the status `Accepted`. The station slot text writes a frame
   `musicindex.hls/2` with the `playId` of the segment at each chapter boundary,
   and Rainbrook releases the display state with the same `playId`. Cause:
   Rainbrook on HLS shows a chapter change too early (station log step 50).
-  The relay (relay ADR 0012) and Rainbrook (Rainbrook ADR 0030) agreed, and
-  build only after acceptance. The station test passed (station log step
-  51). The acceptance by the operator is open. The relay with relay ADR 0012
-  must run before a publisher sends `playId`.
+  The relay builds relay ADR 0012, and Rainbrook builds Rainbrook ADR 0030.
+  The publisher tasks for `playId` and for the slot text are not written. The
+  relay with relay ADR 0012 must run on `api.musicindex.org` before a
+  publisher sends `playId`. The visual checks of ADR 0038 in Rainbrook are
+  open.
 - This item needs a new ADR before work starts: a track identity source that
   is earlier than the Mixxx history row.
 - Studio client task 001 is not started. The publisher will start and end a
