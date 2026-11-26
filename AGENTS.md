@@ -217,7 +217,8 @@ packet.
   list of 1 to 3 funding links of the segment. The station producer gets them
   from the route service with `include=source_links`. Relay ADR 0013 has the
   row for `funding`, and Rainbrook ADR 0031 (Proposed) shows the links.
-  ADR 0043 waits for a check of the route service answer. No implementation exists.
+  The route service gives the routes and the links in one answer (station
+  log step 58). ADR 0043 waits for the operator acceptance. No implementation exists.
 - This item needs a new ADR before work starts: a track identity source that
   is earlier than the Mixxx history row.
 - Studio client task 001 is not started. The publisher will start and end a

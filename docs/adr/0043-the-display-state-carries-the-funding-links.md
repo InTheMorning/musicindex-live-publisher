@@ -160,8 +160,9 @@ These rules apply while this decision is current.
    Key. The relay build of `funding` starts when the operator accepts this record.
 2. Done: Rainbrook ADR 0031 (Proposed, Rainbrook commit `837d051`) adds a "Support links" button between AirPlay and
    Boost. A tap opens a sheet with one row for each link: the label and the host name, or the host name alone.
-3. A request to `api.musicindex.org` with `include=payment_routes,source_links` for a chapter song of episode 158 gives
-   `payment_routes` and `source_links` in one answer.
+3. Done (station log step 58): for five chapter songs of episode 157, `api.musicindex.org` gives `payment_routes` and
+   `source_links` in one answer. No item has a funding link. Two of the five feeds have a channel funding link with a
+   label, so the feed request is necessary. The episode feed is not in the index (HTTP 404).
 
 ## Verification
 
