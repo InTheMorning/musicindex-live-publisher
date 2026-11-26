@@ -1,6 +1,6 @@
 # Segment Frame Task 001: The Display State Gets `playId`
 
-Status: Implemented - 2026-11-26. The station check waits for the relay with relay ADR 0012.
+Status: Implemented - 2026-11-26. It runs on the test station (station log step 52).
 
 Every criterion is mechanical. ADR 0038 has the visual items.
 

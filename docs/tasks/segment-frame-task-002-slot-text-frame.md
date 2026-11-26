@@ -1,6 +1,6 @@
 # Segment Frame Task 002: The Slot Text Writes The Segment Frame
 
-Status: Implemented - 2026-11-26. The station check (criterion 4) is open.
+Status: Implemented - 2026-11-26. The station check (criterion 4) passes (station log step 52).
 
 Criteria 1 to 3 are mechanical. Criterion 4 is a station check, because no test runs Liquidsoap (ADR 0038
 §Verification After Implementation). ADR 0038 has the visual items.
