@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+display-keys = { path = "../display-keys" }
 now-playing-drop = { path = "../now-playing-drop" }
 musicindex-tags = { git = "https://github.com/InTheMorning/musicindex-lib", rev = "fad5343849a7aad4eba2c0ba3232b8d851cacdfa" }
 anyhow = "1"

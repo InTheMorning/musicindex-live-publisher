@@ -4,6 +4,8 @@
 
 use std::path::Path;
 
+use display_keys::FundingLink;
+
 pub use now_playing_drop::display::{
     Artwork, DISPLAY_FILE_NAME, DISPLAY_SCHEMA, DisplayOutput, ImageFile, ImageMime, MAX_URL_CHARS,
     ShownTrack, image_url, render_display_json, sha256_hex, write_null_at_exit,
@@ -14,6 +16,20 @@ pub use now_playing_drop::picture::{
 };
 
 use crate::tags::read_tags_with_picture;
+
+/// Selects the funding links of a track (ADR 0044 §The Order): the fresh
+/// links, else the file links. A track that is not payable has no links, so
+/// its `funding` is `null`.
+pub fn funding_for_track<'a>(
+    payable: bool,
+    fresh: &'a [FundingLink],
+    file: &'a [FundingLink],
+) -> Option<&'a [FundingLink]> {
+    if !payable {
+        return Some(&[]);
+    }
+    Some(if fresh.is_empty() { file } else { fresh })
+}
 
 /// Gives the artwork of a track that is not V4V, from the embedded picture
 /// of `path`. The producer reads the file one time. A file that the producer

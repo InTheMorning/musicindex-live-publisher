@@ -1,6 +1,6 @@
 # Display Keys Task 004: The Mixxx Producer Gets The Funding Links
 
-Status: Ready - 2026-11-26. ADR 0044 governs this task. Start it after task 003 is committed, because it uses the
+Status: Implemented - 2026-11-26. ADR 0044 governs this task. It came after task 003, because it uses the
 route service functions and `display_keys::file_funding` of task 003.
 
 Each criterion is mechanical. No visual check applies to this task.

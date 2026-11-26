@@ -385,7 +385,7 @@ Packets for the display keys. ADR 0042, ADR 0043 and ADR 0044 govern them.
 - [003 — The station producer gets the funding links](tasks/display-keys-task-003-producer-funding.md)
   — Implemented - 2026-11-26
 - [004 — The Mixxx producer gets the funding links](tasks/display-keys-task-004-mixxx-funding.md)
-  — Ready - 2026-11-26. It comes after task 003
+  — Implemented - 2026-11-26
 
 ## Reviews
 

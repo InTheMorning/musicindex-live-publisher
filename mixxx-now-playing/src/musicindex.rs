@@ -5,9 +5,12 @@ use std::thread;
 use std::time::Duration;
 
 use anyhow::Result;
+use display_keys::FundingLink;
 use now_playing_drop::route_service::{RouteLookup, RouteServiceClient};
 
 use crate::tags::TrackTags;
+
+type FeedFundingCache = Arc<Mutex<HashMap<String, Vec<FundingLink>>>>;
 
 /// Resolves value routes from the route service or embedded track metadata.
 pub fn resolve_value_routes(
@@ -15,17 +18,53 @@ pub fn resolve_value_routes(
     request: &RouteRequest,
     verbose: bool,
 ) -> RouteResolution {
+    resolve_value_routes_with_feed_cache(client, request, verbose, None)
+}
+
+fn resolve_value_routes_with_feed_cache(
+    client: &RouteServiceClient,
+    request: &RouteRequest,
+    verbose: bool,
+    feed_cache: Option<&FeedFundingCache>,
+) -> RouteResolution {
     let (Some(feed_guid), Some(track_guid)) =
         (request.feed_guid.as_deref(), request.track_guid.as_deref())
     else {
         return request.embedded_resolution();
     };
 
-    match client.track_routes(feed_guid, track_guid) {
-        Ok(RouteLookup::Routes(routes)) => serde_json::to_string(&routes)
-            .map(RouteResolution::api)
-            .unwrap_or_else(|_| request.embedded_resolution()),
-        Ok(RouteLookup::NoRoutes) => request.embedded_resolution(),
+    match client.track_details(feed_guid, track_guid) {
+        Ok(details) => {
+            let funding = if details.funding.is_empty() {
+                if let Some(feed_cache) = feed_cache {
+                    match feed_cache.lock() {
+                        Ok(mut cache) => {
+                            if let Some(funding) = cache.get(feed_guid) {
+                                funding.clone()
+                            } else if let Ok(funding) = client.feed_funding(feed_guid) {
+                                cache.insert(feed_guid.to_owned(), funding.clone());
+                                funding
+                            } else {
+                                Vec::new()
+                            }
+                        }
+                        Err(_) => client.feed_funding(feed_guid).unwrap_or_default(),
+                    }
+                } else {
+                    client.feed_funding(feed_guid).unwrap_or_default()
+                }
+            } else {
+                details.funding
+            };
+            let mut resolution = match details.routes {
+                RouteLookup::Routes(routes) => serde_json::to_string(&routes)
+                    .map(RouteResolution::api)
+                    .unwrap_or_else(|_| request.embedded_resolution()),
+                RouteLookup::NoRoutes => request.embedded_resolution(),
+            };
+            resolution.funding = funding;
+            resolution
+        }
         Err(error) => {
             if verbose {
                 eprintln!(
@@ -56,6 +95,7 @@ impl ValueRoutesSource {
 pub struct RouteResolution {
     pub source: ValueRoutesSource,
     pub routes_json: Option<String>,
+    pub funding: Vec<FundingLink>,
 }
 
 impl RouteResolution {
@@ -63,6 +103,7 @@ impl RouteResolution {
         Self {
             source: ValueRoutesSource::EmbeddedId3,
             routes_json: embedded_value_routes(tags).map(str::to_string),
+            funding: Vec::new(),
         }
     }
 
@@ -70,6 +111,7 @@ impl RouteResolution {
         Self {
             source: ValueRoutesSource::MusicIndexApi,
             routes_json: Some(routes_json),
+            funding: Vec::new(),
         }
     }
 }
@@ -104,6 +146,7 @@ impl RouteRequest {
         RouteResolution {
             source: ValueRoutesSource::EmbeddedId3,
             routes_json: self.embedded_routes_json.clone(),
+            funding: Vec::new(),
         }
     }
 }
@@ -127,6 +170,7 @@ pub struct ValueRouteResolver {
     enabled: bool,
     client: RouteServiceClient,
     cache: Arc<Mutex<HashMap<(String, String), RouteResolution>>>,
+    feed_cache: FeedFundingCache,
     tx: Sender<ResolvedRouteResult>,
     rx: Receiver<ResolvedRouteResult>,
     verbose: bool,
@@ -144,6 +188,7 @@ impl ValueRouteResolver {
             enabled,
             client: RouteServiceClient::new(base_url, timeout)?,
             cache: Arc::new(Mutex::new(HashMap::new())),
+            feed_cache: Arc::new(Mutex::new(HashMap::new())),
             tx,
             rx,
             verbose,
@@ -174,10 +219,12 @@ impl ValueRouteResolver {
 
         let client = self.client.clone();
         let cache = Arc::clone(&self.cache);
+        let feed_cache = Arc::clone(&self.feed_cache);
         let tx = self.tx.clone();
         let verbose = self.verbose;
         thread::spawn(move || {
-            let resolution = resolve_value_routes(&client, &request, verbose);
+            let resolution =
+                resolve_value_routes_with_feed_cache(&client, &request, verbose, Some(&feed_cache));
             if resolution.source == ValueRoutesSource::MusicIndexApi {
                 cache_resolution(&cache, &request, &resolution);
             }
@@ -285,6 +332,7 @@ mod tests {
         let resolution = RouteResolution {
             source: ValueRoutesSource::EmbeddedId3,
             routes_json: None,
+            funding: Vec::new(),
         };
 
         let tags = apply_resolution_to_tags(&tags, &resolution);

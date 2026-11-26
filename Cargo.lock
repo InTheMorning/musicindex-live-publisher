@@ -1183,6 +1183,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "directories",
+ "display-keys",
  "image",
  "lofty",
  "musicindex-live-publisher",

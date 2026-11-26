@@ -2,13 +2,15 @@ mod cli;
 mod config;
 
 use anyhow::{Context, Result, anyhow};
+use display_keys::{FundingLink, file_funding};
 use mixxx_now_playing::classify::is_v4v_track;
 use mixxx_now_playing::connector::{
     Action, Coordinator, DeviceEvent, DeviceLocation, DisplayState, DisplayTrack, FADE_NOW,
     Outcome, Row, STATE_REQUEST, open_device, pump, send_command, spawn_reader,
 };
 use mixxx_now_playing::display::{
-    Artwork, DisplayOutput, ShownTrack, artwork_from, file_artwork, write_null_at_exit,
+    Artwork, DisplayOutput, ShownTrack, artwork_from, file_artwork, funding_for_track,
+    write_null_at_exit,
 };
 use mixxx_now_playing::expiry::Expiry;
 use mixxx_now_playing::history::{HistoryWatcher, TrackRow};
@@ -323,6 +325,8 @@ struct CurrentTrack {
     /// writes an empty `value_routes`, so a MusicIndex tag of a non-V4V
     /// file can never become a route.
     payable: bool,
+    file_funding: Vec<FundingLink>,
+    fresh_funding: Vec<FundingLink>,
 }
 
 /// The artwork input of a history row for the display output.
@@ -534,6 +538,13 @@ impl<'a> Runtime<'a> {
                     .current
                     .as_ref()
                     .map(|current| current.hist_id.to_string());
+                let funding = self.state.current.as_ref().and_then(|current| {
+                    funding_for_track(
+                        current.payable,
+                        &current.fresh_funding,
+                        &current.file_funding,
+                    )
+                });
                 let track = ShownTrack {
                     artist: &artist,
                     title: &title,
@@ -542,7 +553,7 @@ impl<'a> Runtime<'a> {
                     play_id: play_id.as_deref(),
                     album: album.as_deref(),
                     pub_date: None,
-                    funding: None,
+                    funding,
                 };
                 write_display(display, Some(track));
             }
@@ -690,6 +701,12 @@ impl<'a> Runtime<'a> {
         // enforces it only in the history-only mode.
         let expiry = self.make_expiry(now, tags.duration);
         let header_duration = tags.duration;
+        let file_funding = tags
+            .tags
+            .iter()
+            .find(|tag| tag.key == "WPAY")
+            .map(|tag| file_funding(&tag.value))
+            .unwrap_or_default();
         self.state.current = Some(CurrentTrack {
             hist_id: row.hist_id,
             artist: row.artist.clone(),
@@ -698,6 +715,8 @@ impl<'a> Runtime<'a> {
             tags,
             routes_source: ValueRoutesSource::EmbeddedId3,
             payable: true,
+            file_funding,
+            fresh_funding: Vec::new(),
         });
         self.apply_row(
             Row::V4v {
@@ -742,6 +761,8 @@ impl<'a> Runtime<'a> {
             },
             routes_source: ValueRoutesSource::EmbeddedId3,
             payable: false,
+            file_funding: Vec::new(),
+            fresh_funding: Vec::new(),
         });
     }
 
@@ -781,18 +802,18 @@ impl<'a> Runtime<'a> {
             return Ok(());
         }
         self.state.pending_route_lookup = false;
-        if result.resolution.source != ValueRoutesSource::MusicIndexApi {
-            return Ok(());
+        current.fresh_funding.clone_from(&result.resolution.funding);
+        if result.resolution.source == ValueRoutesSource::MusicIndexApi {
+            // Keep the result, so a resume writes it. The coordinator allows
+            // the write only while the drop file is present.
+            current.tags = apply_resolution_to_tags(&current.tags, &result.resolution);
+            current.routes_source = result.resolution.source;
+            if let Some(action) = self.coordinator.api_result() {
+                self.perform(&[action])?;
+            }
         }
-
-        // Keep the result, so a resume writes it. The `Coordinator` allows
-        // the write only while the drop file is present.
-        current.tags = apply_resolution_to_tags(&current.tags, &result.resolution);
-        current.routes_source = result.resolution.source;
-        match self.coordinator.api_result() {
-            Some(action) => self.perform(&[action]),
-            None => Ok(()),
-        }
+        self.apply_display_output();
+        Ok(())
     }
 }
 
