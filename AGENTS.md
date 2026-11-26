@@ -155,9 +155,9 @@ packet.
 - Deferred by the operator on 2026-11-25: an animated GIF that is embedded in
   an audio file. ADR 0008 refuses it, and the relay accepts only JPEG and PNG.
   A GIF that a feed gives as a URL goes to the apps as that URL.
-- Open: at a jingle, CitizenRadio does not show the station lines (station log
+- Open: at a jingle, Rainbrook does not show the station lines (station log
   step 36). The relay output is correct. The orchestrator has the handoff for
-  the CitizenRadio session.
+  the Rainbrook session.
 - ADR 0034 has the status `Accepted`. `src/relay.rs` implements it: when the
   drop file has no image URL, the first send of a play waits at most 2 seconds
   for the display URL or the relay URL of the uploaded picture. If the picture
@@ -341,7 +341,7 @@ This service routes money. These rules are not style preferences.
 |---|---|
 | HitIt | Writes the MusicIndex tags this chain reads. Registers events. Starts and stops these services. Sends no payloads. |
 | `musicindex-live-relay` | The relay. Receives the payloads this service sends. |
-| musicindex-research | The orchestrator session. It gets each handoff for CitizenRadio, the relay and the other sessions (ADR 0032). |
+| musicindex-research | The orchestrator session. It gets each handoff for Rainbrook, the relay and the other sessions (ADR 0032). |
 | HeyCitizen test station | `radio.heycitizen.xyz`, AzuraCast. This repository operates it (ADR 0032). A new station repository comes only with an alternative to AzuraCast. |
 
 Do not add a build dependency on either one. Every contract is a file format,
