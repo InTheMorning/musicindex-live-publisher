@@ -1,8 +1,8 @@
 # ADR 0044: The File WPAY Is The Funding Fallback
 
-- Status: Proposed
+- Status: Accepted on 2026-11-26 by the operator.
 - Date: 2026-11-26
-- Bar: crosses repositories, and an agent can make the opposite choice by mistake. Musicindex ADR 0101 (Proposed)
+- Bar: crosses repositories, and an agent can make the opposite choice by mistake. Musicindex ADR 0101 (Accepted)
   writes the frame `WPAY`, and Rainbrook shows the key `funding`. Without this record, an agent follows ADR 0043, which
   reads no file frame and gives the Mixxx producer no `funding`.
 - Changes: ADR 0043 §The Source. The funding link of a segment uses the same order as its routes: the fresh answer of
@@ -18,7 +18,7 @@
 
 ## Context
 
-Musicindex ADR 0101 (Proposed) writes one funding link with no label into the frame `WPAY` of a song file. Rule 5 of
+Musicindex ADR 0101 (Accepted) writes one funding link with no label into the frame `WPAY` of a song file. Rule 5 of
 the request of that record says that the funding link of a segment comes from the same source as its routes.
 
 The routes of a song come from the route service first, and from the file tags second (ADR 0041 §The Song Routes). The
@@ -123,7 +123,8 @@ Visual. Only the operator can do this check:
 
 ## Before Acceptance
 
-1. Open: musicindex ADR 0101 has the status Accepted, with the frame `WPAY` as this record uses it.
+1. Done: musicindex ADR 0101 has the status Accepted (musicindex commit `cb62f9f`), with the frame `WPAY` as this
+   record uses it.
 
 ## Alternatives Considered
 

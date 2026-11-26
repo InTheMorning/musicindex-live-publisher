@@ -135,7 +135,7 @@ the next priority. Confirm that logging works before the show.
   `label`, from the route service. It changes ADR 0013 and ADR 0041.
   Rainbrook ADR 0031 shows the links
 - [ADR 0044: The file WPAY is the funding fallback](adr/0044-the-file-wpay-is-the-funding-fallback.md)
-  — Proposed. The funding of a segment uses the order of its routes: the
+  — Accepted. The funding of a segment uses the order of its routes: the
   route service first, then the file `WPAY`. The Mixxx producer also writes
   `funding`. It changes ADR 0043
 
