@@ -198,8 +198,9 @@ packet.
   and Rainbrook releases the display state with the same `playId`. Cause:
   Rainbrook on HLS shows a chapter change too early (station log step 50).
   The relay builds relay ADR 0012, and Rainbrook builds Rainbrook ADR 0030.
-  Segment frame task 001 (`playId`) is implemented. Task 002 (the slot text)
-  is open. The
+  Segment frame tasks 001 (`playId`) and 002 (the slot text) are
+  implemented. The station install and the station check of task 002 are
+  open. The
   relay with relay ADR 0012 must run on `api.musicindex.org` before a
   publisher sends `playId`. The visual checks of ADR 0038 in Rainbrook are
   open.

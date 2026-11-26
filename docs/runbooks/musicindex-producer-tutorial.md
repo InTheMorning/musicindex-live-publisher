@@ -20,7 +20,7 @@ Read this section before you start.
 
 | Part | Status |
 | --- | --- |
-| The TXXX frame in the HLS stream | A first frame with the track GUID only was tested on the HeyCitizen test station on 2026-11-22. The frame of publisher ADR 0009 with the two GUIDs was tested on 2026-11-22. |
+| The TXXX frame in the HLS stream | The segment frame `musicindex.hls/2` of publisher ADR 0038 was tested on the HeyCitizen test station on 2026-11-26 with a test slot text ([test station log](test-station-log.md), step 51). The reference slot text with this frame is not installed on the station now. |
 | The rule that a payable track needs the two GUIDs | Implemented in publisher commit `68adce4` for each producer. Not released. |
 | The state file (`state.json`, in a bind mount, with all keys, a live flag and a heartbeat) | Tested on the HeyCitizen test station on 2026-11-22 |
 | The bind mount through `docker-compose.override.yml` | Tested on the HeyCitizen test station on 2026-11-22, also after a reboot |
@@ -41,8 +41,8 @@ media file with MusicIndex tags
   -> listener apps
 ```
 
-The same slot text also puts the feed GUID and the track GUID as a TXXX frame into the HLS stream.
-A player that reads the HLS timed ID3 can then find the track without the relay.
+The slot text also puts the segment frame of publisher ADR 0038 in the HLS stream.
+A player that reads HLS timed ID3 can pair the segment with its display state by `playId`.
 
 ## What You Need
 
@@ -157,10 +157,9 @@ Do not use a copy from a different source. A field change needs a new format ver
 How the reference slot text works (a summary, publisher ADR 0035 §The State File Contract owns the text):
 
 - The recode line stops a log warning. Liquidsoap logs "too long to be recoded" for a value of 1024 bytes or more. The value routes can have that length.
-- The TXXX part adds the MusicIndex frame of publisher ADR 0009 to the HLS tag. The frame is a TXXX frame with the description `musicindex` and a JSON object with the schema `musicindex.hls/1`.
-- The frame holds `feedGuid` and `itemGuid` together. The slot text writes the frame only when the track has the two GUIDs. A track GUID is unique only in its feed, so a track GUID without its feed GUID can identify an incorrect track.
-- `value` is `null`, because the publisher makes `eventGuid` and `blockGuid` and Liquidsoap does not know them. ADR 0009 permits `null`. `artwork` is `null`, because this tutorial does not give an artwork value of ADR 0008.
-- ADR 0009 has the status Proposed and has open gates. Use this frame only for tests.
+- The TXXX part adds the segment frame of publisher ADR 0038 to the HLS tag. The frame uses the description `musicindex` and the schema `musicindex.hls/2`.
+- The frame holds `playId` for the segment boundary. The producer and the slot text write the same value. The player can use it to pair the frame with the display state.
+- The frame has `playId` `null` for a jingle. It has no track, artwork or value fields (publisher ADR 0038 §The Segment Frame).
 - Liquidsoap drops a key that is not an ID3 frame ID, so the key must have the name `TXXX`.
 - `on_track` keeps the metadata of the new track in memory. It does not write a file.
 - `on_track` gets only the metadata in the frame of the track mark, else an empty list (Liquidsoap `source.ml`, `execute_on_track`). After a jingle, the metadata of the next track can come in a later frame. Then the first metadata of the track gives a new `seq`, and `track_started` keeps the time of the track mark (publisher ADR 0035 §The State File Contract). The test station showed this fault before publisher commit `6c1e14a` (the [test station log](test-station-log.md), steps 16 and 17).
@@ -216,7 +215,7 @@ Examine the HLS stream with the parser of this repository, from a computer with 
 python3 scripts/hls_id3_dump.py https://YOUR-HOST/hls/STATION/hls_stream.m3u8
 ```
 
-Each line must show a `TXXX` frame with the description `musicindex`, a `feedGuid` and an `itemGuid`.
+Each segment must show a `TXXX` frame with the description `musicindex`, the schema `musicindex.hls/2` and a `playId` (publisher ADR 0038 §The Segment Frame).
 
 Make sure that the MP3 mount and the HLS stream continue to play.
 

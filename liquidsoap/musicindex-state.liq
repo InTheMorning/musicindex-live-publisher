@@ -6,30 +6,8 @@
 # Replace INSTANCE on the musicindex_dir line with the instance name of ADR 0035 §The Template Unit.
 settings.request.metadata_decoders.recode.exclude := list.append(settings.request.metadata_decoders.recode.exclude(), ["podcast value routes", "podcast chapters"])
 
-# The MusicIndex frame of publisher ADR 0009 in the HLS timed ID3. Test only.
+# The MusicIndex frame of publisher ADR 0038 in the HLS timed ID3.
 settings.encoder.metadata.export := list.append(settings.encoder.metadata.export(), ["txxx"])
-# A track GUID is unique only in its feed. Write the frame only when both GUIDs are present.
-def musicindex_id3(m) =
-  item = m["podcast item guid"]
-  feed = m["podcast feed guid"]
-  if item == "" or feed == "" then
-    []
-  else
-    frame = json.stringify(compact=true, {
-      schema = "musicindex.hls/1",
-      track = {
-        artist = m["artist"],
-        title = m["title"],
-        artwork = null,
-        feedGuid = feed,
-        itemGuid = item
-      },
-      value = null
-    })
-    [("TXXX", "musicindex\000#{frame}")]
-  end
-end
-radio = metadata.map(musicindex_id3, radio)
 
 # The state file for the producer. One writer only: file.write uses one temporary name.
 musicindex_dir = "/var/azuracast/musicindex/INSTANCE"
@@ -248,3 +226,50 @@ def musicindex_write() =
   end
 end
 thread.run(every=1., musicindex_write)
+
+# The segment frame of ADR 0038 §The Segment Frame. The insert is the last operator of the slot text,
+# so the handlers above and the AzuraCast handlers never see an inserted group. It never makes a new track.
+musicindex_inner = radio
+radio = insert_metadata(radio)
+musicindex_frame = ref((-1, [], false))
+
+# Read the chapter boundaries of ADR 0038 §The Slot Text Writes The Frames.
+def musicindex_boundaries(text) =
+  entries =
+    try
+      let json.parse (e : [{start_ms: int?, end_ms: int?}]) = text
+      e
+    catch _ do
+      []
+    end
+  values = list.flatten(list.map(fun (e) -> [null.get(default=0, e.start_ms), null.get(default=0, e.end_ms)], entries))
+  (list.length(entries) > 0, list.filter(fun (b) -> b > 0, values))
+end
+
+# Write the frame at each boundary of ADR 0038 §The Slot Text Writes The Frames.
+def musicindex_on_frame() =
+  let (seq, started, m, _, jingle) = musicindex_state()
+  let (frame_seq, _, _) = musicindex_frame()
+  if seq != frame_seq and list.length(m) > 0 then
+    let (chapters, bounds) = musicindex_boundaries(m["podcast chapters"])
+    musicindex_frame := (seq, if jingle then [0] else list.append([0], bounds) end, chapters)
+  end
+  let (frame_seq, left, chapters) = musicindex_frame()
+  if frame_seq == seq and list.length(left) > 0 then
+    pos = int_of_float((source.methods(musicindex_inner).elapsed() + float_of_string(default=0., m["liq_cue_in"])) * 1000.)
+    passed = list.filter(fun (b) -> b <= pos, left)
+    if list.length(passed) > 0 then
+      musicindex_frame := (seq, list.filter(fun (b) -> b > pos, left), chapters)
+      b = list.fold(fun (a, x) -> if x > a then x else a end, 0, passed)
+      # The producer reads track_started from the text in state.json, with about 12 significant digits.
+      # The slot text uses the same text, so that the two make the same playId (station log step 51).
+      ms = int_of_float(float_of_string(json.stringify(started)) * 1000.)
+      id = if chapters then "ls-#{ms}-#{seq}-#{b}" else "ls-#{ms}-#{seq}" end
+      play_id = if jingle then null else id end
+      frame = json.stringify(compact=true, {schema = "musicindex.hls/2", playId = play_id})
+      keep = list.filter(fun (kv) -> snd(kv) != "", [("title", m["title"]), ("artist", m["artist"]), ("album", m["album"]), ("song", m["song"])])
+      radio.insert_metadata(new_track=false, list.append(keep, [("TXXX", "musicindex\000#{frame}")]))
+    end
+  end
+end
+radio.on_frame(before=true, synchronous=true, musicindex_on_frame)

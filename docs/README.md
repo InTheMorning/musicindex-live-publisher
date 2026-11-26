@@ -354,7 +354,7 @@ Packets for the segment frame. ADR 0038 governs them.
 - [001 — The display state gets `playId`](tasks/segment-frame-task-001-publisher-play-id.md)
   — Implemented - 2026-11-26
 - [002 — The slot text writes the segment frame](tasks/segment-frame-task-002-slot-text-frame.md)
-  — Open
+  — Implemented - 2026-11-26
 
 ## Reviews
 
