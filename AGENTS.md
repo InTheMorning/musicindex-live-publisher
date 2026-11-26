@@ -219,13 +219,13 @@ packet.
   The route service gives the routes and the links in one answer (station
   log step 58). The publisher sends `funding` (display keys task 001), and
   the station producer writes `funding` `null`. Display keys task 003 (the
-  lookup) is stopped: musicindex ADR 0101 (Proposed) can move the source of
-  the links to the frame `WPAY`.
+  lookup) is stopped. It gets a new text for ADR 0044 after the acceptance.
 - The deploy order of ADR 0042 and ADR 0043 is the relay, then the publisher,
   then Rainbrook.
-- ADR 0044 has the status `Proposed`. The Mixxx producer gets `funding` from
-  the same route service answer as the routes of the track. It is against
-  rule 5 of musicindex ADR 0101 (Proposed). The operator decides it.
+- ADR 0044 has the status `Proposed`. The funding of a segment uses the
+  order of its routes: the route service answer first, then the file `WPAY`,
+  then `null`. The Mixxx producer also writes `funding`. Do not start code
+  for it before the operator accepts ADR 0044 and musicindex ADR 0101.
 - Relay commit `1dec0b3` accepts `pubDate` and `funding` (relay ADR 0013).
   The publisher sends the two keys only after
   `https://api.musicindex.org/v1/liveitems/info` gives `git_revision`

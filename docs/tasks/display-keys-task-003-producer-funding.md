@@ -1,7 +1,8 @@
 # Display Keys Task 003: The Station Producer Gets The Funding Links
 
-Status: Stopped - 2026-11-26. ADR 0043 governs this task. Musicindex ADR 0101 (Proposed) can move the source of the
-funding links to the frame `WPAY`. Do not start this task until the operator decides ADR 0101.
+Status: Stopped - 2026-11-26. ADR 0044 (Proposed) changes the source of the funding links: the file `WPAY` is the
+fallback, and an episode state gets no lookup for its state GUIDs. Do not start this task. It gets a new text after
+the operator accepts ADR 0044.
 
 Each criterion is mechanical. No visual check applies to this task.
 
