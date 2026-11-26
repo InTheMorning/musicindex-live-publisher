@@ -217,6 +217,11 @@ packet.
   keys from the HLS metadata by default, so the script must change
   `settings.encoder.metadata.cover`. The first test is on the VPS stack with a
   fixed picture (§Before Acceptance item 1).
+- ADR 0037 has the status `Proposed`. A target can give `icecast_burst_bytes`
+  and `stream_bitrate_kbps` in place of `stream_delay_secs`. The publisher
+  calculates the delay, rounds it down, and sends it as `Listener-Delay-Secs`.
+  Listener delay task 001 implements it. The test station does not have the
+  two fields yet. The visual check in v4vmusic.com is open.
 - This item needs a new ADR before work starts: a track identity source that
   is earlier than the Mixxx history row.
 - Studio client task 001 is not started. The publisher will start and end a

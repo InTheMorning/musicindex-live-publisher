@@ -892,11 +892,12 @@ fn render_target_list_text(targets: &[TargetConfigSummary]) -> String {
     let mut output = String::new();
     for target in targets {
         output.push_str(&format!(
-            "{}\tevent_id={}\ttoken_file={}\tstream_delay_secs={}\n",
+            "{}\tevent_id={}\ttoken_file={}\tstream_delay_secs={}\tlistener_delay_secs={}\n",
             target.name,
             target.event_id,
             target.token_file.display(),
-            target.stream_delay_secs
+            target.stream_delay_secs,
+            target.listener_delay_secs
         ));
     }
     output
@@ -2000,6 +2001,7 @@ mod tests {
             event_id: "event-default".to_owned(),
             token_file: PathBuf::from("/tmp/default.token"),
             stream_delay_secs: 12.5,
+            listener_delay_secs: 13,
             display_dir: None,
         }];
 
@@ -2018,6 +2020,7 @@ mod tests {
             event_id: "event-default".to_owned(),
             token_file: PathBuf::from("/tmp/default.token"),
             stream_delay_secs: 0.0,
+            listener_delay_secs: 0,
             display_dir: None,
         }];
 

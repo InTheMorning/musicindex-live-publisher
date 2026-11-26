@@ -168,6 +168,7 @@ fn config(endpoint: &str) -> PublisherConfig {
             token_file: PathBuf::from("/tmp/default.token"),
             token: TOKEN.to_owned(),
             stream_delay: Duration::ZERO,
+            listener_delay_secs: 0,
             dead_block: musicindex_live_publisher::DeadBlockSettings::default(),
             display_dir: None,
         }],

@@ -67,7 +67,7 @@ impl RelayTarget {
             endpoint: endpoint.to_owned(),
             event_id: target.event_id.clone(),
             token: target.token.clone(),
-            listener_delay_secs: round_listener_delay_secs(target.stream_delay),
+            listener_delay_secs: target.listener_delay_secs,
         }
     }
 }
@@ -78,14 +78,6 @@ impl RelayTarget {
 /// live value publish carries it. A keepalive, a display request, and an
 /// artwork upload carry no header.
 const LISTENER_DELAY_HEADER: &str = "Listener-Delay-Secs";
-
-/// Rounds a stream delay to the nearest second for the header value.
-///
-/// A half second rounds up (ADR 0011 §Send At Once).
-fn round_listener_delay_secs(stream_delay: Duration) -> u64 {
-    let half_up_millis = stream_delay.as_millis().saturating_add(500);
-    u64::try_from(half_up_millis / 1000).unwrap_or(u64::MAX)
-}
 
 /// Result of one publish attempt.
 #[derive(Debug, Clone, PartialEq, Eq)]

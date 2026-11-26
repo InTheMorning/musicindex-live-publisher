@@ -305,6 +305,8 @@ fn publisher_target_with_stream_delay(stream_delay: Duration) -> PublisherTarget
         token_file: Path::new("/tmp/default.token").to_path_buf(),
         token: "secret-token".to_owned(),
         stream_delay,
+        listener_delay_secs: u64::try_from(stream_delay.as_millis().saturating_add(500) / 1000)
+            .unwrap_or(u64::MAX),
         dead_block: musicindex_live_publisher::DeadBlockSettings::default(),
         display_dir: None,
     }
@@ -1004,6 +1006,27 @@ fn relay_publish_rounds_a_half_second_up() -> Result<()> {
     let requests = server.requests()?;
     assert_eq!(requests[0].listener_delay_secs.as_deref(), Some("12"));
     assert_eq!(requests[1].listener_delay_secs.as_deref(), Some("13"));
+    Ok(())
+}
+
+#[test]
+fn relay_publish_uses_calculated_icecast_delay() -> Result<()> {
+    let server = StubServer::start(vec![accepted(1), accepted(2)])?;
+    let client = RelayClient::new(Duration::from_secs(1))?;
+    let mut target = publisher_target_with_stream_delay(Duration::from_nanos(2_730_000_000));
+    target.listener_delay_secs = 2;
+    let calculated = RelayTarget::from_config(&server.endpoint, &target);
+    target.stream_delay = Duration::from_nanos(2_990_000_000);
+    target.listener_delay_secs = 2;
+    let fractional = RelayTarget::from_config(&server.endpoint, &target);
+
+    client.publish(&calculated, &payload("Icecast"))?;
+    client.publish(&fractional, &payload("Floor"))?;
+
+    server.wait_for_requests(2)?;
+    let requests = server.requests()?;
+    assert_eq!(requests[0].listener_delay_secs.as_deref(), Some("2"));
+    assert_eq!(requests[1].listener_delay_secs.as_deref(), Some("2"));
     Ok(())
 }
 

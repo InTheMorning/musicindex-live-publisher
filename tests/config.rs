@@ -1509,6 +1509,120 @@ fn config_stream_delay_above_the_ceiling_is_error() -> Result<()> {
     Ok(())
 }
 
+fn icecast_config_text(watch_dir: &Path, token: &Path, fields: &str) -> String {
+    config_text(watch_dir, token, None).replace(
+        "event_id = \"event-default\"",
+        &format!("event_id = \"event-default\"\n{fields}"),
+    )
+}
+
+#[test]
+fn config_icecast_delay_calculates_exact_delay_and_listener_floor() -> Result<()> {
+    let temp = TempDir::new()?;
+    let watch_dir = temp.path().join("watch");
+    let token = write_token(temp.path(), "default.token", "secret-token")?;
+    let text = icecast_config_text(
+        &watch_dir,
+        &token,
+        "icecast_burst_bytes = 65535\nstream_bitrate_kbps = 192",
+    );
+    let config_path = write_config(temp.path(), &text)?;
+
+    let config = load_config(&config_path, ConfigOverrides::default())?;
+    assert_eq!(config.targets[0].listener_delay_secs, 2);
+    assert_eq!(
+        config.targets[0].stream_delay,
+        Duration::from_nanos(2_730_625_000)
+    );
+    let listed = list_config_targets(&config_path)?;
+    assert_eq!(listed[0].listener_delay_secs, 2);
+
+    let fractional = icecast_config_text(
+        &watch_dir,
+        &token,
+        "icecast_burst_bytes = 71760\nstream_bitrate_kbps = 192",
+    );
+    let fractional_path = write_config(temp.path(), &fractional)?;
+    let fractional_config = load_config(&fractional_path, ConfigOverrides::default())?;
+    assert_eq!(fractional_config.targets[0].listener_delay_secs, 2);
+    assert_eq!(
+        fractional_config.targets[0].stream_delay,
+        Duration::from_nanos(2_990_000_000)
+    );
+    Ok(())
+}
+
+#[test]
+fn config_stream_delay_secs_keeps_the_half_up_rounding() -> Result<()> {
+    let temp = TempDir::new()?;
+    let watch_dir = temp.path().join("watch");
+    let token = write_token(temp.path(), "default.token", "secret-token")?;
+    let text = icecast_config_text(&watch_dir, &token, "stream_delay_secs = 2.5");
+    let config_path = write_config(temp.path(), &text)?;
+
+    let config = load_config(&config_path, ConfigOverrides::default())?;
+    assert_eq!(config.targets[0].listener_delay_secs, 3);
+    Ok(())
+}
+
+#[test]
+fn config_icecast_delay_rejects_invalid_forms_and_values() -> Result<()> {
+    let temp = TempDir::new()?;
+    let watch_dir = temp.path().join("watch");
+    let token = write_token(temp.path(), "default.token", "secret-token")?;
+    for (fields, expected) in [
+        ("icecast_burst_bytes = 65535", "ADR 0037"),
+        (
+            "icecast_burst_bytes = 65535\nstream_bitrate_kbps = 192\nstream_delay_secs = 1",
+            "one delay form",
+        ),
+        (
+            "icecast_burst_bytes = 0\nstream_bitrate_kbps = 192",
+            "must be positive",
+        ),
+        (
+            "icecast_burst_bytes = 7200001\nstream_bitrate_kbps = 192",
+            "exceeds the 300 second maximum",
+        ),
+        (
+            "icecast_burst_bytes = -1\nstream_bitrate_kbps = 192",
+            "must be positive",
+        ),
+    ] {
+        let path = write_config(
+            temp.path(),
+            &icecast_config_text(&watch_dir, &token, fields),
+        )?;
+        let error = load_config(&path, ConfigOverrides::default())
+            .expect_err("invalid Icecast delay must fail");
+        assert!(format!("{error:#}").contains(expected), "{error:#}");
+    }
+    Ok(())
+}
+
+#[test]
+fn target_add_replace_rejects_two_delay_forms_without_writing() -> Result<()> {
+    let temp = TempDir::new()?;
+    let watch_dir = temp.path().join("watch");
+    let old_token = write_token(temp.path(), "default.token", "old-secret")?;
+    let new_token = write_token(temp.path(), "new.token", "new-secret")?;
+    let original = icecast_config_text(
+        &watch_dir,
+        &old_token,
+        "icecast_burst_bytes = 65535\nstream_bitrate_kbps = 192",
+    );
+    let config_path = write_config(temp.path(), &original)?;
+    let mut edit = target_edit("default", "event-new", &new_token);
+    edit.stream_delay_secs = Some(1.0);
+
+    let error = add_target_to_config(&config_path, &edit, true)
+        .expect_err("replace must reject both delay forms");
+
+    assert!(format!("{error:#}").contains("ADR 0037"));
+    assert_eq!(fs::read_to_string(config_path)?, original);
+    Ok(())
+}
+
 /// Inserts a top-level `show_log_retention_days` line after `endpoint`.
 fn config_text_with_show_log_retention_days(
     watch_dir: &Path,

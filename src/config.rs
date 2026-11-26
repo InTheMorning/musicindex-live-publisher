@@ -34,6 +34,7 @@ pub const DEFAULT_SHOW_LOG: bool = true;
 /// mistake — milliseconds typed into a seconds field — at startup rather than
 /// on air, where it would park every payload past the end of the show.
 const MAX_STREAM_DELAY_SECS: f64 = 300.0;
+const ADR_0037: &str = "ADR 0037";
 
 const EVENT_ID_PLACEHOLDERS: &[&str] = &[
     "replace-with-provisioned-event-guid",
@@ -64,6 +65,7 @@ pub struct PublisherTarget {
     pub token_file: PathBuf,
     pub token: String,
     pub stream_delay: Duration,
+    pub listener_delay_secs: u64,
     /// The dead block title and image of this target (ADR 0029).
     pub dead_block: DeadBlockSettings,
     /// The display directory of the producer of this target (ADR 0008).
@@ -80,6 +82,7 @@ impl fmt::Debug for PublisherTarget {
             .field("token_file", &self.token_file)
             .field("token", &"<redacted>")
             .field("stream_delay", &self.stream_delay)
+            .field("listener_delay_secs", &self.listener_delay_secs)
             .field("dead_block", &self.dead_block)
             .field("display_dir", &self.display_dir)
             .finish()
@@ -120,6 +123,7 @@ pub struct TargetConfigSummary {
     pub event_id: String,
     pub token_file: PathBuf,
     pub stream_delay_secs: f64,
+    pub listener_delay_secs: u64,
     /// The display directory of the target (ADR 0008), or `None`.
     pub display_dir: Option<PathBuf>,
 }
@@ -186,6 +190,8 @@ struct RawTarget {
     event_id: String,
     token_file: PathBuf,
     stream_delay_secs: Option<f64>,
+    icecast_burst_bytes: Option<i64>,
+    stream_bitrate_kbps: Option<i64>,
     dead_block_title: Option<String>,
     dead_block_image: Option<String>,
     display_dir: Option<PathBuf>,
@@ -216,6 +222,8 @@ struct RawTargetSummary {
     event_id: String,
     token_file: PathBuf,
     stream_delay_secs: Option<f64>,
+    icecast_burst_bytes: Option<i64>,
+    stream_bitrate_kbps: Option<i64>,
     dead_block_title: Option<String>,
     dead_block_image: Option<String>,
     display_dir: Option<PathBuf>,
@@ -470,13 +478,19 @@ pub fn list_config_targets_from_str(text: &str) -> Result<Vec<TargetConfigSummar
             if !seen.insert(target.name.clone()) {
                 return Err(anyhow!("duplicate target name {}", target.name));
             }
-            validate_stream_delay_secs(&target.name, target.stream_delay_secs)?;
+            let (_, listener_delay_secs) = resolve_target_delay(
+                &target.name,
+                target.stream_delay_secs,
+                target.icecast_burst_bytes,
+                target.stream_bitrate_kbps,
+            )?;
             reject_removed_fallback_table(&target.name, target.fallback.as_ref())?;
             Ok(TargetConfigSummary {
                 name: target.name,
                 event_id: target.event_id,
                 token_file: target.token_file,
                 stream_delay_secs: target.stream_delay_secs.unwrap_or(0.0),
+                listener_delay_secs,
                 display_dir: target.display_dir,
             })
         })
@@ -577,7 +591,12 @@ fn redacted_target_from_raw(
     validate_target_name(&target.name)?;
     validate_no_control_chars("target event_id", &target.event_id)?;
     validate_event_id(&target.name, &target.event_id)?;
-    validate_stream_delay_secs(&target.name, target.stream_delay_secs)?;
+    let _ = resolve_target_delay(
+        &target.name,
+        target.stream_delay_secs,
+        target.icecast_burst_bytes,
+        target.stream_bitrate_kbps,
+    )?;
     resolve_dead_block_title(&target.name, target.dead_block_title.as_deref())?;
     resolve_dead_block_image(&target.name, target.dead_block_image.as_deref())?;
     reject_removed_fallback_table(&target.name, target.fallback.as_ref())?;
@@ -669,7 +688,12 @@ fn resolve_target(target: RawTarget, seen: &mut HashSet<String>) -> Result<Publi
     }
     validate_event_id(&target.name, &target.event_id)?;
     reject_removed_fallback_table(&target.name, target.fallback.as_ref())?;
-    let stream_delay = resolve_stream_delay(&target.name, target.stream_delay_secs)?;
+    let (stream_delay, listener_delay_secs) = resolve_target_delay(
+        &target.name,
+        target.stream_delay_secs,
+        target.icecast_burst_bytes,
+        target.stream_bitrate_kbps,
+    )?;
     let dead_block = DeadBlockSettings {
         title: resolve_dead_block_title(&target.name, target.dead_block_title.as_deref())?,
         image: resolve_dead_block_image(&target.name, target.dead_block_image.as_deref())?,
@@ -688,6 +712,7 @@ fn resolve_target(target: RawTarget, seen: &mut HashSet<String>) -> Result<Publi
         token_file,
         token,
         stream_delay,
+        listener_delay_secs,
         dead_block,
         display_dir: target.display_dir,
     })
@@ -762,6 +787,58 @@ fn validate_no_control_chars(label: &str, value: &str) -> Result<()> {
 
 fn validate_stream_delay_secs(target_name: &str, stream_delay_secs: Option<f64>) -> Result<()> {
     resolve_stream_delay(target_name, stream_delay_secs).map(|_| ())
+}
+
+fn resolve_target_delay(
+    target_name: &str,
+    stream_delay_secs: Option<f64>,
+    icecast_burst_bytes: Option<i64>,
+    stream_bitrate_kbps: Option<i64>,
+) -> Result<(Duration, u64)> {
+    let icecast_fields_present = icecast_burst_bytes.is_some() || stream_bitrate_kbps.is_some();
+    if icecast_fields_present && stream_delay_secs.is_some() {
+        return Err(anyhow!(
+            "{ADR_0037}: target {target_name} must use only one delay form"
+        ));
+    }
+    match (icecast_burst_bytes, stream_bitrate_kbps) {
+        (None, None) => {
+            let duration = resolve_stream_delay(target_name, stream_delay_secs)?;
+            let listener_delay_secs = round_listener_delay_secs(duration);
+            Ok((duration, listener_delay_secs))
+        }
+        (Some(burst), Some(bitrate)) => {
+            if burst <= 0 || bitrate <= 0 {
+                return Err(anyhow!(
+                    "{ADR_0037}: target {target_name} icecast_burst_bytes and stream_bitrate_kbps must be positive integers"
+                ));
+            }
+            let numerator = u128::try_from(burst).unwrap_or_default() * 8;
+            let denominator = u128::try_from(bitrate).unwrap_or_default() * 1000;
+            if numerator > denominator * MAX_STREAM_DELAY_SECS as u128 {
+                return Err(anyhow!(
+                    "{ADR_0037}: target {target_name} calculated delay exceeds the {MAX_STREAM_DELAY_SECS} second maximum"
+                ));
+            }
+            let delay_nanos = numerator * 1_000_000_000 / denominator;
+            let seconds = u64::try_from(delay_nanos / 1_000_000_000)
+                .context("calculated stream delay seconds exceed u64")?;
+            let nanos = u32::try_from(delay_nanos % 1_000_000_000)
+                .context("calculated stream delay nanoseconds exceed u32")?;
+            let duration = Duration::new(seconds, nanos);
+            let listener_delay_secs = u64::try_from(numerator / denominator)
+                .context("calculated listener delay seconds exceed u64")?;
+            Ok((duration, listener_delay_secs))
+        }
+        _ => Err(anyhow!(
+            "{ADR_0037}: target {target_name} must set both icecast_burst_bytes and stream_bitrate_kbps"
+        )),
+    }
+}
+
+fn round_listener_delay_secs(stream_delay: Duration) -> u64 {
+    let half_up_millis = stream_delay.as_millis().saturating_add(500);
+    u64::try_from(half_up_millis / 1000).unwrap_or(u64::MAX)
 }
 
 fn validate_token_file_readable(path: &Path) -> Result<()> {

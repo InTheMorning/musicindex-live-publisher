@@ -134,6 +134,10 @@ the next priority. Confirm that logging works before the show.
   — Proposed. An `APIC` frame goes into the first segment of each song, on
   the station and on the VPS stack. It needs a change of the Liquidsoap cover
   keys. It changes ADR 0009 and ADR 0035
+- [ADR 0037: The listener delay comes from the Icecast burst](adr/0037-the-listener-delay-comes-from-the-icecast-burst.md)
+  — Proposed. A target can give `icecast_burst_bytes` and
+  `stream_bitrate_kbps`. The publisher sends that delay, rounded down, as
+  `Listener-Delay-Secs`. It changes ADR 0011
 
 ## Plans
 
@@ -349,6 +353,11 @@ one before it.
   — Implemented - 2026-10-19
 - [004 — The off switch](tasks/show-log-task-004-off-switch.md)
   — Implemented - 2026-10-19. The amendment of ADR 0017 that adds `show_log`
+
+Packets for the listener delay. ADR 0037 governs them.
+
+- [001 — The delay from the Icecast burst](tasks/listener-delay-task-001-icecast-burst.md)
+  — Implemented - 2026-11-26
 
 ## Reviews
 
