@@ -352,6 +352,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "display-keys"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "displaydoc"
 version = "0.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1238,6 +1245,7 @@ name = "musicindex-live-publisher"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "display-keys",
  "musicindex-build-info",
  "notify",
  "reqwest",

@@ -1,6 +1,6 @@
 # Display Keys Task 001: The Crate `display-keys` And The Publisher Keys
 
-Status: Ready - 2026-11-26. ADR 0042 and ADR 0043 govern this task.
+Status: Implemented - 2026-11-26. ADR 0042 and ADR 0043 govern this task.
 
 Each criterion is mechanical. No visual check applies to this task.
 

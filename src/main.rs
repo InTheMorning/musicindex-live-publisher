@@ -1689,6 +1689,8 @@ mod tests {
                         song_line: "Alice - Track One".to_owned(),
                         play_id: Some("1".to_owned()),
                         album: None,
+                        pub_date: None,
+                        funding: Vec::new(),
                     }),
                 },
             })]

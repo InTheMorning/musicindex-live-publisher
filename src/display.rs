@@ -16,10 +16,16 @@ use std::fmt;
 use std::fs::File;
 use std::io::{self, Read};
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
 
+use display_keys::FundingLink;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
+
+const MAX_DISPLAY_BODY_BYTES: usize = 8_192;
+/// The key of the last warning for a body without `funding` (ADR 0043 §The Publisher). The key of the last
+/// warning is sufficient for one warning for each `play_id`, and the memory does not increase.
+static OVERSIZED_FUNDING_WARNING: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 
 /// The pairing of a display state with a live value payload (ADR 0039).
 ///
@@ -170,6 +176,10 @@ pub struct DisplayTrack {
     pub play_id: Option<String>,
     /// The album from `display.json` version 3 (ADR 0013).
     pub album: Option<String>,
+    /// The publication date from `display.json` (ADR 0042).
+    pub pub_date: Option<String>,
+    /// The funding links from `display.json` (ADR 0043).
+    pub funding: Vec<FundingLink>,
 }
 
 /// The display state of one target: `null` or one track.
@@ -238,7 +248,31 @@ impl DisplayState {
 
             track_obj
         });
-        json!({ "track": track })
+        let mut body = json!({ "track": track });
+        if let Some(track) = &self.track {
+            if let Some(obj) = body["track"].as_object_mut() {
+                if let Some(pub_date) = &track.pub_date {
+                    obj.insert("pubDate".to_owned(), Value::String(pub_date.clone()));
+                }
+                if !track.funding.is_empty() {
+                    obj.insert("funding".to_owned(), json!(&track.funding));
+                }
+            }
+            if !track.funding.is_empty()
+                && serde_json::to_vec(&body).is_ok_and(|bytes| bytes.len() > MAX_DISPLAY_BODY_BYTES)
+            {
+                let mut state_body = body.clone();
+                if let Some(obj) = state_body["track"].as_object_mut() {
+                    obj.remove("value");
+                }
+                let state_key = serde_json::to_string(&state_body).unwrap_or_default();
+                if let Some(obj) = body["track"].as_object_mut() {
+                    obj.remove("funding");
+                }
+                warn_oversized_funding(track, state_key);
+            }
+        }
+        body
     }
 
     /// The body with no `value`. The display log and the tests use it. The
@@ -276,7 +310,7 @@ pub struct DisplayEntry {
     pub state: DisplayState,
 }
 
-/// The longest `playId` that the relay accepts (relay ADR 0012).
+/// The longest `playId` that the relay accepts (relay ADR 0013).
 const MAX_PLAY_ID_CHARS: usize = 128;
 
 /// The `playId` of a display track on the wire (ADR 0038 §The Display State
@@ -385,6 +419,23 @@ fn parse_track(dir: &Path, path: &Path, track: &Value) -> Option<DisplayTrack> {
         .and_then(Value::as_str)
         .filter(|s| !s.is_empty())
         .map(String::from);
+    let pub_date = track
+        .get("pub_date")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .map(String::from);
+    let funding = track
+        .get("funding")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| {
+            let object = entry.as_object()?;
+            let url = object.get("url")?.as_str()?;
+            let label = object.get("label").and_then(Value::as_str);
+            Some((url, label))
+        });
+    let funding = display_keys::funding_links(funding);
     Some(DisplayTrack {
         artist: artist.to_owned(),
         title: title.to_owned(),
@@ -392,7 +443,27 @@ fn parse_track(dir: &Path, path: &Path, track: &Value) -> Option<DisplayTrack> {
         song_line: song_line.to_owned(),
         play_id,
         album,
+        pub_date,
+        funding,
     })
+}
+
+fn warn_oversized_funding(track: &DisplayTrack, state_key: String) {
+    let warning_key = track
+        .play_id
+        .clone()
+        .unwrap_or_else(|| format!("state:{state_key}"));
+    let last = OVERSIZED_FUNDING_WARNING.get_or_init(|| Mutex::new(None));
+    let Ok(mut last) = last.lock() else {
+        return;
+    };
+    if last.as_deref() != Some(warning_key.as_str()) {
+        *last = Some(warning_key);
+        tracing::warn!(
+            play_id = track.play_id.as_deref().unwrap_or("<none>"),
+            "display body is more than 8192 bytes; the publisher sends it without funding"
+        );
+    }
 }
 
 fn parse_artwork(dir: &Path, artwork: &Value) -> Option<Artwork> {

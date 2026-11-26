@@ -328,6 +328,8 @@ fn track_state(title: &str, artwork: Option<Artwork>) -> DisplayState {
             song_line: format!("Artist - {title}"),
             play_id: Some("1".to_owned()),
             album: None,
+            pub_date: None,
+            funding: Vec::new(),
         }),
     }
 }
@@ -1146,6 +1148,8 @@ fn read_parses_version_2_with_song_line_and_play_id() -> Result<()> {
             song_line: "Artist - Title".to_owned(),
             play_id: Some("42".to_owned()),
             album: None,
+            pub_date: None,
+            funding: Vec::new(),
         })
     );
     Ok(())
@@ -1360,6 +1364,8 @@ fn display_state_with_matching_play_id_includes_value() -> Result<()> {
             song_line: "Artist - Title".to_owned(),
             play_id: Some("play-1".to_owned()),
             album: None,
+            pub_date: None,
+            funding: Vec::new(),
         }),
     };
 
@@ -1399,6 +1405,8 @@ fn display_state_with_mismatched_play_id_omits_value() -> Result<()> {
             song_line: "Artist - Title".to_owned(),
             play_id: Some("play-1".to_owned()),
             album: None,
+            pub_date: None,
+            funding: Vec::new(),
         }),
     };
 
@@ -1431,6 +1439,8 @@ fn display_state_without_play_id_has_no_value() -> Result<()> {
             song_line: "Artist - Title".to_owned(),
             play_id: None,
             album: None,
+            pub_date: None,
+            funding: Vec::new(),
         }),
     };
 
@@ -1479,6 +1489,8 @@ fn pairing_track_without_drop_file_has_no_value() -> Result<()> {
             song_line: "Artist - Track".to_owned(),
             play_id: None,
             album: None,
+            pub_date: None,
+            funding: Vec::new(),
         }),
     };
 
@@ -1511,6 +1523,8 @@ fn pairing_after_dead_block_has_no_value() -> Result<()> {
             song_line: "Artist - Track".to_owned(),
             play_id: Some("play-1".to_owned()),
             album: None,
+            pub_date: None,
+            funding: Vec::new(),
         }),
     };
 
@@ -1563,6 +1577,8 @@ fn paired_track(song_line: &str, play_id: &str, artwork: Option<Artwork>) -> Dis
             song_line: song_line.to_owned(),
             play_id: Some(play_id.to_owned()),
             album: None,
+            pub_date: None,
+            funding: Vec::new(),
         }),
     }
 }
@@ -1744,6 +1760,8 @@ fn read_parses_version_3_with_album() -> Result<()> {
             song_line: "Artist - Title".to_owned(),
             play_id: Some("42".to_owned()),
             album: Some("Test Album".to_owned()),
+            pub_date: None,
+            funding: Vec::new(),
         })
     );
     Ok(())
@@ -1775,6 +1793,8 @@ fn read_parses_version_3_with_null_album() -> Result<()> {
             song_line: "Artist - Title".to_owned(),
             play_id: Some("42".to_owned()),
             album: None,
+            pub_date: None,
+            funding: Vec::new(),
         })
     );
     Ok(())
@@ -1802,6 +1822,8 @@ fn display_body_with_album_includes_album_key() -> Result<()> {
             song_line: "Artist - Title".to_owned(),
             play_id: Some("1".to_owned()),
             album: Some("Test Album".to_owned()),
+            pub_date: None,
+            funding: Vec::new(),
         }),
     };
 
@@ -1820,11 +1842,85 @@ fn display_body_without_album_omits_album_key() -> Result<()> {
             song_line: "Artist - Title".to_owned(),
             play_id: Some("1".to_owned()),
             album: None,
+            pub_date: None,
+            funding: Vec::new(),
         }),
     };
 
     let body = state.body();
     assert!(body["track"].get("album").is_none());
+    Ok(())
+}
+
+#[test]
+fn display_keys_are_filtered_and_added_to_the_wire_body() -> Result<()> {
+    let temp = TempDir::new()?;
+    write_display_json(
+        temp.path(),
+        json!({
+            "artist": "Artist",
+            "title": "Title",
+            "song_line": "Artist - Title",
+            "pub_date": "2026-11-12",
+            "funding": [
+                {"url": "https://one.example/support", "label": "Support"},
+                {"url": "https://two.example/support"},
+                {"url": "https:///invalid"}
+            ]
+        }),
+    )?;
+    let state = read_display_state(temp.path()).ok_or_else(|| anyhow!("no state"))?;
+    let body = state.body();
+    assert_eq!(body["track"]["pubDate"], "2026-11-12");
+    assert_eq!(body["track"]["funding"].as_array().unwrap().len(), 2);
+    assert_eq!(body["track"]["funding"][0]["label"], "Support");
+    assert!(body["track"]["funding"][1].get("label").is_none());
+    Ok(())
+}
+
+#[test]
+fn invalid_or_empty_display_keys_are_omitted() -> Result<()> {
+    let temp = TempDir::new()?;
+    for optional in [
+        json!({"pub_date": null, "funding": null}),
+        json!({"pub_date": "", "funding": []}),
+        json!({"funding": [{"url": "https:///support"}]}),
+        json!({}),
+    ] {
+        let mut track =
+            json!({"artist": "Artist", "title": "Title", "song_line": "Artist - Title"});
+        for (key, value) in optional.as_object().unwrap() {
+            track[key] = value.clone();
+        }
+        write_display_json(temp.path(), track)?;
+        let state = read_display_state(temp.path()).ok_or_else(|| anyhow!("no state"))?;
+        assert!(state.body()["track"].get("pubDate").is_none());
+        assert!(state.body()["track"].get("funding").is_none());
+    }
+    Ok(())
+}
+
+#[test]
+fn oversized_funding_body_is_sent_without_funding() -> Result<()> {
+    let temp = TempDir::new()?;
+    write_display_json(
+        temp.path(),
+        json!({
+            "artist": "Artist",
+            "title": "x".repeat(9_000),
+            "song_line": "Artist - Title",
+            "play_id": "oversized-play",
+            "album": "Album",
+            "pub_date": "2026-11-12",
+            "funding": [{"url": "https://example.com/support"}]
+        }),
+    )?;
+    let state = read_display_state(temp.path()).ok_or_else(|| anyhow!("no state"))?;
+    let body = state.body();
+    assert!(body["track"].get("funding").is_none());
+    assert_eq!(body["track"]["title"].as_str().unwrap().len(), 9_000);
+    assert_eq!(body["track"]["pubDate"], "2026-11-12");
+    assert_eq!(body["track"]["album"], "Album");
     Ok(())
 }
 
@@ -1846,6 +1942,8 @@ fn pairing_display_with_album_includes_album_in_value() -> Result<()> {
                 song_line: "Artist - Track".to_owned(),
                 play_id: Some("play-1".to_owned()),
                 album: Some("Album".to_owned()),
+                pub_date: None,
+                funding: Vec::new(),
             }),
         },
     });
@@ -1876,6 +1974,8 @@ fn a_display_state_with_no_album_goes_out_with_no_album_key() -> Result<()> {
                 song_line: "Artist - Track".to_owned(),
                 play_id: None,
                 album: None,
+                pub_date: None,
+                funding: Vec::new(),
             }),
         },
     });

@@ -6,6 +6,7 @@ license = "AGPL-3.0-only"
 
 [dependencies]
 anyhow = "1"
+display-keys = { path = "display-keys" }
 musicindex-build-info = { git = "https://github.com/InTheMorning/musicindex-lib", rev = "e6d11118d33069c26c01368f7de71524988039c6" }
 notify = "8"
 reqwest = { version = "0.13", default-features = false, features = ["blocking", "charset", "http2", "json", "native-tls", "system-proxy"] }
@@ -59,6 +60,6 @@ assets = [
 ]
 
 [workspace]
-members = ["mixxx-now-playing", "now-playing-drop", "liquidsoap-now-playing", "station-import"]
-default-members = [".", "mixxx-now-playing", "now-playing-drop", "liquidsoap-now-playing", "station-import"]
+members = ["mixxx-now-playing", "now-playing-drop", "liquidsoap-now-playing", "station-import", "display-keys"]
+default-members = [".", "mixxx-now-playing", "now-playing-drop", "liquidsoap-now-playing", "station-import", "display-keys"]
 resolver = "3"
