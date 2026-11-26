@@ -9,7 +9,7 @@ The producer tells the MusicIndex pipeline which track plays. The pipeline then 
 This tutorial is advisory. The publisher ADRs and the relay ADRs own the rules of the pipeline.
 The track events note (musicindex-research: `research_notes/azuracast/track-events-for-a-producer.md`) gives the source of each fact here.
 
-Publisher ADR 0035 §The State File Contract owns the format `musicindex-liquidsoap-state/1` of `state.json`. Publisher ADR 0023 owns the DJ takeover. Publisher ADR 0024 makes the two GUIDs a condition of payment.
+Publisher ADR 0041 §The State File Contract owns the format `musicindex-liquidsoap-state/1` of `state.json`. Publisher ADR 0023 owns the DJ takeover. Publisher ADR 0024 makes the two GUIDs a condition of payment.
 The operator accepted the three ADRs on 2026-11-21 (commit `cdeb182` in `musicindex-live-publisher`).
 
 The reference slot text is `liquidsoap/musicindex-state.liq` in `musicindex-live-publisher`. The publisher runbook `docs/runbooks/liquidsoap-now-playing-azuracast.md` gives the install of the producer and the publisher.
@@ -56,7 +56,7 @@ A player that reads HLS timed ID3 can pair the segment with its display state by
 The steps use two names:
 
 - `STATION` is the AzuraCast short name of the station, for example `heycitizens_test_radio`. Only the HLS address uses it.
-- `INSTANCE` is the short name with each `_` changed to `-`, for example `heycitizens-test-radio`. The folders, the slot text and the units use it. A unit instance name cannot contain `_` (publisher ADR 0021 and ADR 0035 §The Template Unit).
+- `INSTANCE` is the short name with each `_` changed to `-`, for example `heycitizens-test-radio`. The folders, the slot text and the units use it. A unit instance name cannot contain `_` (publisher ADR 0021 and ADR 0041 §The Template Unit).
 
 Replace the two names in each command and in the slot text.
 
@@ -150,11 +150,11 @@ Do not use the box after `azuracast.apply_crossfade`. That box is before the liv
 
 Put the reference slot text in the Pre-Broadcast slot. Replace `INSTANCE` on the line with `musicindex_dir`.
 
-The reference slot text is `liquidsoap/musicindex-state.liq` in the repository `musicindex-live-publisher` (commit `6c1e14a`). Publisher ADR 0035 §The State File Contract owns it.
+The reference slot text is `liquidsoap/musicindex-state.liq` in the repository `musicindex-live-publisher` (commit `6c1e14a`). Publisher ADR 0041 §The State File Contract owns it.
 The Debian package installs it as `/usr/share/doc/musicindex-live-publisher/liquidsoap/musicindex-state.liq`.
 Do not use a copy from a different source. A field change needs a new format version, and the producer must have the same version.
 
-How the reference slot text works (a summary, publisher ADR 0035 §The State File Contract owns the text):
+How the reference slot text works (a summary, publisher ADR 0041 §The State File Contract owns the text):
 
 - The recode line stops a log warning. Liquidsoap logs "too long to be recoded" for a value of 1024 bytes or more. The value routes can have that length.
 - The TXXX part adds the segment frame of publisher ADR 0038 to the HLS tag. The frame uses the description `musicindex` and the schema `musicindex.hls/2`.
@@ -162,11 +162,11 @@ How the reference slot text works (a summary, publisher ADR 0035 §The State Fil
 - The frame has `playId` `null` for a jingle. It has no track, artwork or value fields (publisher ADR 0038 §The Segment Frame).
 - Liquidsoap drops a key that is not an ID3 frame ID, so the key must have the name `TXXX`.
 - `on_track` keeps the metadata of the new track in memory. It does not write a file.
-- `on_track` gets only the metadata in the frame of the track mark, else an empty list (Liquidsoap `source.ml`, `execute_on_track`). After a jingle, the metadata of the next track can come in a later frame. Then the first metadata of the track gives a new `seq`, and `track_started` keeps the time of the track mark (publisher ADR 0035 §The State File Contract). The test station showed this fault before publisher commit `6c1e14a` (the [test station log](test-station-log.md), steps 16 and 17).
+- `on_track` gets only the metadata in the frame of the track mark, else an empty list (Liquidsoap `source.ml`, `execute_on_track`). After a jingle, the metadata of the next track can come in a later frame. Then the first metadata of the track gives a new `seq`, and `track_started` keeps the time of the track mark (publisher ADR 0041 §The State File Contract). The test station showed this fault before publisher commit `6c1e14a` (the [test station log](test-station-log.md), steps 16 and 17).
 - The `on_track` and `on_metadata` callbacks are synchronous, so they operate in the frame order. They only set references.
 - One reference holds the sequence number, the start time, the metadata, the `rid` of the last track and the jingle flag. Thus the writer cannot mix the values of two tracks.
 - `jingle` is `true` when the new track has the same `rid` as the last track. Jingle mode gives a jingle the complete metadata of the last song, and that includes its `rid`. Liquidsoap gives each new request a new `rid`. A live DJ track has an empty `rid`, so it is not a jingle. This rule is an inference from the code. It is not tested.
-- The slot text does not change `track_guid` or `value_routes` for a jingle. The producer applies the rule of publisher ADR 0035 §Jingle Mode.
+- The slot text does not change `track_guid` or `value_routes` for a jingle. The producer applies the rule of publisher ADR 0041 §Jingle Mode.
 - `thread.run` writes `state.json` one time each second. It is the only writer. `file.write` writes a temporary file and renames it, so a reader cannot see a half-written file.
 - `try` and `catch` keep the writer in operation after a write error, for example a missing folder. Without them, `thread.run` stops the task after the first error (`src/core/builtins/builtins_thread.ml:90-108` in Liquidsoap 2.4.6). The log then shows the label `musicindex`.
 - `written` changes each second. If `written` does not change, Liquidsoap is stopped or the write fails. The producer uses this value as a heartbeat.
@@ -181,13 +181,13 @@ Do not use the `is_live` metadata. AzuraCast 0.24.1 disables the function that s
 
 ### Jingle Mode
 
-A MusicIndex station can use jingle mode (publisher ADR 0035 §Jingle Mode, commit `52340f9`).
+A MusicIndex station can use jingle mode (publisher ADR 0041 §Jingle Mode, commit `52340f9`).
 
 The problem: `azuracast.handle_jingle_mode` replaces the metadata of a jingle with the complete metadata of the last song. It uses `metadata.map(update=false, strip=true, …)`, so the `jingle_mode` key is not available after it (`azuracast.liq:678-691`). Without a rule, a jingle pays the artist of the last song.
 The Pre-Broadcast slot comes after that function, so the slot text cannot see the `jingle_mode` key.
 
 The slot text finds a jingle because the `rid` of the jingle is the same as the `rid` of the last song. It writes the field `jingle`.
-For a jingle when no live DJ is on air, the producer writes a drop file with no artist, no title and no value routes. The publisher then sends the dead block (publisher ADR 0035 §Jingle Mode).
+For a jingle when no live DJ is on air, the producer writes a drop file with no artist, no title and no value routes. The publisher then sends the dead block (publisher ADR 0041 §Jingle Mode).
 
 The test on 2026-11-22 used a playlist with jingle mode and three short files. A jingle gave `"jingle": true` with the metadata of the last song. The relay had the dead block. The next song had its own value on the relay after 24 seconds.
 

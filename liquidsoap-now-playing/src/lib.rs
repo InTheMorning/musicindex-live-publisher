@@ -23,11 +23,11 @@ use now_playing_drop::{
 use state::StateFile;
 
 const FRESHNESS: Duration = Duration::from_secs(5);
-/// The longest song line that the relay accepts, in characters (ADR 0035 §The Publisher And The Relay).
+/// The longest song line that the relay accepts, in characters (ADR 0041 §The Publisher And The Relay).
 const MAX_SONG_LINE_CHARS: usize = 1_024;
 
 /// The route service result of each chapter song, by the pair of feed GUID
-/// and item GUID (ADR 0035 §The Route Lookup). An empty list is the
+/// and item GUID (ADR 0041 §The Route Lookup). An empty list is the
 /// result "no routes".
 pub type SongRoutes = HashMap<(String, String), Vec<PaymentRoute>>;
 
@@ -78,7 +78,7 @@ impl Producer {
             .unwrap_or_else(|| Path::new("."))
             .to_path_buf();
         let drop_path = settings.drop_dir.join(format!("{}.json", settings.target));
-        // ADR 0035 §What The Producer Writes In `display.json`: the producer writes `display.json` only with `display_dir`.
+        // ADR 0041 §What The Producer Writes In `display.json`: the producer writes `display.json` only with `display_dir`.
         let display = settings.display_dir.map(DisplayOutput::new);
         Self {
             state_path,
@@ -98,7 +98,7 @@ impl Producer {
         }
     }
 
-    /// Writes the display state `null` at start (ADR 0035 §What The Producer Writes In `display.json`). Without a display directory, it does
+    /// Writes the display state `null` at start (ADR 0041 §What The Producer Writes In `display.json`). Without a display directory, it does
     /// nothing. A display write error gives a warning and never stops the
     /// producer.
     ///
@@ -131,7 +131,7 @@ impl Producer {
             Ok(bytes) => bytes,
             Err(_) => return self.clear(),
         };
-        // ADR 0035 §The State File Contract: a state file that stays bad stops the heartbeat, so the
+        // ADR 0041 §The State File Contract: a state file that stays bad stops the heartbeat, so the
         // freshness rule removes the drop file after the limit.
         let header: state::StateHeader = match serde_json::from_slice(&bytes) {
             Ok(header) => header,
@@ -150,7 +150,7 @@ impl Producer {
             Err(_) => return self.keep_while_fresh(now),
         };
         // At start, the state is not fresh until `written` changes one time
-        // (ADR 0035 §The State File Contract). A change of `written` is the heartbeat of Liquidsoap.
+        // (ADR 0041 §The State File Contract). A change of `written` is the heartbeat of Liquidsoap.
         match self.last_written {
             None => self.last_written = Some(parsed.written),
             Some(previous) if previous != parsed.written => {
@@ -171,7 +171,7 @@ impl Producer {
         let pairs = if parsed.jingle {
             Vec::new()
         } else if chapters.is_empty() {
-            // ADR 0035 §The Route Lookup: a song state asks for its
+            // ADR 0041 §The Route Lookup: a song state asks for its
             // two state GUIDs.
             song_pair(&parsed).into_iter().collect()
         } else {
@@ -197,13 +197,13 @@ impl Producer {
         )?;
         self.output
             .set(Presence::Present(serde_json::to_string_pretty(&content)?))?;
-        // ADR 0035 §Invariants: the display state follows the drop file of
+        // ADR 0041 §Invariants: the display state follows the drop file of
         // the same read, and uses its artist, title, album and play_id.
         self.write_display_track(&parsed, &content);
         Ok(())
     }
 
-    /// Writes the display track of one fresh state (ADR 0035 §What The Producer Writes In `display.json`). A write error gives a warning.
+    /// Writes the display track of one fresh state (ADR 0041 §What The Producer Writes In `display.json`). A write error gives a warning.
     fn write_display_track(&mut self, state: &StateFile, content: &serde_json::Value) {
         if self.display.is_none() {
             return;
@@ -231,7 +231,7 @@ impl Producer {
                 nonempty(content["album"].as_str()),
             )
         };
-        // ADR 0035 §The Artwork Of A Segment: the image URL of the drop file
+        // ADR 0041 §The Artwork Of A Segment: the image URL of the drop file
         // (the chapter image, else the state image) wins when it is valid,
         // else the picture file of the state, else `null`. A jingle drop file
         // has no image, so a jingle uses the state image.
@@ -257,7 +257,7 @@ impl Producer {
     }
 
     /// Gives the artwork of the picture file of the state. The producer
-    /// prepares the picture one time for each track (ADR 0035 §The Producer Reads The Picture File
+    /// prepares the picture one time for each track (ADR 0041 §The Producer Reads The Picture File
     /// Reads The Picture File).
     fn picture_artwork(&mut self, state: &StateFile) -> Option<Artwork> {
         let key = PictureKey::of(state);
@@ -341,7 +341,7 @@ impl Producer {
         self.output.set(Presence::Absent)?;
         self.lock = None;
         self.picture_cache = None;
-        // ADR 0035 §What The Producer Writes In `display.json`: the display state is `null` when the producer releases
+        // ADR 0041 §What The Producer Writes In `display.json`: the display state is `null` when the producer releases
         // the lock. The writer does not rewrite a file with the same content.
         if let Some(display) = self.display.as_mut() {
             write_display(display, None);
@@ -351,7 +351,7 @@ impl Producer {
 }
 
 /// Writes the display state. A display error gives a warning and never stops
-/// the drop file (ADR 0035 §What The Producer Writes In `display.json`).
+/// the drop file (ADR 0041 §What The Producer Writes In `display.json`).
 fn write_display(display: &mut DisplayOutput, track: Option<ShownTrack<'_>>) {
     if let Err(error) = display.write(track) {
         warn_display(display, &error);
@@ -367,7 +367,7 @@ fn warn_display(output: &DisplayOutput, error: &anyhow::Error) {
     );
 }
 
-/// The song line of a file (ADR 0035 §The Song Line): `song`, else
+/// The song line of a file (ADR 0041 §The Song Line): `song`, else
 /// `artist - title`, else `artist`, else `title`, else `None`. It uses the
 /// strings of the state with no change.
 fn song_line(state: &StateFile) -> Option<String> {
@@ -382,7 +382,7 @@ fn song_line(state: &StateFile) -> Option<String> {
     }
 }
 
-/// Makes the drop file for one fresh state that is not live (ADR 0035 §What The Producer Writes and §What The Producer Writes For An Episode File). `bad_routes_seq`
+/// Makes the drop file for one fresh state that is not live (ADR 0041 §What The Producer Writes and §What The Producer Writes For An Episode File). `bad_routes_seq`
 /// and `bad_chapters_seq` hold the `seq` of the last error log, so that each
 /// track gives one error line for each fault.
 fn render_state(
@@ -393,7 +393,7 @@ fn render_state(
     bad_routes_seq: &mut Option<i64>,
 ) -> Result<serde_json::Value> {
     let play_ms = (state.track_started * 1000.0) as i64;
-    // A jingle has no identity and no routes (ADR 0035 §Jingle Mode).
+    // A jingle has no identity and no routes (ADR 0041 §Jingle Mode).
     if state.jingle {
         return Ok(serde_json::to_value(Version3DropFile {
             schema: "musicindex.nowplaying/3",
@@ -436,7 +436,7 @@ fn render_state(
     let mut feed_guid = episode_feed;
     let mut track_guid = episode_item;
     let routes = match chapter {
-        // ADR 0035 §The Song Routes: the service result, else the state.
+        // ADR 0041 §The Song Routes: the service result, else the state.
         None if chapters.is_empty() => match song_pair(state) {
             Some(pair) => match song_routes.get(&pair) {
                 Some(routes) if has_percentage(routes) => routes.clone(),
@@ -457,7 +457,7 @@ fn render_state(
                 feed_guid = Some(feed);
                 track_guid = Some(item);
                 let song = select_song_routes(chapter, feed, item, song_routes);
-                // ADR 0035 §What The Producer Writes For An Episode File: with no song routes, the chapter pays nobody.
+                // ADR 0041 §What The Producer Writes For An Episode File: with no song routes, the chapter pays nobody.
                 if has_percentage(song) {
                     merged_routes(usable_episode, song, chapter.remote_percentage)
                 } else {
@@ -473,13 +473,13 @@ fn render_state(
     let artist = chapter
         .and_then(|chapter| nonempty(chapter.artist.as_deref()))
         .unwrap_or(&state.artist);
-    // ADR 0040: a chapter with a title gives the episode title as the album,
+    // ADR 0041 §The Album Of A Segment: a chapter with a title gives the episode title as the album,
     // because the title line then shows the chapter song.
     let album = chapter
         .and_then(|chapter| nonempty(chapter.title.as_deref()))
         .and_then(|_| nonempty(Some(state.title.as_str())))
         .or_else(|| nonempty(state.album.as_deref()));
-    // ADR 0035 §What The Producer Writes For An Episode File: each segment of a file with chapters gets its own play.
+    // ADR 0041 §What The Producer Writes For An Episode File: each segment of a file with chapters gets its own play.
     let play_id = match segment {
         Some(segment) => format!("ls-{play_ms}-{}-{}", state.seq, segment.start_ms),
         None => format!("ls-{play_ms}-{}", state.seq),
@@ -491,7 +491,7 @@ fn render_state(
         artist,
         title,
         duration_secs: None,
-        // ADR 0035 §The Artwork Of A Segment: the chapter image first.
+        // ADR 0041 §The Artwork Of A Segment: the chapter image first.
         image: chapter
             .and_then(|chapter| chapter.image_url.as_deref())
             .or_else(|| nonempty(state.image.as_deref()).and_then(image_url)),
@@ -504,7 +504,7 @@ fn render_state(
     })?)
 }
 
-/// The position in the file in milliseconds (ADR 0035 §The Position Rule).
+/// The position in the file in milliseconds (ADR 0041 §The Position Rule).
 fn position_ms(state: &StateFile) -> Option<i64> {
     let elapsed = state.elapsed.filter(|value| value.is_finite())?;
     let cue_in = state.cue_in.unwrap_or(0.0);
@@ -512,7 +512,7 @@ fn position_ms(state: &StateFile) -> Option<i64> {
     (position.is_finite() && position >= 0.0).then_some(position as i64)
 }
 
-/// The GUIDs of an identified remote split, or `None` (ADR 0035 §What The Producer Writes For An Episode File).
+/// The GUIDs of an identified remote split, or `None` (ADR 0041 §What The Producer Writes For An Episode File).
 fn identified_pair(chapter: &chapters::Chapter) -> Option<(&str, &str)> {
     let feed = nonempty(chapter.feed_guid.as_deref())?;
     let item = nonempty(chapter.item_guid.as_deref())?;
@@ -520,7 +520,7 @@ fn identified_pair(chapter: &chapters::Chapter) -> Option<(&str, &str)> {
 }
 
 /// The song routes of an identified remote split: the service result when it
-/// has a percentage, else the routes of the file (ADR 0035 §The Route Lookup).
+/// has a percentage, else the routes of the file (ADR 0041 §The Route Lookup).
 fn select_song_routes<'a>(
     chapter: &'a chapters::Chapter,
     feed: &str,
@@ -533,7 +533,7 @@ fn select_song_routes<'a>(
     }
 }
 
-/// The two state GUIDs of a song state, or `None` (ADR 0035 §The Route Lookup
+/// The two state GUIDs of a song state, or `None` (ADR 0041 §The Route Lookup
 /// Selects The Lookup). The caller checks that the state has no chapter list.
 fn song_pair(state: &StateFile) -> Option<(String, String)> {
     let feed = nonempty(state.feed_guid.as_deref())?;
@@ -609,7 +609,7 @@ mod tests {
 
     #[test]
     fn a_state_that_stays_bad_clears_after_the_freshness_limit() -> Result<()> {
-        // ADR 0035 §What The Producer Writes: a file that stays bad stops the
+        // ADR 0041 §What The Producer Writes: a file that stays bad stops the
         // heartbeat, and the row "not fresh" then applies.
         let bad_texts: [&[u8]; 2] = [b"{", br#"{"format":"musicindex-liquidsoap-state/1"}"#];
         for bad in bad_texts {
@@ -996,7 +996,7 @@ mod tests {
         assert_eq!(out[0]["title"], "Song 0");
         assert_eq!(out[0]["artist"], "Artist 0");
         assert_eq!(out[2]["title"], "Title");
-        // ADR 0035 §The Merged Routes item 8.
+        // ADR 0041 §The Merged Routes item 8.
         assert_eq!(
             addresses(&out[0]),
             ["i1-a=42.75", "i1-b=42.75", "alice=9.5", "fee=5.0"]
@@ -1144,7 +1144,7 @@ mod tests {
                 ["fee=5.0", "local-a=23.75", "local-b=71.25"],
                 "{percentage}"
             );
-            // ADR 0035 §What The Producer Writes For An Episode File: a null title and a null artist give the state values.
+            // ADR 0041 §What The Producer Writes For An Episode File: a null title and a null artist give the state values.
             assert_eq!(out[0]["title"], "Title");
             assert_eq!(out[0]["artist"], "Artist");
         }
@@ -1479,7 +1479,7 @@ mod tests {
         Ok(())
     }
 
-    // The song route tests of ADR 0035 §Verification.
+    // The song route tests of ADR 0041 §Verification.
 
     const FILE_ROUTES: &str = r#"[{"address":"file","split":100}]"#;
 
@@ -1623,7 +1623,7 @@ mod tests {
         Ok(())
     }
 
-    // The display state tests of ADR 0035 §Verification.
+    // The display state tests of ADR 0041 §Verification.
 
     fn display_settings(temp: &TempDir) -> InstanceSettings {
         InstanceSettings {
@@ -1758,7 +1758,7 @@ mod tests {
 
     #[test]
     fn a_chapter_with_a_title_has_the_episode_title_as_the_album() -> Result<()> {
-        // ADR 0040: reads 0, 1 and 3 are chapters, read 2 is a gap and read 4
+        // ADR 0041 §The Album Of A Segment: reads 0, 1 and 3 are chapters, read 2 is a gap and read 4
         // is after the last chapter.
         let out = display_reads(&chapter_state(serde_json::json!({})), &CHAPTER_READS)?;
         let albums: Vec<_> = out.iter().map(|(drop, _)| drop["album"].clone()).collect();
@@ -1771,7 +1771,7 @@ mod tests {
 
     #[test]
     fn a_chapter_with_no_title_or_no_episode_title_has_the_state_album() -> Result<()> {
-        // ADR 0040: with no chapter title, the title line shows the episode
+        // ADR 0041 §The Album Of A Segment: with no chapter title, the title line shows the episode
         // title, so the album line shows the state album.
         let mut untitled = remote(0, 10_000, "f1", "i1".into());
         untitled["title"] = "".into();
@@ -2063,7 +2063,7 @@ mod tests {
             false,
         )?;
         assert_eq!(out[0].1["track"]["artwork"]["mime"], "image/png");
-        // ADR 0035 §The Artwork Of A Segment: a refused URL is not in the
+        // ADR 0041 §The Artwork Of A Segment: a refused URL is not in the
         // drop file, so the publisher can use the relay copy (ADR 0034).
         assert!(out[0].0["image"].is_null());
         Ok(())

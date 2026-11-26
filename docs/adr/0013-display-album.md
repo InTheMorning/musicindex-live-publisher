@@ -4,6 +4,7 @@ Status: Accepted
 Date: 2026-10-06
 
 - Changes: ADR 0012 items: version 3 of `display.json`.
+- Changed by: ADR 0042, proposed 2026-11-26. A track in `display.json` version 3 can also have `pub_date`.
 
 Accepted 2026-10-06 by the operator. The item of §Before Acceptance is done:
 relay ADR 0006 is accepted.

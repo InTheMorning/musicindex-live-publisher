@@ -5,7 +5,7 @@
 - Changed by: ADR 0038, accepted 2026-11-26. The display state on the wire also has `playId`.
 - Supersedes: ADR 0012 (`docs/archive/adr/0012-pair-display-state-with-value-block.md`). This record restates each live rule
   of ADR 0012 and of its three changes. It adds no rule and removes no rule.
-- Uses: ADR 0013 (version 3 of `display.json` and `album`), ADR 0035 §The Song Line (the station song line), ADR 0009
+- Uses: ADR 0013 (version 3 of `display.json` and `album`), ADR 0041 §The Song Line (the station song line), ADR 0009
   §The Song Line (the Mixxx song line), ADR 0010 (`play_id` in the drop file), relay ADR 0005 (`songLine` and `value`
   on the wire).
 - Operator choice, 2026-11-26: continue with ADR 0038. ADR 0038 must change the pairing rules, and ADR 0012 has three
@@ -32,7 +32,7 @@ ADR 0012 had these changes, and this record restates each of them:
 
 - ADR 0013: `display.json` version 3 adds `album`. The pairing rules do not change.
 - ADR 0026, archived: `song_line` is the ICY `StreamTitle` of the stream for the track.
-- ADR 0035: it restates the change of ADR 0026 for the station producer.
+- ADR 0041: it restates the change of ADR 0026 for the station producer.
 
 ## Decision
 
@@ -46,7 +46,7 @@ A track in `display.json` has these two fields. It also has the fields of ADR 00
 | `play_id` | string or null | The same value as `play_id` in the drop file of this play |
 
 - For the Mixxx producer, `song_line` is the first line of `now-playing.txt` (ADR 0009 §The Song Line).
-- For the station producer, `song_line` is the line of ADR 0035 §The Song Line.
+- For the station producer, `song_line` is the line of ADR 0041 §The Song Line.
 - The producer writes the current version of `display.json` only, and the publisher reads the current version only
   (ADR 0013).
 - A `null` track has no `song_line` and no `play_id`.
@@ -106,6 +106,6 @@ second minter would break that rule.
 - `docs/adr/0009-hls-track-metadata.md`
 - `docs/adr/0010-live-value-payload-reference-shape.md`
 - `docs/adr/0013-display-album.md`
-- `docs/adr/0035-the-station-producer.md`
+- `docs/adr/0041-the-station-producer.md`
 - `docs/reviews/display-pairing-review-checklist.md`
 - `musicindex-live-relay`: `docs/adr/0005-display-song-line-and-value.md`

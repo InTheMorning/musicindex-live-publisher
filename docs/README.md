@@ -104,14 +104,11 @@ the next priority. Confirm that logging works before the show.
   — Accepted. When the drop file has no image URL, the payload `image` is the
   display URL or the relay URL of the picture of the same play. Relay
   ADR 0011 keeps the image. It changes ADR 0010
-- [ADR 0035: The station producer](adr/0035-the-station-producer.md)
-  — Accepted. One record for the station producer. It restates each live rule
-  of ADR 0022 and ADR 0025 to ADR 0028, and adds the chapter image. It
-  supersedes those five records
 - [ADR 0036: The HLS stream carries the picture one time for each song](adr/0036-the-hls-stream-carries-the-picture-one-time-for-each-song.md)
   — Accepted. An `APIC` frame goes into the first segment of each song, on
   the station and on the VPS stack. It needs a change of the Liquidsoap cover
-  keys. It changes ADR 0009 and ADR 0035
+  keys. It changes ADR 0009 and ADR 0035. ADR 0041 restates its change to
+  ADR 0035
 - [ADR 0037: The listener delay comes from the Icecast burst](adr/0037-the-listener-delay-comes-from-the-icecast-burst.md)
   — Accepted. A target can give `icecast_burst_bytes` and
   `stream_bitrate_kbps`. The publisher sends that delay, rounded down, as
@@ -119,13 +116,20 @@ the next priority. Confirm that logging works before the show.
 - [ADR 0038: The HLS stream marks each segment](adr/0038-the-hls-stream-marks-each-segment.md)
   — Accepted. The station slot text writes a frame `musicindex.hls/2` with
   the `playId` of the segment at each chapter boundary. It changes ADR 0009
-  and ADR 0035, and adds `playId` to the display state of ADR 0039
+  and ADR 0035, and adds `playId` to the display state of ADR 0039. ADR 0041
+  restates its change to ADR 0035
 - [ADR 0039: The display state pairs with its value block](adr/0039-the-display-state-pairs-with-its-value-block.md)
   — Accepted. One record for the pairing rules of ADR 0012 and its three
   changes. It adds no rule. It supersedes ADR 0012
-- [ADR 0040: A chapter song has the episode title as its album](adr/0040-a-chapter-song-has-the-episode-title-as-its-album.md)
-  — Accepted. A chapter with a title has the state title as its `album`, in
-  the drop file and in `display.json`. It changes ADR 0035
+- [ADR 0041: The station producer](adr/0041-the-station-producer.md)
+  — Accepted. One record for the station producer. It restates each live rule
+  of ADR 0035 and its changes by ADR 0036, ADR 0038 and ADR 0040, and adds no
+  rule. It supersedes ADR 0035 and ADR 0040
+- [ADR 0042: An episode sends its publication date](adr/0042-an-episode-sends-its-publication-date.md)
+  — Proposed. An episode state sends the `TDRC` day as `pub_date` in
+  `display.json` and as `pubDate` on the wire. It changes ADR 0013 and
+  ADR 0041. Relay ADR 0013 (Proposed) agrees with it. It waits for a Rainbrook
+  ADR
 
 ## Plans
 
@@ -342,7 +346,7 @@ one before it.
 - [004 — The off switch](tasks/show-log-task-004-off-switch.md)
   — Implemented - 2026-10-19. The amendment of ADR 0017 that adds `show_log`
 
-Packets for the station producer record. ADR 0035 governs them.
+Packets for the station producer record. ADR 0041 governs them.
 
 - [001 — Comments and runbooks cite the current record](tasks/adr-0035-task-001-cite-the-current-record.md)
   — Implemented - 2026-11-26
@@ -359,7 +363,7 @@ Packets for the segment frame. ADR 0038 governs them.
 - [002 — The slot text writes the segment frame](tasks/segment-frame-task-002-slot-text-frame.md)
   — Implemented - 2026-11-26
 
-Packets for the episode album. ADR 0040 governs them.
+Packets for the episode album. ADR 0041 §The Album Of A Segment governs them.
 
 - [001 — A chapter song has the episode title as its album](tasks/episode-album-task-001-chapter-album-is-episode-title.md)
   — Implemented - 2026-11-26
@@ -416,6 +420,10 @@ Superseded decisions and their packets. Read them for research only.
   — Superseded by ADR 0035 on 2026-11-26
 - [ADR 0031: The dead block has no destination](archive/adr/0031-the-dead-block-has-no-destination.md)
   — Superseded by ADR 0033 on 2026-11-25
+- [ADR 0035: The station producer](archive/adr/0035-the-station-producer.md)
+  — Superseded by ADR 0041 on 2026-11-26
+- [ADR 0040: A chapter song has the episode title as its album](archive/adr/0040-a-chapter-song-has-the-episode-title-as-its-album.md)
+  — Superseded by ADR 0041 on 2026-11-26
 - [Show log task 001 — Show log writer](archive/tasks/show-log-task-001-log-writer.md)
   — never started
 - [Show log task 002 — Read contract and documentation](archive/tasks/show-log-task-002-read-contract-and-docs.md)

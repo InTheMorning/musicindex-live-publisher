@@ -1,6 +1,6 @@
 # ADR 0028: The Station Producer Uses The Embedded Picture Of The File As The Artwork Fallback
 
-> Archived: superseded by [ADR 0035](../../adr/0035-the-station-producer.md) on 2026-11-26. ADR 0035 restates
+> Archived: superseded by [ADR 0035](0035-the-station-producer.md) on 2026-11-26. ADR 0035 restates
 > each live rule of this record.
 
 - Status: Superseded by ADR 0035 on 2026-11-26. Accepted on 2026-11-24 by the operator, as at commit ca460a2. The orchestrator session relayed the decision.

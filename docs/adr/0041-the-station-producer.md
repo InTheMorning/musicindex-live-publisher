@@ -1,22 +1,18 @@
-# ADR 0035: The Station Producer
+# ADR 0041: The Station Producer
 
-- Status: Accepted on 2026-11-26 by the operator. ADR 0022 and ADR 0025 to ADR 0028 are in `docs/archive/adr/`.
-- Date: 2026-11-25
-- Changed by: ADR 0036, accepted 2026-11-26. The slot text also gives the picture to the HLS output, one time for each
-  song.
-- Changed by: ADR 0038, accepted 2026-11-26. The slot text also writes a segment frame at each chapter boundary.
-- Changed by: ADR 0040, accepted 2026-11-26. A chapter with a title has the state title as its `album`.
-- Supersedes: ADR 0022 (`docs/archive/adr/0022-liquidsoap-producer.md`).
-- Supersedes: ADR 0025 (`docs/archive/adr/0025-the-station-producer-pays-each-chapter-song.md`).
-- Supersedes: ADR 0026 (`docs/archive/adr/0026-the-station-producer-writes-the-display-state.md`).
-- Supersedes: ADR 0027 (`docs/archive/adr/0027-the-station-producer-asks-the-route-service-for-a-song.md`).
-- Supersedes: ADR 0028 (`docs/archive/adr/0028-the-station-producer-uses-the-embedded-picture.md`).
-- Changes: ADR 0012 §The Producer and its invariant "`songLine` is the line that `butt` reads". This item restates
-  the change of ADR 0026: `song_line` is the ICY `StreamTitle` of the stream for the track. For Mixxx it is the first
-  line of `now-playing.txt` (ADR 0009). For a station it is the line of §The Song Line.
-- Uses: ADR 0008 (the display path), ADR 0011 (the listener delay), ADR 0013 (the album), ADR 0014 (the drop file
-  version 3), ADR 0016 (instances and the producer lock), ADR 0017 (the show log), ADR 0021 (the unit names) and
-  ADR 0024 (a payable block needs the two GUIDs), without a change.
+- Status: Accepted on 2026-11-26 by the operator. ADR 0035 and ADR 0040 are in `docs/archive/adr/`.
+- Date: 2026-11-26
+- Changed by: ADR 0042, proposed 2026-11-26. The state gets the optional field `pub_date`.
+- Supersedes: ADR 0035 (`docs/archive/adr/0035-the-station-producer.md`). This record restates each live rule of
+  ADR 0035 and of its three changes. It adds no rule and removes no rule.
+- Supersedes: ADR 0040 (`docs/archive/adr/0040-a-chapter-song-has-the-episode-title-as-its-album.md`).
+- Uses: ADR 0036 §The Station and ADR 0038 §The Slot Text Writes The Frames for the HLS frames of the slot text,
+  without a change. Those two records own the HLS rules, and they stay current.
+- Uses: ADR 0039 for `song_line` and `play_id` in `display.json` and for the pairing, without a change.
+- Uses: ADR 0008 (the display path), ADR 0010 (`line` and `podcastName` come from the drop file `album`), ADR 0011
+  (the listener delay), ADR 0013 (the album), ADR 0014 (the drop file version 3), ADR 0016 (instances and the producer
+  lock), ADR 0017 (the show log), ADR 0021 (the unit names) and ADR 0024 (a payable block needs the two GUIDs), without
+  a change.
 - Uses: ADR 0034 for the payload image when a segment has no image URL, without a change.
 - Uses: `musicindex-live-relay` ADR 0003 (artwork forms) and ADR 0005 (`songLine`), without a change.
 - Depends on: musicindex ADR 0093 R-TAG-2 (the frame names) and R-TAG-4 (the chapter list), with R-TAG-6 (the song
@@ -24,38 +20,50 @@
   it uses, and the musicindex record wins if the two differ.
 - Depends on: musicindex ADR 0099 R-IMAGE-4 and R-IMAGE-5 (commit `263179d`): the field `image_url` of a chapter entry.
 - Uses: musicindex ADR 0075 R-VALUE-5 and the crate `musicindex-value` for the percentage of each recipient.
-- Operator choice, 2026-11-21: a bind mount gives the host the state file.
-- Operator choice, 2026-11-21: `state.json` holds all keys, so the producer does not read the media files.
-- Operator choice, 2026-11-21: the producer and the publisher operate as one user account with lingering.
-- Operator choice, 2026-11-22: when a station plays an episode file, the producer pays each chapter song, as the
-  `valueTimeSplit` elements of the feed do.
-- Operator choice, 2026-11-22: the custom frames get neutral names. Readers do not accept the old `MusicIndex` frame
-  names. The operator tags the collection again with the new names.
-- Operator choice, 2026-11-22: the producer gets the routes of a remote chapter song from the route service with the
-  two chapter GUIDs first, then from `value_routes` of the entry. With neither, the chapter pays nobody for that time,
-  not the episode.
-- Operator choice, 2026-11-22: `mixxx-now-playing` asks the route service with the two GUIDs.
-- Operator choice, 2026-11-22: a chapter with a `title` that is null or empty gets the state title.
-- Operator choice, 2026-11-22: a field of the relay display state lets the app show and pay each chapter song. The ICY
-  title of the station does not change.
-- Orchestrator choice, 2026-11-22, from the operator goal "show and pay each chapter song": each display state of the
+- Operator choice, 2026-11-26: consolidate ADR 0035 before a fourth change (global `CLAUDE.md` §Consolidate A Changed
+  Decision).
+
+The operator choices that ADR 0035 and ADR 0040 recorded stay in force:
+
+- 2026-11-21: a bind mount gives the host the state file.
+- 2026-11-21: `state.json` holds all keys, so the producer does not read the media files.
+- 2026-11-21: the producer and the publisher operate as one user account with lingering.
+- 2026-11-22: when a station plays an episode file, the producer pays each chapter song, as the `valueTimeSplit`
+  elements of the feed do.
+- 2026-11-22: the custom frames get neutral names. Readers do not accept the old `MusicIndex` frame names.
+  The operator tags the collection again with the new names.
+- 2026-11-22: the producer gets the routes of a remote chapter song from the route service with the two chapter GUIDs
+  first, then from `value_routes` of the entry. With neither, the chapter pays nobody for that time, not the episode.
+- 2026-11-22: `mixxx-now-playing` asks the route service with the two GUIDs.
+- 2026-11-22: a chapter with a `title` that is null or empty gets the state title.
+- 2026-11-22: a field of the relay display state lets the app show and pay each chapter song. The ICY title of the
+  station does not change.
+- 2026-11-22, orchestrator choice from the operator goal "show and pay each chapter song": each display state of the
   station has the artist and the title of the chapter song. The operator can change it.
-- Operator choice, 2026-11-22: no limit on the size of the chapter list until the station check fails.
-- Operator choice, 2026-11-23: the producer gets the routes of a song file from the route service. The producer
-  selects the lookup of the VTS routes or the lookup of the whole track.
-- Operator choice, 2026-11-24: option "A, then B as fallback". A is the image URL of `TXXX:Podcast Image`. B is the
-  embedded picture of the file when the state has no usable URL.
-- Operator choice, 2026-11-25: the art of a chapter song comes from the chapter image first. The image of the file
-  comes second, and the relay copy of the picture (ADR 0034) comes third.
+- 2026-11-22: no limit on the size of the chapter list until the station check fails.
+- 2026-11-23: the producer gets the routes of a song file from the route service. The producer selects the lookup of
+  the VTS routes or the lookup of the whole track.
+- 2026-11-24: option "A, then B as fallback". A is the image URL of `TXXX:Podcast Image`. B is the embedded picture of
+  the file when the state has no usable URL.
+- 2026-11-25: the art of a chapter song comes from the chapter image first. The image of the file comes second, and
+  the relay copy of the picture (ADR 0034) comes third.
+- 2026-11-26: while a chapter song plays, Rainbrook shows "Homegrown Hits - Episode 158" below the artist, not
+  "Homegrown Hits".
+- 2026-11-26: the drop file has the same `album`, so the live value payload also has the episode title in `line` and
+  `podcastName`.
 
-## What This Record Adds
+## What This Record Replaces
 
-This record restates each live rule of the five superseded records. It adds two rules in §The Artwork Of A Segment:
-the image of a chapter song, and the URL check of the drop file `image`. Each other rule is a restatement with no
-change of meaning.
+ADR 0035 restated ADR 0022 and ADR 0025 to ADR 0028. This record restates ADR 0035 and these three changes:
 
-The superseded records hold the history, the rejected alternatives and the evidence of each rule. Read them in the
-archive for research only.
+- ADR 0036: the slot text also gives the picture to the HLS output, one time for each song (§The Slot Text Writes The
+  Picture File).
+- ADR 0038: the slot text also writes a segment frame at each chapter boundary (§The Slot Text Writes The Picture File
+  and §Invariants).
+- ADR 0040: a chapter with a title has the state title as its `album` (§The Album Of A Segment).
+
+The archived records hold the history, the rejected alternatives and the station results of each rule. Read them
+for research only.
 
 ## Context
 
@@ -251,12 +259,32 @@ identified split is usable when the song routes of §The Route Lookup have a per
 - The producer applies ADR 0024: routes only with a feed GUID and an item GUID in the identity of the drop file, and
   episode routes only when the episode group is usable.
 - `title` is the chapter title when it is a string that is not empty, and the state title otherwise. `artist` is
-  the chapter artist when it is a string that is not empty, and the state artist otherwise. `album` follows ADR 0040.
-  `image` follows §The Artwork Of A Segment.
+  the chapter artist when it is a string that is not empty, and the state artist otherwise. `album` follows §The Album
+  Of A Segment. `image` follows §The Artwork Of A Segment.
 - `play_id` is `ls-<track_started in ms>-<seq>` for a file with no valid chapter. For a file with chapters, it is
   `ls-<track_started in ms>-<seq>-<segment start in ms>`. Each segment thus gets its own line in the show log
   (ADR 0017).
 - `duration_secs` stays `null`.
+
+### The Album Of A Segment
+
+The slot text writes the title tag and the album tag of the file into the state. For an episode file, the title is
+the episode title, for example "Homegrown Hits - Episode 158", and the album is the show, for example "Homegrown Hits".
+While a chapter song plays, the title line shows the chapter title, so the album line shows the episode title.
+
+| Segment | `album` in the drop file |
+| --- | --- |
+| A chapter with a title that is not empty, and a state `title` that is not empty | The state `title` |
+| A chapter with an empty title or no title | The state `album` |
+| A chapter with a title, and an empty state `title` | The state `album` |
+| A gap, a file with no chapters | The state `album` |
+
+- A jingle drop file has no `album` (§What The Producer Writes). The jingle display track has the state `album`.
+- Each other display track has the `album` of the drop file of the same read, the same as `artist` and `title`.
+- An empty `album` is `null` in the drop file and in `display.json`.
+- A chapter with no title shows the state title in the title line. Its `album` stays the state album, so the two lines
+  do not show the same text.
+- The publisher puts the drop file `album` into the live value payload as `line[0]` and `podcastName` (ADR 0010).
 
 ### The Merged Routes
 
@@ -366,14 +394,14 @@ The first row that applies wins:
 | Not fresh, or missing, or `live` is `true` | `{"track": null}`, one time, when the producer releases the lock |
 | Fresh, but the producer cannot parse it | No change |
 | No song line, or a song line of more than 1,024 characters | `{"track": null}`. Relay ADR 0005 refuses a longer line. |
-| `jingle` is `true` | A track with the artist and the title of the state, the song line of the state, and `play_id` `null` |
+| `jingle` is `true` | A track with the artist, the title and the album of the state, the song line of the state, and `play_id` `null` |
 | Each other state with a drop file | A track. See the table below. |
 
 | Field | Value |
 | --- | --- |
 | `artist` | The `artist` of the drop file of the same segment. |
 | `title` | The `title` of the drop file of the same segment. |
-| `album` | The `album` of the drop file of the same segment (ADR 0040). |
+| `album` | The `album` of the drop file of the same segment (§The Album Of A Segment). |
 | `artwork` | §The Artwork Of A Segment. |
 | `song_line` | The song line of the file. |
 | `play_id` | The `play_id` of the drop file of the same segment. |
@@ -397,16 +425,14 @@ The first row that applies wins:
 The image of a segment has two forms. The drop file `image` must be a URL. The display `artwork` can also be a
 picture. The rules for the drop file `image`:
 
-1. A segment of a remote split with an `image_url`: that URL. This rule is new in this record (musicindex ADR 0099
-   R-IMAGE-5 item 2). A remote split is identified or not identified.
-2. Else the `image` of the state, when `image_url` of `now-playing-drop` accepts it. The URL check is new in this
-   record. Before it, the drop file kept each `image` that was not empty.
-3. Else `null`. When ADR 0034 is accepted and implemented, the publisher then uses the display artwork of the same
-   play.
+1. A segment of a remote split with an `image_url`: that URL (musicindex ADR 0099 R-IMAGE-5 item 2). A remote split
+   is identified or not identified.
+2. Else the `image` of the state, when `image_url` of `now-playing-drop` accepts it.
+3. Else `null`. The publisher then uses the display artwork of the same play (ADR 0034).
 
 The rules for the display `artwork`. The first rule that applies wins:
 
-1. The `image_url` of the remote split of the segment, as `{"url": ...}`. This rule is new in this record.
+1. The `image_url` of the remote split of the segment, as `{"url": ...}`.
 2. The `image` of the state, as `{"url": ...}`, when `image_url` of `now-playing-drop` accepts it: HTTP or HTTPS, and
    at most 2,048 characters (relay ADR 0003). The producer then does not read the picture file.
 3. The picture file of the state, when `prepare_image` accepts its bytes (ADR 0008 §The Embedded Image).
@@ -440,6 +466,10 @@ The slot text selects the picture and writes the bytes. It does not change, redu
 - A jingle gets no new picture. It keeps the `picture` of the last track. A track mark with no metadata also keeps it.
 - An empty `filename`, a file of a different format, a file with no picture, or a read failure gives an empty
   `picture`. A read failure writes a log line at level 2.
+- The slot text also gives the picture to the HLS output, one time for each song. ADR 0036 §The Station owns that
+  rule.
+- The slot text also writes a segment frame `musicindex.hls/2` at the start of each track and at each chapter
+  boundary. ADR 0038 §The Slot Text Writes The Frames owns that rule.
 
 ### The Producer Reads The Picture File
 
@@ -499,6 +529,7 @@ needs its own record.
 
 - The publisher reads `display.json` of the target and adds `songLine` and `value` (ADR 0012).
 - Relay ADR 0005 accepts `songLine` of 1 to 1,024 characters.
+- The relay accepts an `album` of at most 1,024 characters (relay ADR 0006).
 
 ## Invariants
 
@@ -521,6 +552,9 @@ These rules apply while this decision is current.
 - The producer writes `display.json` after the drop file of the same read.
 - A chapter `image_url` wins over the image of the file. A valid `image` URL of the state wins over the picture file.
 - One component prepares an embedded picture for the two producers.
+- The slot text never decides which chapter entry is valid. The producer owns that decision (ADR 0038).
+- A display track that is not a jingle has the `album` of the drop file of the same read.
+- The producer does not read `album` from the chapter list.
 
 ## Verification
 
@@ -546,7 +580,7 @@ and they stay green:
 Mechanical, in `now-playing-drop`: the merge example of §The Merged Routes item 8, the limits of `remote_percentage`,
 the share cases and a part that rounds to 0. The tests of the display writer and of the picture component.
 
-Mechanical, new for §The Artwork Of A Segment:
+Mechanical, for §The Artwork Of A Segment:
 
 - A remote split with an `image_url` gives that URL in the drop file `image` and in the display `artwork`. A state
   `image` that `image_url` refuses gives the drop file `image` `null`. This is
@@ -554,6 +588,14 @@ Mechanical, new for §The Artwork Of A Segment:
 - These values of `image_url` give the drop file `image` of the state and the display `artwork` of rules 2 to 4:
   null, missing, not a string, an `ftp:` URL and a URL of 2,049 characters.
 - A local split with an `image_url` gives the image of the state. A chapter entry with an unknown field is valid.
+
+Mechanical, for §The Album Of A Segment, in `liquidsoap-now-playing/src/lib.rs`:
+
+- `a_chapter_with_a_title_has_the_episode_title_as_the_album`: chapters, a gap and the end, in the drop file and in
+  `display.json`.
+- `a_chapter_with_no_title_or_no_episode_title_has_the_state_album`.
+- `display_song_file_without_chapters_gives_one_state` and `display_jingle_has_the_state_names_and_no_play_id`.
+- `assert_track_of_drop` compares the display `album` with the drop file `album` in each display test.
 
 Manual, in the last review of the diff: no copy of a moved part stays. A test cannot find a copied function.
 
@@ -571,7 +613,9 @@ Manual, on the test station `heycitizens_test_radio`, with a person. A test here
 7. Files with an embedded picture, a FLAC file with a picture, a file with no picture, and a jingle after a picture
    give the correct display artwork. Passed on 2026-11-24 on the relay display state. The app was not examined.
 8. After a new run of `station-import`, an episode file plays. Each chapter song with an image in its feed shows that
-   image on the relay display state and in the payload `image`. This check is new in this record.
+   image on the relay display state and in the payload `image`.
+9. While a chapter song of an episode plays, Rainbrook shows the episode title below the artist. The lock screen shows
+   the same text. Station log step 54 passed for the files. The check in the app is open.
 
 HitIt and `station-import` must write the new frames in all the files first. Before that, the operator does not
 install the new slot text or the new Mixxx reader on a station.
@@ -598,7 +642,7 @@ install the new slot text or the new Mixxx reader on a station.
 
 ## Alternatives Considered
 
-The superseded records give the rejected alternatives of each restated rule. For the new rule:
+The archived records give the rejected alternatives of each restated rule. For the chapter image rule:
 
 ### The Chapter Image Only In The Display State
 
@@ -612,10 +656,11 @@ service answer has no image field in this chain.
 
 ## Consequences
 
-- One record holds the station producer. The reading path loses four records at acceptance.
+- One record holds the station producer. The reading path loses ADR 0035 and ADR 0040.
 - A chapter song with an image in its feed shows that image in the apps, after a new run of `station-import`.
-- Some code comments and documents cite ADR 0022 or ADR 0025 to ADR 0028 for a live rule. At acceptance, each of
-  them changes to cite this record, in the same commit as the archive move.
+- The payment metadata of a chapter song names the episode in `podcastName`.
+- Code comments and documents that cite ADR 0035 or ADR 0040 for a live rule cite this record. The section names did
+  not change.
 
 ## References
 

@@ -172,13 +172,16 @@ packet.
   image that a pending listener update names, and the relay runs it. Item 2 of
   its §Before Acceptance is partly done: v4vmusic.com and Podcast Guru show the
   image, and a boost pays the song. The check for no new track is open.
-- ADR 0035 has the status `Accepted`. It is the one record for the station
-  producer `liquidsoap-now-playing`. It replaces ADR 0022 and ADR 0025 to
-  ADR 0028, which are in `docs/archive/adr/`. The producer reads `state.json`
-  from the slot text, pays each chapter song of an episode file, writes
-  `display.json` with `song_line` as the ICY title of the file, asks the route
-  service with the two GUIDs, and uses the chapter `image_url`, then the image
-  of the file, then the relay copy (ADR 0034). The producer code is complete.
+- ADR 0041 has the status `Accepted`. It is the one record for the station
+  producer `liquidsoap-now-playing`. It replaces ADR 0035 and ADR 0040, which
+  are in `docs/archive/adr/`. The producer reads `state.json` from the slot
+  text, pays each chapter song of an episode file, writes `display.json` with
+  `song_line` as the ICY title of the file, asks the route service with the
+  two GUIDs, and uses the chapter `image_url`, then the image of the file,
+  then the relay copy (ADR 0034). A chapter with a title has the episode
+  title as its `album`, in the drop file, in `display.json` and in the live
+  value payload. The check of that album in Rainbrook on the test station is
+  open. The producer code is complete.
   The station checks of the display state need a person and are open.
   `station-import` uses musicindex-lib `cd21d45`, so each chapter entry of an
   imported episode has the `image_url` of its song (musicindex ADR 0099).
@@ -203,10 +206,11 @@ packet.
   (station log step 52). In Rainbrook on HLS the chapter change comes with
   the chapter song (station log step 53). The boost at the start of a chapter
   song is open.
-- ADR 0040 has the status `Accepted`. A chapter with a title has the
-  episode title as its `album`. The drop file, `display.json` and the live
-  value payload have this `album`. Episode album task 001
-  implements it. The check in Rainbrook on the test station is open.
+- ADR 0042 has the status `Proposed`. An episode state sends its
+  publication day in the display state. Relay ADR 0013 (Proposed) agrees
+  with the name and the format of `pubDate`. ADR 0042 waits for a Rainbrook
+  ADR for the display and a station check of the Liquidsoap key `date`. No
+  implementation exists.
 - This item needs a new ADR before work starts: a track identity source that
   is earlier than the Mixxx history row.
 - Studio client task 001 is not started. The publisher will start and end a
@@ -339,7 +343,7 @@ This service routes money. These rules are not style preferences.
 - The Mixxx producer exits cleanly when Mixxx is not running. The unit
   restarts it.
 - The Liquidsoap producer stays in operation when Liquidsoap stops. It
-  removes the drop file and releases the lock (ADR 0035).
+  removes the drop file and releases the lock (ADR 0041).
 
 ### 8. Test Strategy
 

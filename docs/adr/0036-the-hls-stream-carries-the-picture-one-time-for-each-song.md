@@ -103,12 +103,12 @@ picture at each ICY title change.
 ### The Station
 
 The slot text makes the two metadata changes of §One Time For Each Song from the picture that it already selects
-(ADR 0035 §The Slot Text Writes The Picture File).
+(ADR 0041 §The Slot Text Writes The Picture File).
 
 - It inserts the metadata after its own `on_track` and `on_metadata` handlers. The handlers thus do not see the two
   changes, and `seq` does not change.
 - The picture is the picture of the file. A chapter of an episode file does not get a new picture in the stream,
-  because the chapter image is a URL (ADR 0035 §The Artwork Of A Segment).
+  because the chapter image is a URL (ADR 0041 §The Artwork Of A Segment).
 - A jingle gets no frame, because it keeps the metadata of the last song.
 
 ## Invariants
@@ -135,7 +135,7 @@ These rules apply while this decision is current.
 6. **The other outputs.** With the station settings, the MP3 mount keeps the same ICY title, and its bitrate does not
    increase at a song change. The AzuraCast "now playing" data has no picture key.
 7. **The station handlers.** Play two songs. `seq` in `state.json` changes one time for each song. It changes two
-   times when the metadata comes after the track mark (ADR 0035 §The State File Contract). The two inserted changes
+   times when the metadata comes after the track mark (ADR 0041 §The State File Contract). The two inserted changes
    do not change it.
 
 ## Verification After Implementation
@@ -182,7 +182,7 @@ listener that starts in the middle of a song would also get no title until the n
 ## References
 
 - `docs/adr/0009-hls-track-metadata.md`
-- `docs/adr/0035-the-station-producer.md`
+- `docs/adr/0041-the-station-producer.md`
 - `liquidsoap/musicindex-state.liq`
 - `musicindex-stream-test`: `liquidsoap/radio.liq`
 - `musicindex-research`: `sources/broadcast-audio/streaming/liquidsoap` (tag `v2.4.6`) and

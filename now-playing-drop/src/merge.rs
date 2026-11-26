@@ -4,7 +4,7 @@ use musicindex_value::percentages;
 
 use crate::PaymentRoute;
 
-/// Combines song and episode routes as ADR 0035 §What The Producer Writes For An Episode File requires.
+/// Combines song and episode routes as ADR 0041 §What The Producer Writes For An Episode File requires.
 #[must_use]
 pub fn merged_routes(
     episode: &[PaymentRoute],
@@ -58,7 +58,7 @@ pub fn merged_routes(
     complete_or_empty(output)
 }
 
-/// Replaces episode recipients with local chapter routes as ADR 0035 §What The Producer Writes For An Episode File requires.
+/// Replaces episode recipients with local chapter routes as ADR 0041 §What The Producer Writes For An Episode File requires.
 #[must_use]
 pub fn local_split_routes(episode: &[PaymentRoute], local: &[PaymentRoute]) -> Vec<PaymentRoute> {
     let episode_shares = route_percentages(episode);

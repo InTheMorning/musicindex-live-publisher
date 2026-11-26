@@ -1,6 +1,9 @@
 # ADR 0040: A Chapter Song Has The Episode Title As Its Album
 
-- Status: Accepted on 2026-11-26 by the operator.
+> Archived: superseded by [ADR 0041](../../adr/0041-the-station-producer.md) on 2026-11-26. ADR 0041 §The Album Of A Segment restates each live rule of this record.
+> Read this record for research only.
+
+- Status: Superseded by ADR 0041 on 2026-11-26. Accepted on 2026-11-26 by the operator.
 - Date: 2026-11-26
 - Bar: opposite choice by mistake. ADR 0035 told an agent to use the state album for each
   segment.

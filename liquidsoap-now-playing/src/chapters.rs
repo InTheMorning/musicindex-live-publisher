@@ -30,7 +30,7 @@ pub struct Chapter {
     /// file for a remote split. Empty when the file has no routes.
     pub value_routes: Vec<PaymentRoute>,
     /// The image URL of the song of a remote split, when `image_url` of
-    /// `now-playing-drop` accepts it (ADR 0035 §The Chapter List).
+    /// `now-playing-drop` accepts it (ADR 0041 §The Chapter List).
     pub image_url: Option<String>,
 }
 
@@ -53,7 +53,7 @@ pub struct Segment<'a> {
 
 /// Parses valid chapter entries and logs at most one error for each sequence.
 pub fn parse_chapters(state: &StateFile, bad_chapters_seq: &mut Option<i64>) -> Vec<Chapter> {
-    // ADR 0035 §The State File Contract: an empty `chapters` value means that the file
+    // ADR 0041 §The State File Contract: an empty `chapters` value means that the file
     // has no chapter list. Liquidsoap gives an empty value for a missing tag.
     let Some(raw) = state
         .chapters
@@ -140,14 +140,14 @@ fn parse_entry(value: Value) -> Option<Chapter> {
         }
         routes
     } else {
-        // ADR 0035 §The Route Lookup: the routes of a remote entry are
+        // ADR 0041 §The Route Lookup: the routes of a remote entry are
         // the second source of the song routes (musicindex ADR 0089 R-TAG-6).
         match object.get("value_routes") {
             None | Some(Value::Null) => Vec::new(),
             Some(routes) => serde_json::from_value::<Vec<PaymentRoute>>(routes.clone()).ok()?,
         }
     };
-    // ADR 0035 §The Chapter List: a bad `image_url` is the same as null,
+    // ADR 0041 §The Chapter List: a bad `image_url` is the same as null,
     // and it does not make the entry not valid.
     let image_url = match object.get("image_url") {
         Some(Value::String(url)) if !local_split => image_url(url).map(str::to_owned),

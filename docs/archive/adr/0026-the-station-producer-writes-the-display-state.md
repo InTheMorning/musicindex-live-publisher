@@ -1,6 +1,6 @@
 # ADR 0026: The Station Producer Writes The Display State With The ICY Line Of The File
 
-> Archived: superseded by [ADR 0035](../../adr/0035-the-station-producer.md) on 2026-11-26. ADR 0035 restates
+> Archived: superseded by [ADR 0035](0035-the-station-producer.md) on 2026-11-26. ADR 0035 restates
 > each live rule of this record.
 
 - Status: Superseded by ADR 0035 on 2026-11-26. Accepted on 2026-11-22, accepted by the operator as at commit ba8cf78. The orchestrator session relayed the

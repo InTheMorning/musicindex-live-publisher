@@ -18,7 +18,7 @@
 
 Terms:
 
-- A **segment** is a part of an audio file that has its own drop file and display state (ADR 0035 §What The Producer
+- A **segment** is a part of an audio file that has its own drop file and display state (ADR 0041 §What The Producer
   Writes For An Episode File). A file with no chapters has one segment. An episode file has one segment for each
   chapter and for each gap.
 - A **boundary** is the position in the file where a segment starts, in milliseconds.
@@ -80,7 +80,7 @@ the same `playId`. Thus the slot text does not copy the chapter rules of the pro
 - A frame at a position that the producer does not use as a boundary names no display state. Examples: the `end_ms`
   of a chapter when the next chapter starts earlier, and an entry that the producer refuses. §The Player ignores such
   a frame.
-- The position is `elapsed + cue_in` of the track, in milliseconds, as in ADR 0035 §The Position Rule. The slot text
+- The position is `elapsed + cue_in` of the track, in milliseconds, as in ADR 0041 §The Position Rule. The slot text
   writes the frame in the first audio frame at or after the boundary.
 - The inserted metadata group repeats the `title` and the `artist` of the file. The ICY title thus stays the same, and
   the HLS `TIT2` and `TPE1` stay the same.
@@ -185,7 +185,7 @@ state also has no GUID.
 
 - `docs/adr/0009-hls-track-metadata.md`
 - `docs/adr/0039-the-display-state-pairs-with-its-value-block.md`
-- `docs/adr/0035-the-station-producer.md`
+- `docs/adr/0041-the-station-producer.md`
 - `docs/adr/0037-the-listener-delay-comes-from-the-icecast-burst.md`
 - `docs/runbooks/test-station-log.md`, steps 47, 50 and 51
 - `musicindex-live-relay`: `docs/adr/0012-display-play-id.md`

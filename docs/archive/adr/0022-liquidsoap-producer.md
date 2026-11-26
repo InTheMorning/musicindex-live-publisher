@@ -1,6 +1,6 @@
 # ADR 0022: A Producer For Liquidsoap And AzuraCast
 
-> Archived: superseded by [ADR 0035](../../adr/0035-the-station-producer.md) on 2026-11-26. ADR 0035 restates
+> Archived: superseded by [ADR 0035](0035-the-station-producer.md) on 2026-11-26. ADR 0035 restates
 > each live rule of this record.
 
 - Status: Superseded by ADR 0035 on 2026-11-26. Accepted on 2026-11-21 by the operator. The orchestrator session relayed the decision. Open Question 2
