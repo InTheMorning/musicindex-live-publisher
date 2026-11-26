@@ -1,6 +1,6 @@
 # Segment Frame Task 001: The Display State Gets `playId`
 
-Status: Open.
+Status: Implemented - 2026-11-26. The station check waits for the relay with relay ADR 0012.
 
 Every criterion is mechanical. ADR 0038 has the visual items.
 
@@ -41,7 +41,7 @@ on a station. The present relay refuses each track with `playId`, also with `nul
 - `playId` is `null` when `display.json` has no `play_id`, has `null`, or has an empty string. The publisher never
   sends an empty string.
 - Choice of the main session, open for the operator: when `play_id` has more than 128 characters, the publisher
-  sends `null` and logs a warning one time for each value. Relay ADR 0012 refuses a longer value, and the relay then
+  sends `null` and logs a warning each time that it builds that body. Relay ADR 0012 refuses a longer value, and the relay then
   refuses the complete display state. The producers make values shorter than 40 characters.
 - A `null` track (no track) does not change: the body stays `{"track": null}`.
 - The pairing rule of ADR 0039 does not change. `value` is still added only when `play_id` agrees with the kept
@@ -71,7 +71,6 @@ Gate:
 ## Rules For A Delegate
 
 - Do not change `AGENTS.md`. The main session changes it when it commits the task.
-
 - Apply the STE skill at `/home/citizen/.agents/skills/asd-ste100/SKILL.md` to code comments.
 - Do not commit. Leave the change in the working tree and report it. The main session reads the diff, runs the
   checks and commits.

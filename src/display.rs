@@ -215,6 +215,7 @@ impl DisplayState {
                 "title": track.title,
                 "artwork": artwork,
                 "songLine": track.song_line,
+                "playId": wire_play_id(track.play_id.as_deref()),
             });
 
             if let Some(album) = &track.album
@@ -273,6 +274,25 @@ pub struct DisplayEntry {
     /// The event GUID of the target.
     pub event_id: String,
     pub state: DisplayState,
+}
+
+/// The longest `playId` that the relay accepts (relay ADR 0012).
+const MAX_PLAY_ID_CHARS: usize = 128;
+
+/// The `playId` of a display track on the wire (ADR 0038 §The Display State
+/// Gets `playId`). An empty value gives `null`. A value that the relay
+/// refuses also gives `null`, because the relay then refuses the complete
+/// display state.
+fn wire_play_id(play_id: Option<&str>) -> Option<&str> {
+    let play_id = play_id.filter(|play_id| !play_id.is_empty())?;
+    if play_id.chars().count() > MAX_PLAY_ID_CHARS {
+        tracing::warn!(
+            play_id,
+            "the play_id has more than {MAX_PLAY_ID_CHARS} characters; the display state gets playId null"
+        );
+        return None;
+    }
+    Some(play_id)
 }
 
 /// Reads `DIR/display.json` and the image that it names.

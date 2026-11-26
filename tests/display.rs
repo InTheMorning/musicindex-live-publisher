@@ -435,7 +435,8 @@ fn display_publish_body_holds_only_track_and_no_schema_key() -> Result<()> {
                 "artist": "Artist",
                 "title": "Title",
                 "artwork": { "sha256": image.sha256(), "mime": "image/jpeg" },
-                "songLine": "Artist - Title"
+                "songLine": "Artist - Title",
+                "playId": "1"
             }
         })
     );
@@ -1171,6 +1172,47 @@ fn read_parses_version_2_with_null_play_id() -> Result<()> {
 }
 
 #[test]
+fn display_body_has_play_id_of_display_json() -> Result<()> {
+    let temp = tempfile::tempdir()?;
+    write_display_json(
+        temp.path(),
+        json!({"artist":"Artist","title":"Title","song_line":"Artist - Title","play_id":"ls-12500-4-30665"}),
+    )?;
+    let state = read_display_state(temp.path()).ok_or_else(|| anyhow!("no state"))?;
+    assert_eq!(state.body()["track"]["playId"], "ls-12500-4-30665");
+    Ok(())
+}
+
+#[test]
+fn display_body_has_null_play_id_for_missing_empty_and_null_values() -> Result<()> {
+    let temp = tempfile::tempdir()?;
+    for track in [
+        json!({"artist":"Artist","title":"Title","song_line":"Artist - Title","play_id":null}),
+        json!({"artist":"Artist","title":"Title","song_line":"Artist - Title"}),
+        json!({"artist":"Artist","title":"Title","song_line":"Artist - Title","play_id":""}),
+    ] {
+        write_display_json(temp.path(), track)?;
+        let state = read_display_state(temp.path()).ok_or_else(|| anyhow!("no state"))?;
+        assert_eq!(state.body()["track"]["playId"], Value::Null);
+    }
+    Ok(())
+}
+
+#[test]
+fn display_body_null_play_id_when_too_long() -> Result<()> {
+    let temp = tempfile::tempdir()?;
+    for (length, expected) in [(128, true), (129, false)] {
+        write_display_json(
+            temp.path(),
+            json!({"artist":"Artist","title":"Title","song_line":"Artist - Title","play_id":"x".repeat(length)}),
+        )?;
+        let state = read_display_state(temp.path()).ok_or_else(|| anyhow!("no state"))?;
+        assert_eq!(state.body()["track"]["playId"].is_string(), expected);
+    }
+    Ok(())
+}
+
+#[test]
 fn read_ignores_version_2_track_without_song_line() -> Result<()> {
     let temp = TempDir::new()?;
     write_display_json(
@@ -1336,6 +1378,7 @@ fn display_state_with_matching_play_id_includes_value() -> Result<()> {
                 "title": "Title",
                 "artwork": Value::Null,
                 "songLine": "Artist - Title",
+                "playId": "play-1",
                 "value": {
                     "eventGuid": "event-guid",
                     "blockGuid": "block-guid"
