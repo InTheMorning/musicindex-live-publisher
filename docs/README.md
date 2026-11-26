@@ -120,6 +120,10 @@ the next priority. Confirm that logging works before the show.
   — Accepted. A target can give `icecast_burst_bytes` and
   `stream_bitrate_kbps`. The publisher sends that delay, rounded down, as
   `Listener-Delay-Secs`. It changes ADR 0011
+- [ADR 0038: The HLS stream marks each segment](adr/0038-the-hls-stream-marks-each-segment.md)
+  — Proposed. The station slot text writes a frame `musicindex.hls/2` with
+  the `playId` of the segment at each chapter boundary. It changes ADR 0009
+  and ADR 0035, and needs a consolidated record for ADR 0012
 
 ## Plans
 

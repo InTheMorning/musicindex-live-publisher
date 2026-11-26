@@ -5,6 +5,8 @@ Date: 2026-10-05
 
 - Changed by: ADR 0036, accepted 2026-11-26. An `APIC` frame with the picture of the song can go into the first HLS
   segment of each song.
+- Changed by: ADR 0038, proposed 2026-11-26. The station slot text writes the frame `musicindex.hls/2` in place of
+  `musicindex.hls/1`.
 
 - Revised: 2026-11-21. §The MusicIndex Frame gets `feedGuid` and `itemGuid` in `track`, together or not at all
   (ADR 0024). The operator asked for the two GUIDs together. No decision was reversed.

@@ -190,8 +190,15 @@ packet.
 - ADR 0037 has the status `Accepted`. A target can give `icecast_burst_bytes`
   and `stream_bitrate_kbps` in place of `stream_delay_secs`. The publisher
   calculates the delay, rounds it down, and sends it as `Listener-Delay-Secs`.
-  Listener delay task 001 implements it. The test station does not have the
-  two fields yet. The visual check in v4vmusic.com is open.
+  Listener delay task 001 implements it. The test station has the two fields
+  (station log step 48). In v4vmusic.com a chapter change comes at almost the
+  correct time. The boost check of ADR 0037 is open.
+- ADR 0038 has the status `Proposed`. The station slot text writes a frame
+  `musicindex.hls/2` with the `playId` of the segment at each chapter boundary,
+  and Rainbrook releases the display state with the same `playId`. Cause:
+  Rainbrook on HLS shows a chapter change too early (station log step 50).
+  Before acceptance, a consolidated pairing record must replace ADR 0012, and
+  the relay and Rainbrook sessions must accept their changes.
 - This item needs a new ADR before work starts: a track identity source that
   is earlier than the Mixxx history row.
 - Studio client task 001 is not started. The publisher will start and end a

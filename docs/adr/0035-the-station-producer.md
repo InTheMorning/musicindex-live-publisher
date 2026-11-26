@@ -4,6 +4,7 @@
 - Date: 2026-11-25
 - Changed by: ADR 0036, accepted 2026-11-26. The slot text also gives the picture to the HLS output, one time for each
   song.
+- Changed by: ADR 0038, proposed 2026-11-26. The slot text also writes a segment frame at each chapter boundary.
 - Supersedes: ADR 0022 (`docs/archive/adr/0022-liquidsoap-producer.md`).
 - Supersedes: ADR 0025 (`docs/archive/adr/0025-the-station-producer-pays-each-chapter-song.md`).
 - Supersedes: ADR 0026 (`docs/archive/adr/0026-the-station-producer-writes-the-display-state.md`).
