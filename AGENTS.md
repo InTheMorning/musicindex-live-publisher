@@ -220,6 +220,9 @@ packet.
   log step 58). No implementation exists.
 - The deploy order of ADR 0042 and ADR 0043 is the relay, then the publisher,
   then Rainbrook.
+- ADR 0044 has the status `Proposed`. The Mixxx producer gets `funding` from
+  the same route service answer as the routes of the track. The operator
+  decides it.
 - This item needs a new ADR before work starts: a track identity source that
   is earlier than the Mixxx history row.
 - Studio client task 001 is not started. The publisher will start and end a

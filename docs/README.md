@@ -134,6 +134,9 @@ the next priority. Confirm that logging works before the show.
   — Accepted. A display track gets `funding`, 1 to 3 links with `url` and
   `label`, from the route service. It changes ADR 0013 and ADR 0041.
   Rainbrook ADR 0031 shows the links
+- [ADR 0044: A DJ track carries its funding links](adr/0044-a-dj-track-carries-its-funding-links.md)
+  — Proposed. The Mixxx producer gets `funding` from the same route service
+  answer as the routes of the track. It changes ADR 0043
 
 ## Plans
 

@@ -13,7 +13,8 @@ The station producer gets the funding links of the segment that plays from the r
 
 - ADR 0043 §The Source gives each rule of this task. ADR 0041 §The Route Lookup gives the cache, the time limit and the
   retry rules, which also apply to the new requests.
-- Task 001 made `display_keys::funding_links` and `FundingLink`. Task 002 made `StationKeys` with an empty `funding`.
+- Task 001 made `display_keys::funding_links` and `FundingLink`. Task 002 made the `ShownTrack`
+  field `funding`, which the station producer sets to an empty slice.
 - `now-playing-drop/src/route_service.rs`: `RouteServiceClient::track_routes` sends
   `GET /v1/feeds/<f>/tracks/<i>?include=payment_routes` and gives a `RouteLookup`. A 404 gives `NoRoutes`.
 - `liquidsoap-now-playing/src/lookup.rs`: `RouteLookups` has one worker thread with ordered requests, the results, the
@@ -70,7 +71,7 @@ The station producer gets the funding links of the segment that plays from the r
 | Route service client | extend | /home/citizen/build/musicindex-live-publisher/now-playing-drop/src/route_service.rs | The same request gets the links. The feed request uses the same client and path check. |
 | Lookup cache and worker | extend | /home/citizen/build/musicindex-live-publisher/liquidsoap-now-playing/src/lookup.rs | The links and the feed results use the same cache, retry and worker. |
 | Funding rules | reuse | /home/citizen/build/musicindex-live-publisher/docs/tasks/display-keys-task-001-crate-and-publisher.md | `funding_links` in `display-keys/src/lib.rs`, which task 001 makes. |
-| Station keys of the display writer | reuse | /home/citizen/build/musicindex-live-publisher/docs/tasks/display-keys-task-002-producer-pub-date.md | `StationKeys` in `now-playing-drop/src/display.rs`, which task 002 makes. |
+| Funding key of the display writer | reuse | /home/citizen/build/musicindex-live-publisher/docs/tasks/display-keys-task-002-producer-pub-date.md | The `ShownTrack` field `funding` in `now-playing-drop/src/display.rs`, which task 002 makes. |
 | Test HTTP server | reuse | /home/citizen/build/musicindex-live-publisher/now-playing-drop/src/test_server.rs | It answers by the request target. |
 
 ## Files To Inspect
@@ -90,7 +91,9 @@ The station producer gets the funding links of the segment that plays from the r
 - The publisher `src/` and `tests/display.rs`.
 - `display-keys/` and the `display.json` writer of task 002, except a defect that blocks this task. Report such a
   change.
-- `mixxx-now-playing/`, `liquidsoap/*.liq`, the drop file format.
+- `liquidsoap/*.liq` and the drop file format.
+- `mixxx-now-playing/`. When the signature of `track_routes` changes, update the Mixxx call with no change of
+  behaviour. The Mixxx producer continues to use only the routes of the answer.
 - `docs/adr/`, `AGENTS.md`, `docs/README.md`.
 
 ## Acceptance Criteria

@@ -7,6 +7,7 @@
 - Changes: ADR 0013 §The Producer and §The Publisher. A track in `display.json` version 3 can also have `funding`.
 - Changes: ADR 0041 §The Route Lookup and §What The Producer Writes In `display.json`. The lookup also gets the
   funding links, and a late answer can change `display.json`.
+- Changed by: ADR 0044 (Proposed), 2026-11-26. The Mixxx producer also writes `funding`.
 - Uses: stophammer ADR 0082 (`source_links` with `link_type` `funding` and `label`), relay ADR 0013 §The Next Key, and
   ADR 0042 for the pattern of an optional display key, without a change.
 - Operator choice, 2026-11-26 (research note `musicindex-research` commit `1b6f4d0`,
