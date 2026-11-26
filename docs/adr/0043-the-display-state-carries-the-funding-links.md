@@ -52,8 +52,19 @@ Each entry is an object:
 
 | Key | Type | Rule |
 | --- | --- | --- |
-| `url` | string, necessary | 1 to 512 characters. The scheme is `http` or `https`, and the URL has a host. |
-| `label` | string, optional | 1 to 128 characters, with no space at the start or at the end. No key when the feed gives no text. |
+| `url` | string, necessary | 1 to 512 characters. The scheme is `http` or `https`, and the URL has a host. No white space and no control character. |
+| `label` | string, optional | 1 to 128 characters, with no white space at the start or at the end. No key when the feed gives no text. |
+
+The rules of the relay (relay ADR 0013 §The Form Of funding) make these points exact. The producer and the publisher
+apply each one:
+
+- **Scheme.** The compare of `http` or `https` ignores the case. `HTTPS://example.com` is accepted.
+- **Host.** After `://`, one character or more comes before the first `/`, `?` or `#`. `https:///support` is refused.
+- **White space and control characters.** The Rust functions `char::is_whitespace` and `char::is_control` find them.
+- **Label edges.** The label is equal to the result of Rust `str::trim`, which removes Unicode white space.
+- **Length.** The two limits count characters, not bytes.
+- **The same URL.** Two entries have the same `url` when the two strings are equal, character by character. The
+  compare does not change the case and does not parse the URL.
 
 - An entry has no other key.
 - Two entries do not have the same `url`.
@@ -95,9 +106,9 @@ The producer gets the links from the route service with the GUIDs of the segment
 - **The selection.** The producer keeps each entry with `link_type` `funding` and a `url` that §The Key accepts, in the
   order of `position`. The item links come first. The producer uses the channel links only when no item link is
   usable. It keeps the first 3 entries after it removes a second entry with the same `url`.
-- **The label.** The producer removes the spaces at the start and at the end of `label`. An empty label gives no key.
-  A label of more than 128 characters gets its first 128 characters, and the producer removes the spaces at the end
-  again.
+- **The label.** The producer removes the white space at the start and at the end of `label` with `str::trim`. An empty
+  label gives no key. A label of more than 128 characters gets its first 128 characters, and the producer removes the
+  white space at the end again.
 - **The cache, the time limit and a missing answer.** The rules of ADR 0041 §The Route Lookup apply to each track
   request, with the pair of GUIDs as the key. The same rules apply to each feed request, with the feed GUID as the key.
   At a new `seq`, the producer keeps the feed results of the feed GUIDs that are also in the new state. A 404 gives no
@@ -145,7 +156,8 @@ These rules apply while this decision is current.
 
 ## Before Acceptance
 
-1. Relay ADR 0013 gets the row for `funding` with the shape and the limits of §The Key.
+1. Done: relay ADR 0013 §The Form Of funding has the row for `funding` (relay commit `4db75a1`). It agrees with §The
+   Key. The relay build of `funding` starts when the operator accepts this record.
 2. A Rainbrook ADR tells where the app shows the links. musicindex ADR 0087 gives the shown word "Support links".
 3. A request to `api.musicindex.org` with `include=payment_routes,source_links` for a chapter song of episode 158 gives
    `payment_routes` and `source_links` in one answer.
@@ -158,7 +170,9 @@ Mechanical. Tests in this repository:
   order of `position`.
 - A producer test: a track answer with no item funding link and a feed answer with one link gives that link.
 - A producer test: a URL with the scheme `ftp`, a URL of 513 characters, a second entry with the same URL and a fourth
-  entry are not in `funding`. A label of 200 characters gives its first 128 characters. An empty label gives no key.
+  entry are not in `funding`. A URL with a space, a URL with a control character and `https:///support` are not in
+  `funding`. `HTTPS://example.com` is in `funding`. A label of 200 characters gives its first 128 characters. An empty
+  label gives no key.
 - A producer test: a chapter song and a gap of one episode file get the links of their own GUIDs.
 - A producer test: a jingle, a `live` state and a 404 give `funding` `null`.
 - A producer test: a late answer writes `display.json` again with the same `play_id`, and the drop file does not change.

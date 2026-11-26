@@ -207,14 +207,15 @@ packet.
   the chapter song (station log step 53). The boost at the start of a chapter
   song is open.
 - ADR 0042 has the status `Proposed`. An episode state sends its
-  publication day in the display state. The operator accepted relay
-  ADR 0013, which gives the name and the format of `pubDate`. ADR 0042 waits
-  for a Rainbrook ADR for the display and a station check of the Liquidsoap
-  key `date`. No implementation exists.
+  publication day in the display state. The operator accepted the text of
+  relay ADR 0013, which gives the name and the format of `pubDate`. The relay
+  build starts when the operator accepts ADR 0042. ADR 0042 waits for a
+  Rainbrook ADR for the display and a station check of the Liquidsoap key
+  `date`. No implementation exists.
 - ADR 0043 has the status `Proposed`. The display track gets `funding`, a
   list of 1 to 3 funding links of the segment. The station producer gets them
-  from the route service with `include=source_links`. It waits for the relay
-  row for `funding` in relay ADR 0013, a Rainbrook ADR and a check of the
+  from the route service with `include=source_links`. Relay ADR 0013 has the
+  row for `funding`. ADR 0043 waits for a Rainbrook ADR and a check of the
   route service answer. No implementation exists.
 - This item needs a new ADR before work starts: a track identity source that
   is earlier than the Mixxx history row.
