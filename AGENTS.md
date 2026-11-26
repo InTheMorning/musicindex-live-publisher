@@ -209,9 +209,9 @@ packet.
   song is open.
 - ADR 0042 has the status `Accepted`. An episode state sends its
   publication day in the display state. Relay ADR 0013 gives the name and the
-  format of `pubDate`, and Rainbrook ADR 0031 (Proposed) shows the date. The
-  station check of the Liquidsoap key `date` is open and comes before the
-  deploy. Display keys tasks 001 and 002 implement it and are not deployed.
+  format of `pubDate`, and Rainbrook ADR 0031 (Proposed) shows the date. On the
+  test station, Liquidsoap gives the key `date` (station log step 61).
+  Display keys tasks 001 and 002 implement it and are not deployed.
 - ADR 0043 has the status `Accepted`. The display track gets `funding`, a
   list of 1 to 3 funding links of the segment. The station producer gets them
   from the route service with `include=source_links`. Relay ADR 0013 has the
