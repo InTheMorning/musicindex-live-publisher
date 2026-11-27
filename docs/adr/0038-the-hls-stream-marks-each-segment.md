@@ -2,6 +2,8 @@
 
 - Status: Accepted on 2026-11-26 by the operator.
 - Date: 2026-11-26
+- Changed by: ADR 0045, accepted 2026-11-27. The slot text writes a frame only at each segment start of
+  ADR 0045 §The Segment Rule. §The Slot Text Writes The Frames and §Invariants change.
 - Bar: crosses repositories. The rule changes the slot text and the publisher in this repository, the display state of
   `musicindex-live-relay`, and the HLS sync of Rainbrook.
 - Changes: ADR 0009 §The MusicIndex Frame. The station slot text writes the frame `musicindex.hls/2` of §The Segment

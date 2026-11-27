@@ -138,6 +138,10 @@ the next priority. Confirm that logging works before the show.
   — Accepted. The funding of a segment uses the order of its routes: the
   route service first, then the file `WPAY`. The Mixxx producer also writes
   `funding`. It changes ADR 0043
+- [ADR 0045: One segment rule for the frames and the drop files](adr/0045-one-segment-rule-for-the-frames-and-the-drop-files.md)
+  — Accepted. The slot text and the producer make the segment starts from
+  the time fields only, so that each HLS frame names a display state. It
+  changes ADR 0038 and ADR 0041
 
 ## Plans
 
@@ -386,6 +390,11 @@ Packets for the display keys. ADR 0042, ADR 0043 and ADR 0044 govern them.
   — Implemented - 2026-11-26
 - [004 — The Mixxx producer gets the funding links](tasks/display-keys-task-004-mixxx-funding.md)
   — Implemented - 2026-11-26
+
+Packets for the segment rule. ADR 0045 governs them.
+
+- [001 — The producer makes its segments from the time fields](tasks/segment-rule-task-001-producer-segments.md)
+  — Implemented - 2026-11-27
 
 ## Reviews
 

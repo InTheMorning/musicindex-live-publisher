@@ -166,7 +166,7 @@ impl Producer {
         let chapters = if parsed.format == state::STATE_FORMAT_2 {
             chapters::parse_chapters(&parsed, &mut self.bad_chapters_seq)
         } else {
-            Vec::new()
+            chapters::ChapterList::default()
         };
         let pairs = if parsed.jingle {
             Vec::new()
@@ -176,7 +176,7 @@ impl Producer {
             song_pair(&parsed).into_iter().collect()
         } else {
             chapters
-                .iter()
+                .chapters()
                 .filter_map(identified_pair)
                 .map(|(feed, item)| (feed.to_owned(), item.to_owned()))
                 .fold(Vec::new(), |mut pairs, pair| {
@@ -239,7 +239,7 @@ impl Producer {
     fn write_display_track(
         &mut self,
         state: &StateFile,
-        chapters: &[chapters::Chapter],
+        chapters: &chapters::ChapterList,
         content: &serde_json::Value,
         funding: &[display_keys::FundingLink],
     ) {
@@ -431,7 +431,7 @@ fn song_line(state: &StateFile) -> Option<String> {
 /// track gives one error line for each fault.
 fn render_state(
     state: &StateFile,
-    chapters: &[chapters::Chapter],
+    chapters: &chapters::ChapterList,
     target: &str,
     song_routes: &SongRoutes,
     bad_routes_seq: &mut Option<i64>,
@@ -1089,6 +1089,46 @@ mod tests {
     }
 
     #[test]
+    fn refused_content_keeps_its_segment_and_episode_drop_data() -> Result<()> {
+        let mut refused = remote(5_000, 10_000, "bad", "entry".into());
+        refused["title"] = 5.into();
+        let chapters = serde_json::json!([
+            remote(0, 5_000, "f1", "i1".into()),
+            refused,
+            remote(10_000, 15_000, "f2", "i2".into()),
+        ]);
+        let out = chapter_drops(
+            &chapters,
+            &serde_json::json!({}),
+            song_routes(&[("f1", "i1"), ("f2", "i2")]),
+            &[(6.0, 0.0)],
+        )?;
+        assert_eq!(out[0]["feed_guid"], "feed");
+        assert_eq!(out[0]["track_guid"], "track");
+        assert_eq!(out[0]["title"], "Title");
+        assert_eq!(out[0]["play_id"], "ls-12500-4-5000");
+        assert_eq!(addresses(&out[0]), ["alice=95.0", "fee=5.0"]);
+        Ok(())
+    }
+
+    #[test]
+    fn episode_158_overlap_starts_a_segment_at_the_later_start() -> Result<()> {
+        let chapters = serde_json::json!([
+            remote(6_498_968, 6_729_868, "f1", "i1".into()),
+            remote(6_724_607, 7_028_534, "f2", "i2".into()),
+        ]);
+        let out = chapter_drops(
+            &chapters,
+            &serde_json::json!({}),
+            song_routes(&[("f1", "i1"), ("f2", "i2")]),
+            &[(6_729.868, 0.0)],
+        )?;
+        assert_eq!(out[0]["play_id"], "ls-12500-4-6724607");
+        assert_eq!(out[0]["track_guid"], "i2");
+        Ok(())
+    }
+
+    #[test]
     fn a_remote_chapter_with_a_missing_guid_pays_the_episode() -> Result<()> {
         for item in [serde_json::Value::Null, "".into(), "   ".into()] {
             let chapters = serde_json::json!([remote(0, 10_000, "f1", item.clone())]);
@@ -1216,8 +1256,8 @@ mod tests {
             match item {
                 // A clamped 0 makes the song group not usable.
                 Some(item) => assert_eq!(out[0]["track_guid"], item, "{value}"),
-                // A not valid entry leaves no chapter, so the file is one track.
-                None => assert_eq!(out[0]["play_id"], "ls-12500-4", "{value}"),
+                // ADR 0045 §The Segment Rule keeps the timed entry as a segment with no chapter.
+                None => assert_eq!(out[0]["play_id"], "ls-12500-4-0", "{value}"),
             }
         }
         let mut full = remote(0, 10_000, "f1", "i1".into());
@@ -2250,7 +2290,12 @@ mod tests {
         producer.start()?;
         let parsed: StateFile =
             serde_json::from_str(&patched(1.0, &serde_json::json!({"picture": "picture-4"}))?)?;
-        producer.write_display_track(&parsed, &[], &serde_json::json!({}), &[]);
+        producer.write_display_track(
+            &parsed,
+            &chapters::ChapterList::default(),
+            &serde_json::json!({}),
+            &[],
+        );
         assert!(read_display(&temp)?["track"]["artwork"].is_null());
         producer.shutdown()?;
         Ok(())
@@ -2305,7 +2350,12 @@ mod tests {
             fs::write(temp.path().join("picture-4"), &picture)?;
             let fields = serde_json::json!({"picture": "picture-4", "track_started": started});
             let parsed: StateFile = serde_json::from_str(&patched(1.0, &fields)?)?;
-            producer.write_display_track(&parsed, &[], &serde_json::json!({}), &[]);
+            producer.write_display_track(
+                &parsed,
+                &chapters::ChapterList::default(),
+                &serde_json::json!({}),
+                &[],
+            );
             shown.push((
                 read_display(&temp)?["track"]["artwork"]["sha256"].clone(),
                 now_playing_drop::display::sha256_hex(&picture),
@@ -2672,6 +2722,30 @@ mod tests {
             assert_eq!(server.requests(), requests, "{name}");
             producer.shutdown()?;
         }
+        Ok(())
+    }
+
+    #[test]
+    fn timed_entries_with_invalid_content_keep_song_lookup_and_wpay_behavior() -> Result<()> {
+        let not_found = || answer(404, &serde_json::json!({}));
+        let server = funding_server(not_found(), not_found())?;
+        let temp = TempDir::new()?;
+        let now = Instant::now();
+        let patch = serde_json::json!({
+            "format": state::STATE_FORMAT_2,
+            "seq": 4,
+            "chapters": "[{\"start_ms\":0,\"end_ms\":10000,\"title\":5}]",
+            "elapsed": 1.0,
+            "cue_in": 0.0,
+            "wpay": WPAY,
+        });
+        let (mut producer, _) = funding_producer(&temp, &server, &patch, now)?;
+        poll_for_requests(&mut producer, &server, now + Duration::from_secs(1), 2)?;
+        assert_eq!(server.requests(), [TRACK_REQUEST, FEED_REQUEST]);
+        let drop: serde_json::Value = serde_json::from_slice(&fs::read(&producer.drop_path)?)?;
+        assert_eq!(drop["play_id"], "ls-12500-4-0");
+        assert_eq!(shown_funding(&temp)?, wpay_json());
+        producer.shutdown()?;
         Ok(())
     }
 

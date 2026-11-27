@@ -207,6 +207,13 @@ packet.
   (station log step 52). In Rainbrook on HLS the chapter change comes with
   the chapter song (station log step 53). The boost at the start of a chapter
   song is open.
+- ADR 0045 has the status `Accepted`. The slot text and the producer make the
+  segment starts with one rule that reads only `start_ms` and `end_ms`. Thus
+  each HLS frame names a display state. Cause: an overlap of two chapters
+  gave a frame with no state (station log step 63). The slot text function
+  passes the 28 shared cases in the station container
+  (`scripts/check-slot-boundaries.sh`). Segment rule task 001 implements the
+  producer part. The station deploy and the Rainbrook check are open.
 - ADR 0042 has the status `Accepted`. An episode state sends its
   publication day in the display state. Relay ADR 0013 gives the name and the
   format of `pubDate`, and Rainbrook ADR 0031 (Proposed) shows the date. On the

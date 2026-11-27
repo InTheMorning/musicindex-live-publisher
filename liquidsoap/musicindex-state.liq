@@ -235,20 +235,41 @@ musicindex_inner = radio
 radio = insert_metadata(radio)
 musicindex_frame = ref((-1, [], false))
 
-# Read the chapter boundaries of ADR 0038 §The Slot Text Writes The Frames.
+# BEGIN musicindex_boundaries
+# The segment starts of ADR 0045 §The Segment Rule. The producer uses the same rule, and the cases in
+# liquidsoap-now-playing/tests/segment-boundaries.json check the two (scripts/check-slot-boundaries.sh).
+# It returns (true when one or more entries have valid times, the segment starts above 0).
 def musicindex_boundaries(text) =
   entries =
     try
-      let json.parse (e : [{start_ms: int?, end_ms: int?}]) = text
+      let json.parse (e : [{start_ms: int?, end_ms: int?}?]) = text
       e
     catch _ do
       []
     end
-  values = list.flatten(list.map(fun (e) -> [null.get(default=0, e.start_ms), null.get(default=0, e.end_ms)], entries))
-  (list.length(entries) > 0, list.filter(fun (b) -> b > 0, values))
+  # An entry that is not an object, or a time that is not an integer from 0 to 2^62-1, gives null.
+  def span(e) =
+    x = null.get(default={start_ms=null(), end_ms=null()}, e)
+    s = null.get(default=-1, x.start_ms)
+    t = null.get(default=-1, x.end_ms)
+    if s >= 0 and t > s then [(s, t)] else [] end
+  end
+  # Of two entries with the same start, the first in the list wins.
+  def keep(kept, x) =
+    if list.exists(fun (y) -> fst(y) == fst(x), kept) then kept else list.append(kept, [x]) end
+  end
+  spans = list.sort(fun (a, b) -> fst(a) - fst(b), list.fold(keep, [], list.flatten(list.map(span, entries))))
+  # A chapter ends at the next start. A gap starts at an end before the next start, and after the last chapter.
+  def gap(i, x) =
+    next = fst(list.nth(default=(-1, -1), spans, i + 1))
+    if next < 0 or snd(x) < next then [snd(x)] else [] end
+  end
+  ends = list.flatten(list.mapi(gap, spans))
+  (list.length(spans) > 0, list.filter(fun (b) -> b > 0, list.append(list.map(fst, spans), ends)))
 end
+# END musicindex_boundaries
 
-# Write the frame at each boundary of ADR 0038 §The Slot Text Writes The Frames.
+# Write the frame at each segment start of ADR 0045 §The Slot Text (ADR 0038 §The Segment Frame).
 def musicindex_on_frame() =
   let (seq, started, m, _, jingle) = musicindex_state()
   let (frame_seq, _, _) = musicindex_frame()

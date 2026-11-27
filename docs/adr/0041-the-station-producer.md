@@ -4,6 +4,8 @@
 - Date: 2026-11-26
 - Changed by: ADR 0042, accepted 2026-11-26. The state gets the optional field `pub_date`.
 - Changed by: ADR 0043, accepted 2026-11-26. The route lookup also gets the funding links of the segment.
+- Changed by: ADR 0045, accepted 2026-11-27. The segments come from the time fields only. An entry with a bad
+  content field is a segment with no chapter, not part of a gap.
 - Supersedes: ADR 0035 (`docs/archive/adr/0035-the-station-producer.md`). This record restates each live rule of
   ADR 0035 and of its three changes. It adds no rule and removes no rule.
 - Supersedes: ADR 0040 (`docs/archive/adr/0040-a-chapter-song-has-the-episode-title-as-its-album.md`).

@@ -1,0 +1,274 @@
+[
+  {
+    "name": "back to back",
+    "chapters": "[{\"start_ms\":0,\"end_ms\":100},{\"start_ms\":100,\"end_ms\":200}]",
+    "boundaries": [
+      0,
+      100,
+      200
+    ],
+    "suffix": true
+  },
+  {
+    "name": "underlap: a gap between two chapters",
+    "chapters": "[{\"start_ms\":0,\"end_ms\":100},{\"start_ms\":150,\"end_ms\":250}]",
+    "boundaries": [
+      0,
+      100,
+      150,
+      250
+    ],
+    "suffix": true
+  },
+  {
+    "name": "overlap: the next chapter starts before the end (episode 158)",
+    "chapters": "[{\"start_ms\":0,\"end_ms\":110},{\"start_ms\":100,\"end_ms\":200}]",
+    "boundaries": [
+      0,
+      100,
+      200
+    ],
+    "suffix": true
+  },
+  {
+    "name": "one chapter inside another",
+    "chapters": "[{\"start_ms\":0,\"end_ms\":300},{\"start_ms\":100,\"end_ms\":200}]",
+    "boundaries": [
+      0,
+      100,
+      200
+    ],
+    "suffix": true
+  },
+  {
+    "name": "a chain of overlaps",
+    "chapters": "[{\"start_ms\":0,\"end_ms\":500},{\"start_ms\":100,\"end_ms\":200},{\"start_ms\":300,\"end_ms\":400}]",
+    "boundaries": [
+      0,
+      100,
+      200,
+      300,
+      400
+    ],
+    "suffix": true
+  },
+  {
+    "name": "same start: the first entry in the list wins",
+    "chapters": "[{\"start_ms\":0,\"end_ms\":100},{\"start_ms\":0,\"end_ms\":150}]",
+    "boundaries": [
+      0,
+      100
+    ],
+    "suffix": true
+  },
+  {
+    "name": "same start: the first entry wins also when its content is refused",
+    "chapters": "[{\"start_ms\":0,\"end_ms\":100,\"title\":5},{\"start_ms\":0,\"end_ms\":150,\"title\":\"B\"}]",
+    "boundaries": [
+      0,
+      100
+    ],
+    "suffix": true
+  },
+  {
+    "name": "a refused content field keeps the segment",
+    "chapters": "[{\"start_ms\":0,\"end_ms\":100,\"title\":\"A\"},{\"start_ms\":150,\"end_ms\":250,\"title\":5},{\"start_ms\":300,\"end_ms\":400}]",
+    "boundaries": [
+      0,
+      100,
+      150,
+      250,
+      300,
+      400
+    ],
+    "suffix": true
+  },
+  {
+    "name": "a refused route list keeps the segment",
+    "chapters": "[{\"start_ms\":0,\"end_ms\":100},{\"start_ms\":150,\"end_ms\":250,\"value_routes\":\"x\"}]",
+    "boundaries": [
+      0,
+      100,
+      150,
+      250
+    ],
+    "suffix": true
+  },
+  {
+    "name": "an unknown field is ignored",
+    "chapters": "[{\"start_ms\":0,\"end_ms\":100,\"extra\":{\"a\":1}}]",
+    "boundaries": [
+      0,
+      100
+    ],
+    "suffix": true
+  },
+  {
+    "name": "the entries are not in order",
+    "chapters": "[{\"start_ms\":300,\"end_ms\":400},{\"start_ms\":0,\"end_ms\":100}]",
+    "boundaries": [
+      0,
+      100,
+      300,
+      400
+    ],
+    "suffix": true
+  },
+  {
+    "name": "the first chapter starts after 0",
+    "chapters": "[{\"start_ms\":30665,\"end_ms\":243665}]",
+    "boundaries": [
+      0,
+      30665,
+      243665
+    ],
+    "suffix": true
+  },
+  {
+    "name": "episode 158 at 1:52",
+    "chapters": "[{\"start_ms\":6498968,\"end_ms\":6729868},{\"start_ms\":6724607,\"end_ms\":7028534},{\"start_ms\":7096357,\"end_ms\":7346272}]",
+    "boundaries": [
+      0,
+      6498968,
+      6724607,
+      7028534,
+      7096357,
+      7346272
+    ],
+    "suffix": true
+  },
+  {
+    "name": "a time that is a string has no segment",
+    "chapters": "[{\"start_ms\":0,\"end_ms\":100},{\"start_ms\":\"150\",\"end_ms\":250}]",
+    "boundaries": [
+      0,
+      100
+    ],
+    "suffix": true
+  },
+  {
+    "name": "a time with a fraction has no segment",
+    "chapters": "[{\"start_ms\":0,\"end_ms\":100},{\"start_ms\":150.5,\"end_ms\":250}]",
+    "boundaries": [
+      0,
+      100
+    ],
+    "suffix": true
+  },
+  {
+    "name": "a time written as 150.0 has no segment",
+    "chapters": "[{\"start_ms\":0,\"end_ms\":100},{\"start_ms\":150.0,\"end_ms\":250}]",
+    "boundaries": [
+      0,
+      100
+    ],
+    "suffix": true
+  },
+  {
+    "name": "a time with an exponent has no segment",
+    "chapters": "[{\"start_ms\":0,\"end_ms\":100},{\"start_ms\":1e3,\"end_ms\":2000}]",
+    "boundaries": [
+      0,
+      100
+    ],
+    "suffix": true
+  },
+  {
+    "name": "a missing or null time has no segment",
+    "chapters": "[{\"start_ms\":0,\"end_ms\":100},{\"end_ms\":250},{\"start_ms\":null,\"end_ms\":300}]",
+    "boundaries": [
+      0,
+      100
+    ],
+    "suffix": true
+  },
+  {
+    "name": "a negative time has no segment",
+    "chapters": "[{\"start_ms\":-5,\"end_ms\":50},{\"start_ms\":100,\"end_ms\":200}]",
+    "boundaries": [
+      0,
+      100,
+      200
+    ],
+    "suffix": true
+  },
+  {
+    "name": "an end that is not above the start has no segment",
+    "chapters": "[{\"start_ms\":100,\"end_ms\":100},{\"start_ms\":200,\"end_ms\":150},{\"start_ms\":300,\"end_ms\":400}]",
+    "boundaries": [
+      0,
+      300,
+      400
+    ],
+    "suffix": true
+  },
+  {
+    "name": "the largest time is 2^62-1",
+    "chapters": "[{\"start_ms\":0,\"end_ms\":100},{\"start_ms\":150,\"end_ms\":4611686018427387903}]",
+    "boundaries": [
+      0,
+      100,
+      150,
+      4611686018427387903
+    ],
+    "suffix": true
+  },
+  {
+    "name": "a time above 2^62-1 has no segment",
+    "chapters": "[{\"start_ms\":0,\"end_ms\":100},{\"start_ms\":150,\"end_ms\":4611686018427387904}]",
+    "boundaries": [
+      0,
+      100
+    ],
+    "suffix": true
+  },
+  {
+    "name": "an entry that is not an object has no segment",
+    "chapters": "[{\"start_ms\":0,\"end_ms\":100},\"text\",5,null,[1]]",
+    "boundaries": [
+      0,
+      100
+    ],
+    "suffix": true
+  },
+  {
+    "name": "no entry with valid times gives no chapter suffix",
+    "chapters": "[{\"title\":\"x\"},{\"start_ms\":\"0\",\"end_ms\":100}]",
+    "boundaries": [
+      0
+    ],
+    "suffix": false
+  },
+  {
+    "name": "an empty list",
+    "chapters": "[]",
+    "boundaries": [
+      0
+    ],
+    "suffix": false
+  },
+  {
+    "name": "an empty value",
+    "chapters": "",
+    "boundaries": [
+      0
+    ],
+    "suffix": false
+  },
+  {
+    "name": "text that is not JSON",
+    "chapters": "invalid",
+    "boundaries": [
+      0
+    ],
+    "suffix": false
+  },
+  {
+    "name": "an object that is not a list",
+    "chapters": "{\"start_ms\":0,\"end_ms\":100}",
+    "boundaries": [
+      0
+    ],
+    "suffix": false
+  }
+]

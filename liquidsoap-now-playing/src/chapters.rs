@@ -1,13 +1,14 @@
 //! Parse chapter entries and select the segment at one position.
 
-use std::collections::HashSet;
-
 use now_playing_drop::{
     PaymentRoute, display::image_url, merge::has_percentage as routes_have_percentage,
 };
 use serde_json::Value;
 
 use crate::state::StateFile;
+
+/// Largest time value accepted by the segment rule (ADR 0045 §The Segment Rule).
+const MAX_TIME_MS: i64 = 4_611_686_018_427_387_903;
 
 /// One valid payment chapter from the state file.
 #[derive(Debug, Clone)]
@@ -34,6 +35,38 @@ pub struct Chapter {
     pub image_url: Option<String>,
 }
 
+/// Holds timed entries, including entries with invalid chapter content.
+#[derive(Debug, Clone, Default)]
+pub struct ChapterList {
+    spans: Vec<Span>,
+}
+
+#[derive(Debug, Clone)]
+struct Span {
+    start_ms: i64,
+    end_ms: i64,
+    chapter: Option<Chapter>,
+}
+
+impl ChapterList {
+    /// Returns true when no timed entry has valid chapter content.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        !self.spans.iter().any(|span| span.chapter.is_some())
+    }
+
+    /// Returns true when at least one timed entry defines a segment.
+    #[must_use]
+    pub fn has_segments(&self) -> bool {
+        !self.spans.is_empty()
+    }
+
+    /// Returns the entries with valid content in segment order.
+    pub fn chapters(&self) -> impl Iterator<Item = &Chapter> {
+        self.spans.iter().filter_map(|span| span.chapter.as_ref())
+    }
+}
+
 impl Chapter {
     /// An entry with no feed GUID and no item GUID is a local split.
     #[must_use]
@@ -52,7 +85,7 @@ pub struct Segment<'a> {
 }
 
 /// Parses valid chapter entries and logs at most one error for each sequence.
-pub fn parse_chapters(state: &StateFile, bad_chapters_seq: &mut Option<i64>) -> Vec<Chapter> {
+pub fn parse_chapters(state: &StateFile, bad_chapters_seq: &mut Option<i64>) -> ChapterList {
     // ADR 0041 §The State File Contract: an empty `chapters` value means that the file
     // has no chapter list. Liquidsoap gives an empty value for a missing tag.
     let Some(raw) = state
@@ -60,46 +93,55 @@ pub fn parse_chapters(state: &StateFile, bad_chapters_seq: &mut Option<i64>) -> 
         .as_deref()
         .filter(|raw| !raw.trim().is_empty())
     else {
-        return Vec::new();
+        return ChapterList { spans: Vec::new() };
     };
     let parsed = serde_json::from_str::<Value>(raw);
     let Ok(Value::Array(entries)) = parsed else {
         log_bad_chapters(state.seq, bad_chapters_seq, "chapters is not a JSON array");
-        return Vec::new();
+        return ChapterList { spans: Vec::new() };
     };
 
-    let mut chapters = Vec::new();
+    let mut spans = Vec::new();
     for entry in entries {
-        match parse_entry(entry) {
-            Some(chapter) => chapters.push(chapter),
-            None => log_bad_chapters(state.seq, bad_chapters_seq, "chapter entry is not valid"),
+        let Some((start_ms, end_ms)) = parse_times(&entry) else {
+            log_bad_chapters(state.seq, bad_chapters_seq, "chapter entry is not valid");
+            continue;
+        };
+        let chapter = parse_content(entry, start_ms, end_ms);
+        if chapter.is_none() {
+            log_bad_chapters(state.seq, bad_chapters_seq, "chapter entry is not valid");
         }
+        spans.push(Span {
+            start_ms,
+            end_ms,
+            chapter,
+        });
     }
-    chapters.sort_by_key(|chapter| chapter.start_ms);
-    let mut starts = HashSet::new();
-    chapters.retain(|chapter| starts.insert(chapter.start_ms));
-    chapters
+    spans.sort_by_key(|span| span.start_ms);
+    spans.dedup_by_key(|span| span.start_ms);
+    ChapterList { spans }
 }
 
 /// Selects the chapter or gap segment at a non-negative position.
 #[must_use]
-pub fn segment_at(chapters: &[Chapter], position_ms: i64) -> Option<Segment<'_>> {
-    if chapters.is_empty() || position_ms < 0 {
+pub fn segment_at(chapters: &ChapterList, position_ms: i64) -> Option<Segment<'_>> {
+    if !chapters.has_segments() || position_ms < 0 {
         return None;
     }
-    for (index, chapter) in chapters.iter().enumerate() {
+    for (index, span) in chapters.spans.iter().enumerate() {
         let end_ms = chapters
+            .spans
             .get(index + 1)
-            .map_or(chapter.end_ms, |next| chapter.end_ms.min(next.start_ms));
-        if position_ms >= chapter.start_ms && position_ms < end_ms {
+            .map_or(span.end_ms, |next| span.end_ms.min(next.start_ms));
+        if position_ms >= span.start_ms && position_ms < end_ms {
             return Some(Segment {
-                chapter: Some(chapter),
-                start_ms: chapter.start_ms,
+                chapter: span.chapter.as_ref(),
+                start_ms: span.start_ms,
             });
         }
-        if position_ms < chapter.start_ms {
+        if position_ms < span.start_ms {
             let start_ms = index.checked_sub(1).map_or(0, |previous| {
-                chapters[previous].end_ms.min(chapter.start_ms)
+                chapters.spans[previous].end_ms.min(span.start_ms)
             });
             return Some(Segment {
                 chapter: None,
@@ -107,19 +149,29 @@ pub fn segment_at(chapters: &[Chapter], position_ms: i64) -> Option<Segment<'_>>
             });
         }
     }
-    chapters.last().map(|chapter| Segment {
+    chapters.spans.last().map(|span| Segment {
         chapter: None,
-        start_ms: chapter.end_ms,
+        start_ms: span.end_ms,
     })
 }
 
-fn parse_entry(value: Value) -> Option<Chapter> {
+fn parse_times(value: &Value) -> Option<(i64, i64)> {
     let object = value.as_object()?;
-    let start_ms = nonnegative_integer(object.get("start_ms")?)?;
-    let end_ms = nonnegative_integer(object.get("end_ms")?)?;
+    let start_ms = valid_time(object.get("start_ms")?)?;
+    let end_ms = valid_time(object.get("end_ms")?)?;
     if end_ms <= start_ms {
         return None;
     }
+    Some((start_ms, end_ms))
+}
+
+fn valid_time(value: &Value) -> Option<i64> {
+    let number = value.as_i64()?;
+    (0..=MAX_TIME_MS).contains(&number).then_some(number)
+}
+
+fn parse_content(value: Value, start_ms: i64, end_ms: i64) -> Option<Chapter> {
+    let object = value.as_object()?;
     let remote_percentage = match object.get("remote_percentage") {
         None | Some(Value::Null) => 100.0,
         Some(Value::Number(number)) => number.as_f64()?.clamp(0.0, 100.0),
@@ -164,11 +216,6 @@ fn parse_entry(value: Value) -> Option<Chapter> {
         value_routes,
         image_url,
     })
-}
-
-fn nonnegative_integer(value: &Value) -> Option<i64> {
-    let number = value.as_i64()?;
-    (number >= 0).then_some(number)
 }
 
 fn optional_string(value: Option<&Value>) -> Option<Option<String>> {
@@ -231,8 +278,14 @@ mod tests {
         ]"#;
         let mut bad = None;
         let chapters = parse_chapters(&state(text), &mut bad);
-        assert_eq!(chapters.len(), 1);
-        assert_eq!(chapters[0].title.as_deref(), Some("first"));
+        assert_eq!(chapters.chapters().count(), 1);
+        assert_eq!(
+            chapters
+                .chapters()
+                .next()
+                .and_then(|chapter| chapter.title.as_deref()),
+            Some("first")
+        );
         assert_eq!(
             segment_at(&chapters, 100).map(|segment| segment.start_ms),
             Some(100)
@@ -253,5 +306,60 @@ mod tests {
         let mut bad = None;
         assert!(parse_chapters(&state("invalid"), &mut bad).is_empty());
         assert_eq!(bad, Some(1));
+    }
+
+    #[test]
+    fn shared_segment_cases_match_adr_0045() -> Result<(), Box<dyn std::error::Error>> {
+        #[derive(serde::Deserialize)]
+        struct Case {
+            name: String,
+            chapters: String,
+            boundaries: Vec<i64>,
+            suffix: bool,
+        }
+
+        let cases: Vec<Case> =
+            serde_json::from_str(include_str!("../tests/segment-boundaries.json"))?;
+        for case in cases {
+            let mut candidates = vec![0];
+            if let Ok(Value::Array(entries)) = serde_json::from_str::<Value>(&case.chapters) {
+                for entry in entries {
+                    if let Some(object) = entry.as_object() {
+                        for key in ["start_ms", "end_ms"] {
+                            if let Some(value) = object.get(key).and_then(Value::as_i64)
+                                && (0..=MAX_TIME_MS).contains(&value)
+                            {
+                                candidates.push(value);
+                            }
+                        }
+                    }
+                }
+            }
+            let mut bad = None;
+            let chapters = parse_chapters(&state(&case.chapters), &mut bad);
+            let mut actual = vec![0];
+            actual.extend(
+                candidates
+                    .into_iter()
+                    .filter_map(|position| segment_at(&chapters, position))
+                    .map(|segment| segment.start_ms),
+            );
+            actual.sort_unstable();
+            actual.dedup();
+            let mut expected = case.boundaries;
+            expected.sort_unstable();
+            assert_eq!(
+                actual, expected,
+                "{}: ADR 0045 §The Segment Rule",
+                case.name
+            );
+            assert_eq!(
+                chapters.has_segments(),
+                case.suffix,
+                "{}: ADR 0045 §The Segment Rule",
+                case.name
+            );
+        }
+        Ok(())
     }
 }
